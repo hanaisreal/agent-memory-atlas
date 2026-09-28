@@ -37,6 +37,14 @@
       "retrieval": "fixed-rule"
     }
   },
+  "classify": {
+    "structure": "flat",
+    "index": "vector",
+    "management": "append-only",
+    "candidates": "dense",
+    "decides": "top-k rule",
+    "note": null
+  },
   "tags": {
     "fidelity": "verbatim",
     "structure": [

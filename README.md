@@ -14,7 +14,7 @@ and which questions were kept, which most papers report only partly.
 
 | View | What it shows |
 |---|---|
-| **Map** | Pick a pipeline stage; it spans out to the approaches systems take at that stage and to the systems using each. Optionally adds the papers the DEEP-PolyU list files under that stage |
+| **Map** | Pick a pipeline stage; it spans out in two levels (e.g. Retrieval: how candidates are found → who picks the final set). Each level is single-valued, so every system sits in exactly one place per stage; features a system combines are shown by highlighting. Clicking a system opens its details in place, including its path through every stage. Filter by track and order by name, year or venue |
 | **Systems** | Annotated systems described stage by stage (construction, organization, management, retrieval, use) plus who decides at each stage, filterable by controlled tags; column groups can be hidden |
 | **Pipeline** | The same systems by pipeline stage: ingestion, construction, organization, update, retrieval, answer, learning |
 | **Results** | Every score, one column per evaluation setting; spread of each system across settings; head-to-head comparison restricted to shared settings |
@@ -30,7 +30,8 @@ Paper index sources (pinned in `scripts/import_lists.py`):
 ## Layout
 
 ```
-data/systems/<id>.json        one annotated system (grouped design fields, tags, pipeline stages)
+data/systems/<id>.json        one annotated system (paper with venue and track, grouped design fields,
+                              single-valued map placement in `classify`, tags, pipeline stages)
 data/results/<reporter>.json  every score from one paper, with its settings and table reference
 data/benchmarks.json          benchmark registry with versions and pitfalls
 data/extra_systems.json       baselines that appear in results but are not annotated yet

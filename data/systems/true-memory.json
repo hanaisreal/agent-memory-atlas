@@ -6,6 +6,8 @@
     "arxiv": "2605.04897",
     "url": "https://arxiv.org/abs/2605.04897",
     "venue": "arXiv (technical report, Sauron Labs)",
+    "venue_short": "arXiv",
+    "track": "preprint",
     "year": 2026,
     "code": "https://github.com/buildingjoshbetter/TrueMemory"
   },
@@ -43,6 +45,14 @@
       "management": null,
       "retrieval": "fixed-rule"
     }
+  },
+  "classify": {
+    "structure": "flat",
+    "index": "vector and lexical",
+    "management": "consolidate",
+    "candidates": "hybrid",
+    "decides": "reranker",
+    "note": null
   },
   "tags": {
     "fidelity": "verbatim+derived",

@@ -6,6 +6,8 @@
     "arxiv": "2601.02163",
     "url": "https://arxiv.org/abs/2601.02163",
     "venue": "ACL 2026",
+    "venue_short": "ACL",
+    "track": "main",
     "year": 2026,
     "code": "https://github.com/EverMind-AI/EverMemOS"
   },
@@ -43,6 +45,14 @@
       "management": "fixed-rule",
       "retrieval": "prompted-llm"
     }
+  },
+  "classify": {
+    "structure": "hierarchy",
+    "index": "vector and lexical",
+    "management": "consolidate",
+    "candidates": "hybrid",
+    "decides": "reranker",
+    "note": "The reranker fixes the set; the LLM sufficiency check only decides whether to retrieve again."
   },
   "tags": {
     "fidelity": "rewritten",

@@ -6,6 +6,8 @@
     "arxiv": "2601.02553",
     "url": "https://arxiv.org/abs/2601.02553",
     "venue": "arXiv",
+    "venue_short": "arXiv",
+    "track": "preprint",
     "year": 2026,
     "code": "https://github.com/aiming-lab/SimpleMem"
   },
@@ -43,6 +45,14 @@
       "management": "prompted-llm",
       "retrieval": "prompted-llm"
     }
+  },
+  "classify": {
+    "structure": "flat",
+    "index": "vector and lexical",
+    "management": "consolidate",
+    "candidates": "hybrid",
+    "decides": "top-k rule",
+    "note": "Planner sets per-view k; the final set is the deduplicated union."
   },
   "tags": {
     "fidelity": "compressed",

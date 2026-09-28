@@ -109,6 +109,35 @@ def entries(text, start, stop):
         yield cur
 
 
+JOURNALS = ("TMLR", "TOIS", "TKDE", "IEEE TRANS", "TPAMI", "JMLR", "TACL")
+
+
+def parse_venue(item):
+    """Venue tag at the start of an entry, e.g. "(ACL'25 Findings)" -> ("ACL", 2025, "findings")."""
+    m = re.match(r"^\s*[\(\[]([^\]\)\[\(]{2,40})[\]\)]\s", item)
+    if not m or m.group(1).startswith("!") or re.fullmatch(r"\d{4}/\d{2}", m.group(1)):
+        return None
+    tag = m.group(1).replace("\u2018", "'").replace("\u2019", "'")
+    y = re.search(r"'(\d{2})\b", tag)
+    name = re.split(r"'|\s", tag)[0].strip()
+    low = tag.lower()
+    if re.match(r"a?r?x?iv|arxiv|axiv|techreport", name.lower()) or "arxiv" in low:
+        name, track = "arXiv", "preprint"
+    elif "techreport" in low:
+        name, track = "Tech report", "preprint"
+    elif any(j.lower() in low for j in JOURNALS) or "trans" in low:
+        track = "journal"
+    elif "findings" in low:
+        track = "findings"
+    elif "workshop" in low:
+        track = "workshop"
+    elif "short" in low:
+        track = "short"
+    else:
+        track = "main"
+    return {"venue": name, "year": 2000 + int(y.group(1)) if y else None, "track": track}
+
+
 def parse_title(item, key):
     s = item.strip()
     s = re.sub(r"^\[\d{4}/\d{2}\]\s*", "", s)             # liu: [2026/01]
@@ -224,6 +253,7 @@ def parse_source(key, text):
         if not date and year:
             date = str(year)
         desc = next((c.strip("_") for c in cont if c.startswith("_") and c.endswith("_")), None)
+        venue = parse_venue(item) if key == "deep" else None  # only DEEP-PolyU writes venue tags
         tags = re.findall(r"`([^`]+)`", blob) if key == "yyy" else []
         yield {
             "title": re.sub(r"\s+", " ", title).strip(),
@@ -236,6 +266,7 @@ def parse_source(key, text):
             "source": key,
             "section": " / ".join(p for p in path if not YEAR_HEADING.fullmatch(p.strip())),
             "facets": facets_for(key, path, tags),
+            "venue": venue,
         }
 
 
@@ -249,11 +280,11 @@ def merge(records):
                 "id": r["arxiv"] or norm_title(r["title"])[:60],
                 "title": r["title"], "url": r["url"], "arxiv": r["arxiv"],
                 "code": r["code"], "date": r["date"], "kind": r["kind"],
-                "description": r["description"], "sources": [], "facets": {},
+                "description": r["description"], "sources": [], "facets": {}, "venue": None,
             }
             order.append(k)
         m = by_key[k]
-        for field in ("url", "code", "date", "description"):
+        for field in ("url", "code", "date", "description", "venue"):
             if not m[field] and r[field]:
                 m[field] = r[field]
         # products and benchmarks outrank "method" when lists disagree

@@ -6,6 +6,8 @@
     "arxiv": "2402.09727",
     "url": "https://arxiv.org/abs/2402.09727",
     "venue": "ICML 2024",
+    "venue_short": "ICML",
+    "track": "main",
     "year": 2024,
     "code": "https://read-agent.github.io"
   },
@@ -43,6 +45,14 @@
       "management": "none",
       "retrieval": "prompted-llm"
     }
+  },
+  "classify": {
+    "structure": "flat",
+    "index": "none",
+    "management": "append-only",
+    "candidates": "read everything",
+    "decides": "LLM decides",
+    "note": "All gists are read; the LLM then picks raw pages to look up."
   },
   "tags": {
     "fidelity": "verbatim+derived",

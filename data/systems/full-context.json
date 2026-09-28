@@ -37,6 +37,14 @@
       "retrieval": "none"
     }
   },
+  "classify": {
+    "structure": "none",
+    "index": "none",
+    "management": "append-only",
+    "candidates": "read everything",
+    "decides": "reads everything",
+    "note": null
+  },
   "tags": {
     "fidelity": "verbatim",
     "structure": [

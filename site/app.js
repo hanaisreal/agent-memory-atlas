@@ -41,6 +41,9 @@ const RUN_MARK = { self: "s", rerun: "r", copied: "c" };
 const RUN_TEXT = { self: "run by the system's authors", rerun: "re-run by the reporting paper", copied: "copied from another paper" };
 const PAPER_FACETS = [
   ["kind", "Entry type", p => [p.kind]],
+  ["year", "Year", p => (p.venue?.year ? [String(p.venue.year)] : p.date ? [p.date.slice(0, 4)] : [])],
+  ["venue", "Venue (as listed)", p => (p.venue ? [p.venue.venue] : ["not listed"])],
+  ["track", "Track (as listed)", p => (p.venue ? [p.venue.track] : ["not listed"])],
   ["source", "Listed in", p => [...new Set(p.sources.map(s => SOURCE_NAME[s.list] || s.list))]],
   ["liu_function", "Function (Liu et al.)", p => p.facets.liu_function || []],
   ["liu_form", "Form (Liu et al.)", p => p.facets.liu_form || []],
@@ -48,14 +51,14 @@ const PAPER_FACETS = [
   ["teleai_subsection", "Subsection (TeleAI)", p => p.facets.teleai_subsection || []],
   ["deep_stage", "Graph-memory stage (DEEP-PolyU)", p => p.facets.deep_stage || []],
   ["yyy_tags", "Tags (yyyujintang)", p => p.facets.yyy_tags || []],
-  ["year", "Year", p => (p.date ? [p.date.slice(0, 4)] : [])],
 ];
 const SOURCE_NAME = { liu: "Liu et al.", teleai: "TeleAI", deep: "DEEP-PolyU", yyy: "yyyujintang" };
 
 let A = null;             // atlas.json
 const sysById = new Map();
 const S = {               // UI state
-  view: "map", mapStage: "retrieval", mapFacet: 0, mapMore: false,
+  view: "map", mapStage: "retrieval", mapMore: false, mapOpen: null, mapHi: null,
+  meta: {}, sort: "name", psort: "new",
   q: "", tags: {},        // systems/pipeline filters
   stage: null,
   bench: null, cat: "overall", metric: null, version: "all", copied: true, col: null,
@@ -118,12 +121,54 @@ function render() {
 /* ---------------- shared system filtering ---------------- */
 function tagVals(s, k) { const v = (s.tags || {})[k]; return v == null ? [] : Array.isArray(v) ? v : [v]; }
 
+/* Venue, year and track: filters shared by Map and Systems, plus sort orders. */
+const TRACK_ORDER = ["main", "short", "findings", "journal", "workshop", "preprint"];
+const sysVenue = s => (s.paper?.venue_short ? { venue: s.paper.venue_short, year: s.paper.year, track: s.paper.track } : null);
+function venueTag(v) {
+  if (!v) return "";
+  const yy = v.year ? `'${String(v.year).slice(2)}` : "";
+  const tr = v.track && v.track !== "main" && v.track !== "preprint" ? ` ${v.track}` : "";
+  return `${v.venue}${yy}${tr}`;
+}
+const META = [
+  ["year", "Year", s => (s.paper?.year ? [String(s.paper.year)] : [])],
+  ["venue", "Venue", s => (s.paper?.venue_short ? [s.paper.venue_short] : [])],
+  ["track", "Track", s => (s.paper?.track ? [s.paper.track] : [])],
+];
+const SORTS = [["name", "Name"], ["year-new", "Newest first"], ["year-old", "Oldest first"], ["venue", "Venue"]];
+/* Venue order: named venues A→Z, then preprints, then entries with no venue. */
+function venueCmp(a, b) {
+  const rank = v => (!v ? 2 : v.track === "preprint" ? 1 : 0);
+  return rank(a) - rank(b) || (a && b ? String(a.venue).localeCompare(String(b.venue)) : 0);
+}
+function sortSystems(list) {
+  const y = s => s.paper?.year || 0;
+  const by = {
+    "name": (a, b) => a.name.localeCompare(b.name),
+    "year-new": (a, b) => y(b) - y(a) || a.name.localeCompare(b.name),
+    "year-old": (a, b) => (y(a) || 9999) - (y(b) || 9999) || a.name.localeCompare(b.name),
+    "venue": (a, b) => venueCmp(sysVenue(a), sysVenue(b)) || y(b) - y(a) || a.name.localeCompare(b.name),
+  }[S.sort] || ((a, b) => a.name.localeCompare(b.name));
+  return [...list].sort(by);
+}
+function sortSelect(id) {
+  return `<label class="sortsel" for="${id}">Order by <select id="${id}">${SORTS.map(([v, l]) => `<option value="${v}" ${v === S.sort ? "selected" : ""}>${l}</option>`).join("")}</select></label>`;
+}
+function metaSort(vals, k) {
+  return k === "year" ? vals.sort((a, b) => b.localeCompare(a)) : k === "track" ? vals.sort((a, b) => TRACK_ORDER.indexOf(a) - TRACK_ORDER.indexOf(b)) : vals.sort();
+}
+
 function filteredSystems(ignoreKey) {
   const q = S.q.trim().toLowerCase();
   return A.systems.filter(s => {
     for (const [k, set] of Object.entries(S.tags)) {
       if (k === ignoreKey || !set.size) continue;
       if (!tagVals(s, k).some(v => set.has(v))) return false;
+    }
+    for (const [k, , get] of META) {
+      const set = S.meta[k];
+      if (ignoreKey === "m:" + k || !set || !set.size) continue;
+      if (!get(s).some(v => set.has(v))) return false;
     }
     if (S.view === "pipeline" && S.stage && !(s.stages || {})[S.stage]) return false;
     if (q) {
@@ -136,6 +181,14 @@ function filteredSystems(ignoreKey) {
 
 function systemRail() {
   const parts = [`<div><h4>Search</h4><input id="sq" class="search" type="search" placeholder="Name, mechanism…" value="${esc(S.q)}"></div>`];
+  for (const [k, label, get] of META) {
+    const pool = filteredSystems("m:" + k);
+    const set = S.meta[k] || new Set();
+    const cnt = new Map();
+    for (const x of pool) for (const v of get(x)) cnt.set(v, (cnt.get(v) || 0) + 1);
+    const vals = metaSort([...new Set([...cnt.keys(), ...set])], k);
+    if (vals.length) parts.push(`<div><h4>${label}</h4><div class="facet">${vals.map(v => `<button class="chip" data-k="m:${k}" data-v="${esc(v)}" aria-pressed="${set.has(v)}">${esc(v)}<span class="c">${cnt.get(v) || 0}</span></button>`).join("")}</div></div>`);
+  }
   for (const k of Object.keys(TAG_LABEL)) {
     const pool = filteredSystems(k);
     const set = S.tags[k] || new Set();
@@ -147,7 +200,7 @@ function systemRail() {
     }).join("");
     if (chips) parts.push(`<div><h4>${TAG_LABEL[k]}</h4><div class="facet">${chips}</div></div>`);
   }
-  const any = S.q || Object.values(S.tags).some(s => s.size) || S.stage;
+  const any = S.q || Object.values(S.tags).some(s => s.size) || Object.values(S.meta).some(s => s.size) || S.stage;
   if (any) parts.push(`<button class="clear" id="sclear">Clear all filters</button>`);
   return `<aside class="rail" aria-label="Filters">${parts.join("")}</aside>`;
 }
@@ -155,13 +208,17 @@ function systemRail() {
 function bindSystemRail(main) {
   const sq = $("#sq", main);
   sq.addEventListener("input", () => { S.q = sq.value; const pos = sq.selectionStart; render(); const n = $("#sq"); n.focus(); n.setSelectionRange(pos, pos); });
-  main.querySelectorAll(".rail .chip").forEach(b => b.addEventListener("click", () => {
-    const set = S.tags[b.dataset.k] || (S.tags[b.dataset.k] = new Set());
-    set.has(b.dataset.v) ? set.delete(b.dataset.v) : set.add(b.dataset.v);
-    render();
-  }));
+  main.querySelectorAll(".rail .chip").forEach(b => b.addEventListener("click", () => toggleFacet(b.dataset.k, b.dataset.v)));
   const c = $("#sclear", main);
-  if (c) c.addEventListener("click", () => { S.q = ""; S.tags = {}; S.stage = null; render(); });
+  if (c) c.addEventListener("click", () => { S.q = ""; S.tags = {}; S.meta = {}; S.stage = null; render(); });
+  $("#ssort", main)?.addEventListener("change", e => { S.sort = e.target.value; render(); });
+}
+function toggleFacet(k, v) {
+  const bag = k.startsWith("m:") ? S.meta : S.tags;
+  const key = k.replace(/^m:/, "");
+  const set = bag[key] || (bag[key] = new Set());
+  set.has(v) ? set.delete(v) : set.add(v);
+  render();
 }
 
 function resultCount(id) { return A.results.filter(r => r.system === id).length; }
@@ -173,73 +230,173 @@ function resultSummary(id) {
 }
 
 /* ---------------- Map ----------------
-   Stages on the left; the selected stage fans out to its approaches, and each approach to the systems
-   that use it. Connectors are drawn in an SVG overlay from the laid-out boxes. */
-const ctl = (s, g) => [s.design?.control?.[g]].filter(Boolean);
+   A stage on the left spans out into a two-level tree. Both levels are single-valued, so each system sits
+   in exactly one place per stage (its path). Multi-valued features are shown by highlighting, not by
+   placing a system twice. Clicking a system opens its details in place under its branch. */
+const one = v => (v == null || v === "" ? "not stated" : v);
+function remembered(s) {
+  const t = tagVals(s, "memory_type"), conv = t.includes("episodic") || t.includes("working"), facts = t.includes("semantic");
+  return conv && facts ? "conversation and facts" : conv ? "the conversation" : facts ? "facts and knowledge" : "not stated";
+}
 const MAP_STAGES = [
-  { id: "type", n: "00", title: "What is remembered", sub: "memory type",
-    facets: [["Memory type", s => tagVals(s, "memory_type")]], note: s => s.summary },
-  { id: "construction", n: "01", title: "Construction", sub: "writing memory", deep: "Extraction",
-    facets: [["Text kept as", s => tagVals(s, "fidelity")], ["Write-time processing", s => tagVals(s, "write_time")], ["Who decides", s => ctl(s, "construction")]],
+  { id: "type", n: "00", title: "What is remembered", sub: "memory type", group: null,
+    levels: [["What is kept", remembered], ["User profile", s => (tagVals(s, "memory_type").includes("profile") ? "keeps a user profile" : "no user profile")]],
+    features: ["Memory type", s => tagVals(s, "memory_type")], note: s => s.summary },
+  { id: "construction", n: "01", title: "Construction", sub: "writing memory", group: "construction", deep: "Extraction",
+    levels: [["Text kept as", s => one(s.tags?.fidelity)], ["Who writes", s => one(s.design?.control?.construction)]],
+    features: ["Write-time processing", s => tagVals(s, "write_time")],
     note: s => [s.design?.construction?.unit, s.design?.construction?.processing].filter(Boolean).join(". ") },
-  { id: "organization", n: "02", title: "Organization", sub: "how items relate", deep: "Storage",
-    facets: [["Structure", s => tagVals(s, "structure")]],
+  { id: "organization", n: "02", title: "Organization", sub: "how items relate", group: "organization", deep: "Storage",
+    levels: [["Main structure", s => one(s.classify?.structure)], ["Index", s => one(s.classify?.index)]],
+    features: ["Also has", s => tagVals(s, "structure")],
     note: s => [s.design?.organization?.structure, s.design?.organization?.stores].filter(Boolean).join(". ") },
-  { id: "management", n: "03", title: "Management", sub: "changing memory", deep: "Evolution",
-    facets: [["Who decides", s => ctl(s, "management")], ["Timing", s => [s.design?.management?.timing].filter(Boolean)]],
+  { id: "management", n: "03", title: "Management", sub: "changing memory", group: "management", deep: "Evolution",
+    levels: [["What happens", s => one(s.classify?.management)], ["When", s => one(s.design?.management?.timing)]],
+    features: ["Who decides", s => [one(s.design?.control?.management)]],
     note: s => [s.design?.management?.operations, s.design?.management?.conflicts].filter(Boolean).join(". ") },
-  { id: "retrieval", n: "04", title: "Retrieval", sub: "reading memory", deep: "Retrieval",
-    facets: [["Selection", s => tagVals(s, "selection")], ["Who decides", s => ctl(s, "retrieval")]],
+  { id: "retrieval", n: "04", title: "Retrieval", sub: "reading memory", group: "retrieval", deep: "Retrieval",
+    levels: [["How candidates are found", s => one(s.classify?.candidates)], ["Who picks the final set", s => one(s.classify?.decides)]],
+    features: ["Uses", s => tagVals(s, "selection")],
     note: s => [s.design?.retrieval?.candidates, s.design?.retrieval?.selection].filter(Boolean).join(". ") },
-  { id: "learning", n: "05", title: "Learning", sub: "is anything trained?",
-    facets: [["Learning", s => tagVals(s, "learning")]], note: s => s.stages?.learning || "No trained component." },
+  { id: "learning", n: "05", title: "Learning", sub: "is anything trained?", group: null,
+    levels: [["Training", s => one(s.tags?.learning)]], features: null,
+    note: s => s.stages?.learning || "No trained component." },
 ];
+const pathOf = (s, st) => st.levels.map(([, f]) => f(s));
+
+function mapSystems() {
+  return sortSystems(A.systems.filter(s => {
+    for (const [k, , get] of META) { const set = S.meta[k]; if (set && set.size && !get(s).some(v => set.has(v))) return false; }
+    return true;
+  }));
+}
+
+function leafHTML(s, st) {
+  const hi = S.mapHi && st.features && st.features[1](s).includes(S.mapHi);
+  const dim = S.mapHi && !hi;
+  return `<button class="leaf${hi ? " hi" : ""}${dim ? " dimmed" : ""}${S.mapOpen === s.id ? " open" : ""}" data-sys="${esc(s.id)}" aria-expanded="${S.mapOpen === s.id}"
+    data-label="${esc(s.name)} · ${esc(st.title.toLowerCase())}" data-note="${esc(st.note(s) || "")}">${esc(s.name)}<span class="lv">${esc(venueTag(sysVenue(s)))}</span></button>`;
+}
+
+function detailHTML(s, st) {
+  const p = s.paper || {};
+  const rows = A.results.filter(r => r.system === s.id && (r.category || "overall") === "overall")
+    .sort((a, b) => a.benchmark.localeCompare(b.benchmark) || b.score - a.score);
+  const nAll = A.results.filter(r => r.system === s.id).length;
+  const g = st.group && DESIGN.find(d => d[0] === st.group);
+  return `<div class="detail" role="region" aria-label="${esc(s.name)} details">
+    <button class="dclose" data-close aria-label="Close details">×</button>
+    <div class="dhead"><b>${esc(s.name)}</b>
+      <span class="dim">${esc([p.venue_short && p.venue_short !== "arXiv" ? p.venue_short : null, p.track, p.year].filter(Boolean).join(" · "))}</span>
+      ${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">paper ↗</a>` : ""}${p.code ? `<a href="${esc(p.code)}" target="_blank" rel="noopener">code ↗</a>` : ""}</div>
+    ${s.summary ? `<p class="dsum">${esc(s.summary)}</p>` : ""}
+    <div class="dgrid">
+      <div>
+        <h5>${esc(st.title)}${g ? "" : ""}</h5>
+        ${g ? `<dl class="kv">${g[3].map(([f, l]) => { const v = s.design?.[g[0]]?.[f]; return `<dt>${l}</dt><dd>${v == null || v === "" ? '<span class="dim">not stated</span>' : esc(v)}</dd>`; }).join("")}</dl>`
+            : `<p>${esc(st.note(s) || "")}</p>`}
+        ${s.classify?.note && ["organization", "management", "retrieval"].includes(st.id) ? `<p class="dnote">Placement: ${esc(s.classify.note)}</p>` : ""}
+      </div>
+      <div>
+        <h5>Where it sits at every stage</h5>
+        <ol class="dpath">${MAP_STAGES.map(x => `<li><button class="jump${x.id === st.id ? " cur" : ""}" data-jump="${x.id}">${x.n} ${esc(x.title)}</button> ${pathOf(s, x).map(esc).join(" → ")}</li>`).join("")}</ol>
+      </div>
+    </div>
+    ${s.figure ? `<a class="dfig" href="${esc(s.figure)}" target="_blank" rel="noopener"><img src="${esc(s.figure)}" alt="${esc(s.name)} system figure from the paper"></a>` : ""}
+    <h5>Reported results, overall <span class="dim">(${rows.length} of ${nAll} recorded; per-category scores are in Results)</span></h5>
+    ${rows.length ? `<div class="scroll"><table class="mini"><thead><tr><th>Benchmark</th><th class="num">Score</th><th>Metric</th><th>Answer model</th><th>Judge</th><th>Reported in</th></tr></thead><tbody>
+      ${rows.map(r => `<tr><td>${esc(A.benchmarks.find(b => b.id === r.benchmark)?.name || r.benchmark)}${r.benchmark_version ? ` <span class="dim">${esc(r.benchmark_version)}</span>` : ""}${r.variant ? ` <span class="tag">${esc(r.variant)}</span>` : ""}</td><td class="num">${fmt(r.score)}<sup>${RUN_MARK[r.run_by] || "?"}</sup></td><td>${esc(r.metric)}</td><td>${esc(r.answer_model || "?")}</td><td>${esc(r.judge || (r.metric === "llm-judge" ? "?" : "–"))}</td><td>${esc(reporterShort(r.reporter))}<br>${sourceLink(r)}</td></tr>`).join("")}
+    </tbody></table></div>` : `<p class="dim">No scores recorded.</p>`}
+  </div>`;
+}
 
 function viewMap(main) {
   const st = MAP_STAGES.find(x => x.id === S.mapStage) || MAP_STAGES[4];
-  if (S.mapFacet >= st.facets.length) S.mapFacet = 0;
-  const [facetLabel, get] = st.facets[S.mapFacet];
-  const groups = new Map();
-  for (const s of A.systems) {
-    const vals = get(s);
-    for (const v of vals.length ? vals : ["not stated"]) (groups.get(v) || groups.set(v, []).get(v)).push(s);
+  const systems = mapSystems();
+  // two-level grouping; each system lands in exactly one L1 and one L2 value
+  const tree = new Map();
+  for (const s of systems) {
+    const [a, b] = pathOf(s, st);
+    if (!tree.has(a)) tree.set(a, new Map());
+    const sub = tree.get(a), k = b ?? "";
+    (sub.get(k) || sub.set(k, []).get(k)).push(s);
   }
-  const branches = [...groups.entries()].sort((a, b) => (a[0] === "not stated") - (b[0] === "not stated") || b[1].length - a[1].length);
-  const deepPapers = st.deep ? A.papers.filter(p => (p.facets.deep_stage || []).includes(st.deep)) : [];
+  const size = m => [...m.values()].reduce((n, l) => n + l.length, 0);
+  const l1 = [...tree.entries()].sort((x, y) => (x[0] === "not stated") - (y[0] === "not stated") || size(y[1]) - size(x[1]));
+  const feats = st.features ? [...new Set(systems.flatMap(st.features[1]))].sort() : [];
+  if (S.mapHi && !feats.includes(S.mapHi)) S.mapHi = null;
+
+  // DEEP-PolyU papers on this stage, minus the ones that are annotated systems
+  const known = new Set(A.systems.map(s => s.paper?.arxiv).filter(Boolean));
+  const trackSet = S.meta.track;
+  const deep = st.deep ? A.papers.filter(p => (p.facets.deep_stage || []).includes(st.deep) && !(p.arxiv && known.has(p.arxiv))
+    && (!trackSet || !trackSet.size || (p.venue && trackSet.has(p.venue.track)))) : [];
   const deepGroups = new Map();
-  for (const p of deepPapers) { const k = (p.facets.deep_data || ["other"])[0]; (deepGroups.get(k) || deepGroups.set(k, []).get(k)).push(p); }
-  const short = t => { const x = t.split(/:\s/)[0]; return x.length > 48 ? x.slice(0, 46) + "…" : x; };
+  for (const p of deep) { const k = (p.facets.deep_data || ["other"])[0]; (deepGroups.get(k) || deepGroups.set(k, []).get(k)).push(p); }
+  const pyear = p => p.venue?.year || (p.date ? +p.date.slice(0, 4) : 0);
+  const orderPapers = ps => [...ps].sort(S.sort === "year-old" ? (a, b) => (pyear(a) || 9999) - (pyear(b) || 9999)
+    : S.sort === "venue" ? (a, b) => venueCmp(a.venue, b.venue) || pyear(b) - pyear(a)
+    : S.sort === "name" ? (a, b) => a.title.localeCompare(b.title) : (a, b) => pyear(b) - pyear(a));
+  const short = t => { const x = t.split(/:\s/)[0]; return x.length > 52 ? x.slice(0, 50) + "…" : x; };
+
+  const tracks = TRACK_ORDER.filter(t => A.systems.some(s => s.paper?.track === t));
+  const tset = S.meta.track || new Set();
 
   main.innerHTML = `
-    <p class="lede">Pick a stage of the memory pipeline on the left. It spans out to the approaches systems take at that stage, and each approach to the systems that use it. Hover a system for what it does at this stage; click it for everything recorded about it. A system appears under every approach it combines.</p>
+    <p class="lede">Pick a stage of the memory pipeline. It spans out in two steps, and <b>each system sits in exactly one place per stage</b>. Click a system to open its details right there; its path through every other stage is listed so you can jump between stages. Highlight a feature to see every system that uses it, wherever it sits.</p>
+    <div class="mapbar">
+      ${sortSelect("msort")}
+      <span class="mblabel">Track</span>
+      <button class="chip" data-track="" aria-pressed="${!tset.size}">all</button>
+      ${tracks.map(t => `<button class="chip" data-track="${t}" aria-pressed="${tset.has(t)}">${t}<span class="c">${A.systems.filter(s => s.paper?.track === t).length}</span></button>`).join("")}
+      <span class="mblabel">${systems.length} of ${A.systems.length} systems</span>
+    </div>
     <div class="map" id="map">
       <svg class="wires" aria-hidden="true"></svg>
       <ol class="mstages">${MAP_STAGES.map(x => `<li><button class="mstage" data-stage="${x.id}" aria-pressed="${x.id === st.id}">
         <span class="mn">${x.n}</span><span class="mt">${esc(x.title)}</span><span class="ms">${esc(x.sub)}</span><span class="ma" aria-hidden="true">→</span></button></li>`).join("")}</ol>
-      <section class="fan" aria-label="${esc(st.title)} approaches">
+      <section class="fan" aria-label="${esc(st.title)}">
         <div class="fanhead">
-          <span class="fantitle">${esc(st.title)}, branched by</span>
-          ${st.facets.map(([l], i) => `<button class="chip" data-facet="${i}" aria-pressed="${i === S.mapFacet}">${esc(l)}</button>`).join("")}
-          ${deepPapers.length ? `<label class="check" for="mm"><input id="mm" type="checkbox" ${S.mapMore ? "checked" : ""}> Also show ${deepPapers.length} papers the DEEP-PolyU list files under ${esc(st.deep.toLowerCase())}</label>` : ""}
+          <span class="fantitle">${esc(st.title)}</span>
+          <span class="levels">${st.levels.map(([l]) => esc(l)).join(' <span aria-hidden="true">→</span> ')}</span>
+          ${feats.length ? `<div class="feats"><span class="mblabel">Highlight · ${esc(st.features[0])}</span>${feats.map(f => `<button class="chip" data-hi="${esc(f)}" aria-pressed="${S.mapHi === f}">${esc(f)}<span class="c">${systems.filter(s => st.features[1](s).includes(f)).length}</span></button>`).join("")}</div>` : ""}
         </div>
-        ${branches.map(([v, list]) => `<div class="branch">
-          <div class="bnode${v === "not stated" ? " unk" : ""}">${esc(v)}<span class="bc">${list.length}</span></div>
-          <div class="leaves">${list.map(s => `<button class="leaf" data-sys="${esc(s.id)}" data-label="${esc(s.name)} · ${esc(st.title.toLowerCase())}" data-note="${esc(st.note(s) || "")}">${esc(s.name)}</button>`).join("")}</div>
-        </div>`).join("")}
-        ${S.mapMore ? [...deepGroups.entries()].sort((a, b) => b[1].length - a[1].length).map(([k, ps]) => `<div class="branch more">
-          <div class="bnode">${esc(k)}<span class="bc">${ps.length}</span><span class="bsrc">DEEP-PolyU list</span></div>
-          <div class="leaves">${ps.map(p => `<a class="leaf paper" href="${esc(p.url || "#")}" target="_blank" rel="noopener" title="${esc(p.title)}">${esc(short(p.title))}</a>`).join("")}</div>
-        </div>`).join("") : ""}
+        ${l1.length ? l1.map(([a, sub]) => `<div class="l1">
+          <div class="bnode l1n${a === "not stated" ? " unk" : ""}">${esc(a)}<span class="bc">${size(sub)}</span></div>
+          <div class="l2s">${[...sub.entries()].sort((x, y) => y[1].length - x[1].length).map(([b, list]) => {
+            const open = list.find(s => s.id === S.mapOpen);
+            return `<div class="l2">
+              ${b ? `<div class="bnode l2n${b === "not stated" ? " unk" : ""}">${esc(b)}<span class="bc">${list.length}</span></div>` : `<div class="bnode l2n ghost" aria-hidden="true"></div>`}
+              <div class="leafbox"><div class="leaves">${list.map(s => leafHTML(s, st)).join("")}</div>${open ? detailHTML(open, st) : ""}</div>
+            </div>`; }).join("")}</div>
+        </div>`).join("") : `<p class="empty-state">No system matches the track filter.</p>`}
+        ${deep.length ? `<div class="deep">
+          <label class="check" for="mm"><input id="mm" type="checkbox" ${S.mapMore ? "checked" : ""}> More papers on ${esc(st.title.toLowerCase())}: ${deep.length} from the DEEP-PolyU graph-memory list, in that list's own categories</label>
+          ${S.mapMore ? [...deepGroups.entries()].sort((a, b) => b[1].length - a[1].length).map(([k, ps]) => `<div class="dgroup"><h5>${esc(k)} <span class="dim">${ps.length}</span></h5>
+            <div class="leaves">${orderPapers(ps).map(p => `<a class="leaf paper" href="${esc(p.url || "#")}" target="_blank" rel="noopener" title="${esc(p.title)}">${esc(short(p.title))}${p.venue ? `<span class="lv">${esc(venueTag(p.venue))}</span>` : ""}</a>`).join("")}</div></div>`).join("") : ""}
+        </div>` : ""}
       </section>
     </div>`;
-  main.querySelectorAll(".mstage").forEach(b => b.addEventListener("click", () => { S.mapStage = b.dataset.stage; S.mapFacet = 0; render(); }));
-  main.querySelectorAll("[data-facet]").forEach(b => b.addEventListener("click", () => { S.mapFacet = +b.dataset.facet; render(); }));
+
+  main.querySelectorAll(".mstage").forEach(b => b.addEventListener("click", () => { S.mapStage = b.dataset.stage; S.mapHi = null; render(); }));
+  main.querySelectorAll("[data-hi]").forEach(b => b.addEventListener("click", () => { S.mapHi = S.mapHi === b.dataset.hi ? null : b.dataset.hi; render(); }));
+  main.querySelectorAll("[data-track]").forEach(b => b.addEventListener("click", () => {
+    const t = b.dataset.track;
+    if (!t) S.meta.track = new Set(); else toggleFacet("m:track", t);
+    render();
+  }));
+  $("#msort", main)?.addEventListener("change", e => { S.sort = e.target.value; render(); });
   $("#mm", main)?.addEventListener("change", e => { S.mapMore = e.target.checked; render(); });
   main.querySelectorAll("button.leaf").forEach(b => {
-    b.addEventListener("click", () => openSystem(b.dataset.sys));
+    b.addEventListener("click", () => { hideTip(); S.mapOpen = S.mapOpen === b.dataset.sys ? null : b.dataset.sys; render(); });
     b.addEventListener("mouseenter", () => main.querySelectorAll(`.leaf[data-sys="${CSS.escape(b.dataset.sys)}"]`).forEach(x => x.classList.add("same")));
     b.addEventListener("mouseleave", () => main.querySelectorAll(".leaf.same").forEach(x => x.classList.remove("same")));
   });
+  main.querySelector("[data-close]")?.addEventListener("click", () => { S.mapOpen = null; render(); });
+  main.querySelectorAll("[data-jump]").forEach(b => b.addEventListener("click", () => {
+    S.mapStage = b.dataset.jump; S.mapHi = null; render();
+    document.querySelector(".leaf.open")?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }));
   requestAnimationFrame(drawWires);
   document.fonts?.ready.then(() => S.view === "map" && drawWires());
 }
@@ -253,28 +410,33 @@ function drawWires() {
   svg.setAttribute("height", root.scrollHeight);
   const from = root.querySelector('.mstage[aria-pressed="true"]');
   if (!from || getComputedStyle(svg).display === "none") { svg.innerHTML = ""; return; }
+  const mid = r => r.top + Math.min(r.height, 44) / 2 - R.top;
+  const curve = (x1, y1, x2, y2) => { const k = Math.max(24, (x2 - x1) / 2); return `M${x1},${y1} C${x1 + k},${y1} ${x2 - k},${y2} ${x2},${y2}`; };
   const f = from.getBoundingClientRect();
-  const fx = f.right - R.left, fy = f.top + f.height / 2 - R.top;
-  let d = "", dd = "";
-  root.querySelectorAll(".branch").forEach(br => {
-    const n = br.querySelector(".bnode").getBoundingClientRect(), l = br.querySelector(".leaves").getBoundingClientRect();
-    const tx = n.left - R.left, ty = n.top + n.height / 2 - R.top, k = Math.max(40, (tx - fx) / 2);
-    const trunk = `M${fx},${fy} C${fx + k},${fy} ${tx - k},${ty} ${tx},${ty}`;
-    const twig = `M${n.right - R.left},${ty} L${l.left - R.left - 2},${ty}`;
-    if (br.classList.contains("more")) dd += trunk + twig; else d += trunk + twig;
+  let d = "";
+  root.querySelectorAll(".l1").forEach(block => {
+    const a = block.querySelector(".l1n").getBoundingClientRect();
+    d += curve(f.right - R.left, f.top + f.height / 2 - R.top, a.left - R.left, mid(a));
+    block.querySelectorAll(".l2").forEach(row => {
+      const n = row.querySelector(".l2n").getBoundingClientRect(), lv = row.querySelector(".leaves").getBoundingClientRect();
+      const ghost = row.querySelector(".l2n.ghost");
+      if (!ghost) d += curve(a.right - R.left, mid(a), n.left - R.left, mid(n));
+      const sx = ghost ? a.right - R.left : n.right - R.left, sy = ghost ? mid(a) : mid(n);
+      d += `M${sx},${sy} L${lv.left - R.left - 3},${sy}`;
+    });
   });
-  svg.innerHTML = `<path d="${d}" class="w"/><path d="${dd}" class="w dash"/>`;
+  svg.innerHTML = `<path d="${d}" class="w"/>`;
 }
 window.addEventListener("resize", () => S.view === "map" && drawWires());
 
 /* ---------------- Systems ---------------- */
 function viewSystems(main) {
-  const list = filteredSystems();
+  const list = sortSystems(filteredSystems());
   const groups = DESIGN.filter(g => shownGroups.has(g[0]));
   const nCols = 2 + groups.reduce((n, g) => n + g[3].length, 0);
   const rows = list.map(s => `
     <tr class="click" data-sys="${esc(s.id)}" tabindex="0">
-      <td class="name sticky">${esc(s.name)}<small>${esc(venueYear(s.paper))}${figureLink(s)}</small></td>
+      <td class="name sticky">${esc(s.name)}<small>${esc(venueYear(s.paper))}${s.paper?.track ? ` · ${esc(s.paper.track)}` : ""}${figureLink(s)}</small></td>
       ${groups.map(([g, , , fields]) => fields.map(([f], i) => designCell(s, g, f, i === 0)).join("")).join("")}
       <td class="num">${resultSummary(s.id)}</td>
     </tr>`).join("");
@@ -282,7 +444,7 @@ function viewSystems(main) {
     <p class="lede">Each memory system described <b>stage by stage</b>: how memory is written, organised, changed, read and used, and <b>who makes the decision</b> at each stage (a fixed rule, a prompted LLM, an agent's tool calls, a trained policy, or feedback). A dash means the paper does not say. Use the filters to slice by any tag, and hide groups you don't need.</p>
     <div class="cols">${systemRail()}
       <section>
-        <div class="meta"><span>${list.length} of ${A.systems.length} systems</span><span>All entries are extracted from the papers and not yet checked line by line by a person</span></div>
+        <div class="meta"><span>${list.length} of ${A.systems.length} systems · ${sortSelect("ssort")}</span><span>All entries are extracted from the papers and not yet checked line by line by a person</span></div>
         <div class="groupbar" role="group" aria-label="Column groups">${DESIGN.map(([g, label]) => `<button class="chip" data-group="${g}" aria-pressed="${shownGroups.has(g)}">${label}</button>`).join("")}</div>
         <div class="scroll"><table class="design">
           <thead>
@@ -405,7 +567,7 @@ function resultColumns(rows) {
   for (const c of list) if (!c.unknown.length) (bySetting.get(c.setting) || bySetting.set(c.setting, []).get(c.setting)).push(c);
   let g = 0;
   for (const cs of bySetting.values()) if (cs.length > 1) { const L = String.fromCharCode(65 + g++); cs.forEach(c => (c.group = L)); }
-  list.sort((a, b) => (a.group || "~").localeCompare(b.group || "~") || a.reporter.localeCompare(b.reporter));
+  list.sort((a, b) => (!a.group - !b.group) || (a.group || "").localeCompare(b.group || "") || a.reporter.localeCompare(b.reporter));
   return list;
 }
 
@@ -559,7 +721,11 @@ function viewPapers(main) {
     if (q && !(p.title + " " + (p.description || "") + " " + (p.arxiv || "")).toLowerCase().includes(q)) return false;
     return true;
   };
-  const list = A.papers.filter(p => pass(p));
+  const pyear = p => p.venue?.year || (p.date ? +p.date.slice(0, 4) : 0);
+  const pdate = p => p.date || (p.venue?.year ? String(p.venue.year) : "");
+  const psorts = { new: (a, b) => pdate(b).localeCompare(pdate(a)), old: (a, b) => (pdate(a) || "9999").localeCompare(pdate(b) || "9999"),
+    venue: (a, b) => venueCmp(a.venue, b.venue) || pyear(b) - pyear(a), title: (a, b) => a.title.localeCompare(b.title) };
+  const list = A.papers.filter(p => pass(p)).sort(psorts[S.psort] || psorts.new);
   const rail = [`<div><h4>Search</h4><input id="pq" class="search" type="search" placeholder="Title, arXiv id…" value="${esc(S.pq)}"></div>`,
     `<label class="check" for="pa" style="display:flex;gap:6px;align-items:center;font-size:14px"><input id="pa" type="checkbox" ${S.annotatedOnly ? "checked" : ""}> Only systems with full annotation</label>`];
   for (const [k, label, get] of PAPER_FACETS) {
@@ -578,12 +744,12 @@ function viewPapers(main) {
     <p class="lede">Every entry from four community lists, merged by arXiv id. Each list sorts papers along its own axis, and all of those axes are kept as filters: <b>function and form</b> (Liu et al.), <b>substrate and entry type</b> (TeleAI), <b>pipeline stage</b> for graph memory (DEEP-PolyU), and <b>storage, learning and memory-type tags</b> (yyyujintang).</p>
     <div class="cols"><aside class="rail" aria-label="Filters">${rail.join("")}</aside>
       <section>
-        <div class="meta"><span>${list.length} of ${A.papers.length} entries</span></div>
+        <div class="meta"><span>${list.length} of ${A.papers.length} entries · <label class="sortsel" for="psort">Order by <select id="psort">${[["new", "Newest first"], ["old", "Oldest first"], ["venue", "Venue"], ["title", "Title"]].map(([v, l]) => `<option value="${v}" ${v === S.psort ? "selected" : ""}>${l}</option>`).join("")}</select></label></span><span>Venues come from the DEEP-PolyU list's tags, or from our own record for annotated systems</span></div>
         <div class="plist">${shown.map(p => `
           <div class="pitem">
             <div class="t">${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.title)}</a>` : esc(p.title)}</div>
             <div class="l">
-              <span class="tag">${esc(p.kind)}</span>${p.date ? `<span class="num">${esc(p.date)}</span>` : ""}
+              <span class="tag">${esc(p.kind)}</span>${p.venue ? `<span class="tag ven${p.venue.track === "preprint" ? " pre" : ""}" title="${p.venue.checked ? "Checked against the paper" : "As listed by DEEP-PolyU"}">${esc(venueTag(p.venue))}${p.venue.track !== "main" && p.venue.track !== "preprint" ? "" : p.venue.track === "main" ? " main" : ""}</span>` : ""}${p.date ? `<span class="num">${esc(p.date)}</span>` : ""}
               ${p.arxiv ? `<span class="num">arXiv ${esc(p.arxiv)}</span>` : ""}
               ${p.code ? `<a href="${esc(p.code)}" target="_blank" rel="noopener">code</a>` : ""}
               ${p.system ? `<a href="#" data-open="${esc(p.system)}"><span class="flag acc">annotated · open</span></a>` : ""}
@@ -597,6 +763,7 @@ function viewPapers(main) {
   const pq = $("#pq", main);
   pq.addEventListener("input", () => { S.pq = pq.value; S.pshown = 60; const pos = pq.selectionStart; render(); const n = $("#pq"); n.focus(); n.setSelectionRange(pos, pos); });
   $("#pa", main).addEventListener("change", e => { S.annotatedOnly = e.target.checked; S.pshown = 60; render(); });
+  $("#psort", main).addEventListener("change", e => { S.psort = e.target.value; render(); });
   main.querySelectorAll(".rail .chip").forEach(b => b.addEventListener("click", () => {
     const set = S.pf[b.dataset.k] || (S.pf[b.dataset.k] = new Set());
     set.has(b.dataset.v) ? set.delete(b.dataset.v) : set.add(b.dataset.v);

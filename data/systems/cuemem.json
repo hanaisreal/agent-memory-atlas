@@ -6,6 +6,8 @@
     "arxiv": "2609.12354",
     "url": "https://arxiv.org/abs/2609.12354",
     "venue": "arXiv",
+    "venue_short": "arXiv",
+    "track": "preprint",
     "year": 2026,
     "code": null
   },
@@ -43,6 +45,14 @@
       "management": "fixed-rule",
       "retrieval": "fixed-rule"
     }
+  },
+  "classify": {
+    "structure": "graph",
+    "index": "vector",
+    "management": "append-only",
+    "candidates": "dense",
+    "decides": "top-k rule",
+    "note": "Candidates are cue embeddings; the graph only adds one-hop neighbours after the top-k step."
   },
   "tags": {
     "fidelity": "verbatim+derived",

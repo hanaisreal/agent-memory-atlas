@@ -6,6 +6,8 @@
     "arxiv": "2502.12110",
     "url": "https://arxiv.org/abs/2502.12110",
     "venue": "NeurIPS 2025",
+    "venue_short": "NeurIPS",
+    "track": "main",
     "year": 2025,
     "code": "https://github.com/WujiangXu/AgenticMemory"
   },
@@ -43,6 +45,14 @@
       "management": "prompted-llm",
       "retrieval": "fixed-rule"
     }
+  },
+  "classify": {
+    "structure": "linked notes",
+    "index": "vector",
+    "management": "update in place",
+    "candidates": "dense",
+    "decides": "top-k rule",
+    "note": null
   },
   "tags": {
     "fidelity": "verbatim+derived",

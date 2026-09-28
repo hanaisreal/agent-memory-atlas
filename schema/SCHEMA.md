@@ -15,7 +15,9 @@ One file per memory system that is annotated in depth.
     "title": "Mem0: Building Production-Ready AI Agents with Scalable Long-Term Memory",
     "arxiv": "2504.19413",            // null if none
     "url": "https://arxiv.org/abs/2504.19413",
-    "venue": "arXiv",                 // or "ACL 2025", "NeurIPS 2024", ...
+    "venue": "ECAI 2025",             // display string
+    "venue_short": "ECAI",            // venue name used for sorting and filtering ("arXiv" for preprints)
+    "track": "main",                  // main | short | findings | workshop | journal | preprint
     "year": 2025,
     "code": "https://github.com/mem0ai/mem0"   // null if none
   },
@@ -53,6 +55,14 @@ One file per memory system that is annotated in depth.
       "management": "prompted-llm",
       "retrieval": "fixed-rule"
     }
+  },
+  "classify": {                       // single-valued placement for the Map view: one value per level
+    "structure": "flat",              // none | flat | linked notes | graph | hierarchy | tiers | typed stores | agent-defined
+    "index": "vector",                // none | vector | lexical | vector and lexical | exact match | not stated
+    "management": "update in place",  // append-only | update in place | consolidate | evict | not stated
+    "candidates": "dense",            // read everything | dense | lexical | hybrid | graph walk | agent searches | LLM routing
+    "decides": "top-k rule",          // reads everything | top-k rule | reranker | LLM decides
+    "note": null                      // why, when the call was close
   },
   "tags": {                           // controlled vocabularies (see below) — used for filtering
     "fidelity": "extracted",

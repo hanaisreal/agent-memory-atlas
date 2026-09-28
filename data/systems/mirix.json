@@ -6,6 +6,8 @@
     "arxiv": "2507.07957",
     "url": "https://arxiv.org/abs/2507.07957",
     "venue": "arXiv",
+    "venue_short": "arXiv",
+    "track": "preprint",
     "year": 2025,
     "code": "https://github.com/Mirix-AI/MIRIX"
   },
@@ -43,6 +45,14 @@
       "management": "agent-tool-calls",
       "retrieval": "agent-tool-calls"
     }
+  },
+  "classify": {
+    "structure": "typed stores",
+    "index": "vector and lexical",
+    "management": "update in place",
+    "candidates": "agent searches",
+    "decides": "LLM decides",
+    "note": null
   },
   "tags": {
     "fidelity": "mixed",

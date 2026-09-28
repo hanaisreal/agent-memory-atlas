@@ -6,6 +6,8 @@
     "arxiv": "2607.03726",
     "url": "https://arxiv.org/abs/2607.03726",
     "venue": "arXiv",
+    "venue_short": "arXiv",
+    "track": "preprint",
     "year": 2026,
     "code": null
   },
@@ -43,6 +45,14 @@
       "management": "agent-tool-calls",
       "retrieval": "fixed-rule"
     }
+  },
+  "classify": {
+    "structure": "agent-defined",
+    "index": "exact match",
+    "management": "consolidate",
+    "candidates": "lexical",
+    "decides": "top-k rule",
+    "note": "Agent adds, merges, archives and reorganises its workspace; answer-time retrieval is fixed (App. B)."
   },
   "tags": {
     "fidelity": "verbatim+derived",

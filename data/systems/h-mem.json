@@ -6,6 +6,8 @@
     "arxiv": "2605.15701",
     "url": "https://arxiv.org/abs/2605.15701",
     "venue": "arXiv",
+    "venue_short": "arXiv",
+    "track": "preprint",
     "year": 2026,
     "code": null
   },
@@ -43,6 +45,14 @@
       "management": "fixed-rule",
       "retrieval": "prompted-llm"
     }
+  },
+  "classify": {
+    "structure": "hierarchy",
+    "index": "vector and lexical",
+    "management": "consolidate",
+    "candidates": "graph walk",
+    "decides": "reranker",
+    "note": "Tree plus entity graph; the tree is the main structure."
   },
   "tags": {
     "fidelity": "verbatim+derived",

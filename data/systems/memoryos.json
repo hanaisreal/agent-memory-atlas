@@ -6,6 +6,8 @@
     "arxiv": "2506.06326",
     "url": "https://arxiv.org/abs/2506.06326",
     "venue": "EMNLP 2025",
+    "venue_short": "EMNLP",
+    "track": "main",
     "year": 2025,
     "code": "https://github.com/BAI-LAB/MemoryOS"
   },
@@ -43,6 +45,14 @@
       "management": "fixed-rule",
       "retrieval": "fixed-rule"
     }
+  },
+  "classify": {
+    "structure": "tiers",
+    "index": "vector and lexical",
+    "management": "evict",
+    "candidates": "hybrid",
+    "decides": "top-k rule",
+    "note": "Heat-based eviction and promotion between tiers; keyword Jaccard counted as lexical."
   },
   "tags": {
     "fidelity": "mixed",

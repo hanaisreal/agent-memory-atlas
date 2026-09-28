@@ -6,6 +6,8 @@
     "arxiv": "2608.12428",
     "url": "https://arxiv.org/abs/2608.12428",
     "venue": "arXiv (technical report)",
+    "venue_short": "arXiv",
+    "track": "preprint",
     "year": 2026,
     "code": "https://github.com/mindscale-noah/MindMemOS"
   },
@@ -43,6 +45,14 @@
       "management": "prompted-llm",
       "retrieval": "agent-tool-calls"
     }
+  },
+  "classify": {
+    "structure": "graph",
+    "index": "vector and lexical",
+    "management": "consolidate",
+    "candidates": "hybrid",
+    "decides": "LLM decides",
+    "note": null
   },
   "tags": {
     "fidelity": "extracted",

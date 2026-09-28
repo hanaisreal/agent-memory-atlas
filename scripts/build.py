@@ -42,6 +42,15 @@ DESIGN_VOCAB = {
     ("management", "timing"): {"online", "offline", "both", "none"},
     ("control", "construction"): CONTROL, ("control", "management"): CONTROL, ("control", "retrieval"): CONTROL,
 }
+# Single-valued placement used by the Map view: every system gets exactly one value per level.
+CLASSIFY = {
+    "structure": {"none", "flat", "linked notes", "graph", "hierarchy", "tiers", "typed stores", "agent-defined"},
+    "index": {"none", "vector", "lexical", "vector and lexical", "exact match", "not stated"},
+    "management": {"append-only", "update in place", "consolidate", "evict", "not stated"},
+    "candidates": {"read everything", "dense", "lexical", "hybrid", "graph walk", "agent searches", "LLM routing"},
+    "decides": {"reads everything", "top-k rule", "reranker", "LLM decides"},
+}
+TRACKS = {"main", "short", "findings", "workshop", "journal", "preprint"}
 IMG_EXT = (".png", ".jpg", ".jpeg", ".webp", ".svg")
 METRICS = {"llm-judge", "f1", "bleu-1", "em", "mc-acc", "rouge-l", "recall@k", "other"}
 RUN_BY = {"self", "rerun", "copied", None}
@@ -76,6 +85,16 @@ def check_system(s, where, rep):
             rep.err(where, f"missing '{f}'")
     if where.stem != s.get("id"):
         rep.err(where, f"file name must equal id '{s.get('id')}'")
+    paper = s.get("paper") or {}
+    if paper and paper.get("track") not in TRACKS:
+        rep.err(where, f"paper.track '{paper.get('track')}' not in {sorted(TRACKS)}")
+    cl = s.get("classify")
+    if cl is None:
+        rep.warn(where, "no 'classify' block; the system will not appear in the Map view")
+    else:
+        for k, allowed in CLASSIFY.items():
+            if cl.get(k) not in allowed:
+                rep.err(where, f"classify.{k}: '{cl.get(k)}' not in {sorted(allowed)}")
     design = s.get("design", {})
     for g in design:
         if g not in DESIGN:
@@ -185,10 +204,13 @@ def main():
                         source["table_page"] = shot["page"]
             rows.append({**r, **source, "reporter": rid, "setting_key": key, "unknown_settings": unknown})
 
-    annotated = {s["paper"]["arxiv"]: s["id"] for s in systems if s.get("paper") and s["paper"].get("arxiv")}
+    annotated = {s["paper"]["arxiv"]: s for s in systems if s.get("paper") and s["paper"].get("arxiv")}
     for p in papers_doc["papers"]:
-        if p.get("arxiv") in annotated:
-            p["system"] = annotated[p["arxiv"]]
+        s = annotated.get(p.get("arxiv"))
+        if s:
+            p["system"] = s["id"]
+            # the annotated record's venue was checked against the paper; it wins over a list's tag
+            p["venue"] = {"venue": s["paper"]["venue_short"], "year": s["paper"].get("year"), "track": s["paper"]["track"], "checked": True}
 
     n_unknown = sum(1 for r in rows if r["unknown_settings"])
     for w in rep.warnings:

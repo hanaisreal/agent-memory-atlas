@@ -6,6 +6,8 @@
     "arxiv": "2401.18059",
     "url": "https://arxiv.org/abs/2401.18059",
     "venue": "ICLR 2024",
+    "venue_short": "ICLR",
+    "track": "main",
     "year": 2024,
     "code": "https://github.com/parthsarthi03/raptor"
   },
@@ -43,6 +45,14 @@
       "management": "none",
       "retrieval": "fixed-rule"
     }
+  },
+  "classify": {
+    "structure": "hierarchy",
+    "index": "vector",
+    "management": "append-only",
+    "candidates": "dense",
+    "decides": "top-k rule",
+    "note": null
   },
   "tags": {
     "fidelity": "verbatim+derived",

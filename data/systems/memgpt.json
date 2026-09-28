@@ -6,6 +6,8 @@
     "arxiv": "2310.08560",
     "url": "https://arxiv.org/abs/2310.08560",
     "venue": "arXiv",
+    "venue_short": "arXiv",
+    "track": "preprint",
     "year": 2023,
     "code": "https://research.memgpt.ai"
   },
@@ -43,6 +45,14 @@
       "management": "agent-tool-calls",
       "retrieval": "agent-tool-calls"
     }
+  },
+  "classify": {
+    "structure": "tiers",
+    "index": "vector",
+    "management": "evict",
+    "candidates": "agent searches",
+    "decides": "LLM decides",
+    "note": "Evicts messages from context with a recursive summary; the agent edits working context."
   },
   "tags": {
     "fidelity": "verbatim+derived",

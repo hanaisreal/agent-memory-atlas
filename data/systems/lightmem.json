@@ -6,6 +6,8 @@
     "arxiv": "2510.18866",
     "url": "https://arxiv.org/abs/2510.18866",
     "venue": "ICLR 2026",
+    "venue_short": "ICLR",
+    "track": "main",
     "year": 2026,
     "code": "https://github.com/zjunlp/LightMem"
   },
@@ -43,6 +45,14 @@
       "management": "prompted-llm",
       "retrieval": "fixed-rule"
     }
+  },
+  "classify": {
+    "structure": "flat",
+    "index": "vector",
+    "management": "consolidate",
+    "candidates": "dense",
+    "decides": "top-k rule",
+    "note": "Offline add/update/delete/merge is treated as consolidation."
   },
   "tags": {
     "fidelity": "compressed",
