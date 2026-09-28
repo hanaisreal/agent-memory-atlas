@@ -1,0 +1,53 @@
+{
+  "id": "memgpt",
+  "name": "MemGPT",
+  "paper": {
+    "title": "MemGPT: Towards LLMs as Operating Systems",
+    "arxiv": "2310.08560",
+    "url": "https://arxiv.org/abs/2310.08560",
+    "venue": "arXiv",
+    "year": 2023,
+    "code": "https://research.memgpt.ai"
+  },
+  "axes": {
+    "unit": "message / text object",
+    "text_kept_as": "verbatim",
+    "write_time": "LLM chooses what to save; evicted messages summarised",
+    "organisation": "working context / recall / archival",
+    "selection": "LLM function calls (vector)"
+  },
+  "tags": {
+    "fidelity": "verbatim+derived",
+    "structure": [
+      "tiered"
+    ],
+    "write_time": [
+      "agent-chosen",
+      "summarize"
+    ],
+    "selection": [
+      "llm-tool-call"
+    ],
+    "memory_type": [
+      "working",
+      "episodic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "conversation",
+      "long-document"
+    ]
+  },
+  "stages": {
+    "ingestion": "Incoming messages are appended to a FIFO queue in main context by the queue manager and also written to recall storage (message database).",
+    "construction": "The LLM may write key facts into a fixed-size working context or into archival storage via function calls, prompted by memory-pressure warnings.",
+    "organization": "Main context (system instructions, working context, FIFO queue with recursive summary) versus external context (recall storage and archival storage).",
+    "update": "On overflow the queue manager evicts messages and regenerates a recursive summary; working context is edited only through function calls.",
+    "retrieval": "The LLM issues self-directed, paginated search function calls over recall/archival storage to page results back into main context.",
+    "answer": "The LLM answers from main context after any function-call chains (control flow via heartbeat/function chaining).",
+    "learning": ""
+  },
+  "summary": "OS-inspired virtual context management: the LLM pages information between a bounded main context and external recall/archival stores via its own function calls.",
+  "verified": false,
+  "notes": "AXES CORRECTED from the paper; earlier taxonomy row was: page | verbatim | none | main/archival | LLM function calls (vector). AXES-CHECK: the paper has three stores (working context in main context, recall storage of all messages, archival storage), not only main/archival; write-time is not 'none' - the LLM chooses what to save to working context/archival storage and evicted messages are recursively summarised; 'page' refers to paginated retrieval results, the stored unit is messages/text objects. The paper does not specify the search mechanism of recall/archival storage in the sections read (embeddings are mentioned for the document-analysis archival store). Code URL as given in the paper; project continues as Letta (system id 'letta')."
+}

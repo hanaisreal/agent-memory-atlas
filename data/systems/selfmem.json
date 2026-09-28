@@ -1,0 +1,52 @@
+{
+  "id": "selfmem",
+  "name": "SelfMem",
+  "paper": {
+    "title": "SelfMem: Self-Optimizing Memory for AI Agents",
+    "arxiv": "2607.03726",
+    "url": "https://arxiv.org/abs/2607.03726",
+    "venue": "arXiv",
+    "year": 2026,
+    "code": null
+  },
+  "axes": {
+    "unit": "transcript + notes",
+    "text_kept_as": "verbatim + agent notes",
+    "write_time": "agent-chosen",
+    "organisation": "free",
+    "selection": "agent tool calls"
+  },
+  "tags": {
+    "fidelity": "verbatim+derived",
+    "structure": [
+      "none"
+    ],
+    "write_time": [
+      "agent-chosen"
+    ],
+    "selection": [
+      "llm-tool-call"
+    ],
+    "memory_type": [
+      "episodic",
+      "semantic",
+      "procedural"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "conversation"
+    ]
+  },
+  "stages": {
+    "ingestion": "The raw transcript is stored unchanged as a read-only SQLite 'turns' table (turn index, role, time anchor, content).",
+    "construction": "An LLM agent runs an inspect-write-review-revise tool loop: it reads the transcript via manifest / read-only SQL / entity search, and writes auditable memory operations (add, replace, merge, archive, exact facts, timelines, retrieval hints) into a free-form workspace.",
+    "organization": "A free-form memory workspace whose structure (profile, preference list, timeline, project state, policy notes) is chosen by the agent.",
+    "update": "Memory-review tools flag missing source support, stale facts, contradictions and over-broad summaries; the agent revises the workspace accordingly.",
+    "retrieval": "At query time relevant transcript turns/snippets are retrieved using the workspace as a guide (targeted RAG / SQL / semantic search chosen by the model); no embedding requests in the reported runs.",
+    "answer": "The answer model receives the query, the final workspace and retrieved transcript evidence; the prompt treats retrieved evidence as authoritative over memory.",
+    "learning": "Optional iterative strategy refinement: the model rewrites its own memory-strategy notes from aggregate training-conversation scores and tool diagnostics (no weight updates)."
+  },
+  "summary": "Keeps the raw transcript immutable and lets an LLM agent decide, via memory tools and feedback diagnostics, what to write, revise and later retrieve, optionally refining its own memory strategy from aggregate feedback.",
+  "verified": false,
+  "notes": "Authors: Shu Yang, Junchao Wu, Derek F. Wong, Di Wang (KAUST PRADA Lab; University of Macau). An OpenReview forum entry exists (id fXHmKW9H8r) but no acceptance venue was confirmed. No code URL found. Only benchmark is BEAM (100K/500K/1M); no LoCoMo/LongMemEval results. AXES-CHECK: seed taxonomy row consistent with the paper."
+}

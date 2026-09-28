@@ -1,0 +1,182 @@
+[
+ {
+  "id": "zep",
+  "name": "Zep",
+  "url": "https://arxiv.org/abs/2501.13956",
+  "note": "Temporal knowledge-graph memory service (Graphiti)."
+ },
+ {
+  "id": "memos",
+  "name": "MemOS",
+  "url": "https://github.com/MemTensor/MemOS",
+  "note": "Memory operating system from MemTensor."
+ },
+ {
+  "id": "memu",
+  "name": "memU",
+  "url": "https://github.com/NevaMind-AI/memU",
+  "note": "Open-source memory framework."
+ },
+ {
+  "id": "langmem",
+  "name": "LangMem",
+  "url": "https://github.com/langchain-ai/langmem",
+  "note": "LangChain's long-term memory SDK."
+ },
+ {
+  "id": "memtree",
+  "name": "MemTree",
+  "url": null,
+  "note": "Tree-structured dynamic memory; re-run by H-Mem."
+ },
+ {
+  "id": "memorybank",
+  "name": "MemoryBank",
+  "url": "https://arxiv.org/abs/2305.10250",
+  "note": "Ebbinghaus-style forgetting memory (AAAI 2024)."
+ },
+ {
+  "id": "tim",
+  "name": "Think-in-Memory (TiM)",
+  "url": "https://arxiv.org/abs/2311.08719",
+  "note": "Stores inductive thoughts instead of raw turns."
+ },
+ {
+  "id": "openai-memory",
+  "name": "OpenAI memory",
+  "url": null,
+  "note": "ChatGPT's built-in memory feature, used as a baseline."
+ },
+ {
+  "id": "rag",
+  "name": "RAG (chunked)",
+  "url": null,
+  "note": "Retrieval over fixed-size chunks; variant names the chunk size and k."
+ },
+ {
+  "id": "memora",
+  "name": "Memora",
+  "url": "https://arxiv.org/abs/2602.03315",
+  "note": ""
+ },
+ {
+  "id": "nemori",
+  "name": "Nemori",
+  "url": "https://arxiv.org/abs/2508.03341",
+  "note": "Self-organizing memory inspired by cognitive science."
+ },
+ {
+  "id": "recursive-summary",
+  "name": "Recursive summary",
+  "url": null,
+  "note": "MemGPT's baseline: the LLM reads a lossy summary of past sessions."
+ },
+ {
+  "id": "native-compression",
+  "name": "Native compaction",
+  "url": null,
+  "note": "OpenAI Responses API context compaction, used by SelfMem."
+ },
+ {
+  "id": "locomo-memory",
+  "name": "LoCoMo-style memory",
+  "url": null,
+  "note": "The observation/summary memory baseline from the LoCoMo paper."
+ },
+ {
+  "id": "memobase",
+  "name": "Memobase",
+  "url": "https://github.com/memodb-io/memobase",
+  "note": "User-profile memory backend."
+ },
+ {
+  "id": "memorag",
+  "name": "MemoRAG",
+  "url": null,
+  "note": "Memory-inspired RAG (WWW 2025)."
+ },
+ {
+  "id": "infini-memory",
+  "name": "Infini Memory",
+  "url": "https://arxiv.org/abs/2606.10677",
+  "note": ""
+ },
+ {
+  "id": "human-reference",
+  "name": "Human reference",
+  "url": null,
+  "note": "Human-written gold output; a reference point, not a system."
+ },
+ {
+  "id": "hipporag-v2",
+  "name": "HippoRAG 2",
+  "url": "https://arxiv.org/abs/2502.14802",
+  "note": ""
+ },
+ {
+  "id": "engram",
+  "name": "Engram",
+  "url": null,
+  "note": "Baseline in True Memory; the paper gives no citation."
+ },
+ {
+  "id": "bm25",
+  "name": "BM25",
+  "url": null,
+  "note": "Plain lexical retrieval baseline."
+ },
+ {
+  "id": "supermemory",
+  "name": "Supermemory",
+  "url": "https://supermemory.ai",
+  "note": "Hosted memory API."
+ },
+ {
+  "id": "no-memory",
+  "name": "No memory",
+  "url": null,
+  "note": "The answering model with no conversation history."
+ },
+ {
+  "id": "hindsight",
+  "name": "Hindsight",
+  "url": "https://arxiv.org/abs/2512.12818",
+  "note": ""
+ },
+ {
+  "id": "letta",
+  "name": "Letta",
+  "url": null,
+  "note": "MemGPT's successor framework."
+ },
+ {
+  "id": "session-level-rag",
+  "name": "Session-level RAG",
+  "url": null,
+  "note": "Retrieves whole sessions; SeCom baseline."
+ },
+ {
+  "id": "summem",
+  "name": "Conversation Summary Memory",
+  "url": null,
+  "note": "LangChain summary memory; SeCom baseline."
+ },
+ {
+  "id": "recursum",
+  "name": "Recursively Summarizing",
+  "url": "https://arxiv.org/abs/2308.15022",
+  "note": ""
+ },
+ {
+  "id": "conditionmem",
+  "name": "ConditionMem",
+  "url": "https://arxiv.org/abs/2312.17257",
+  "note": ""
+ },
+ {
+  "id": "memochat",
+  "name": "MemoChat",
+  "url": "https://arxiv.org/abs/2308.08239",
+  "note": ""
+ }
+]

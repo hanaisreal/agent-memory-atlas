@@ -1,0 +1,8 @@
+The annotations and result records in this directory (systems/, results/,
+benchmarks.json, extra_systems.json) are licensed under the Creative Commons
+Attribution 4.0 International License (CC BY 4.0):
+https://creativecommons.org/licenses/by/4.0/
+
+Scores and paper metadata are facts reported by the cited papers; each result
+row names its source table. papers.json is generated from the community lists
+named in scripts/import_lists.py, which remain under their own licenses.

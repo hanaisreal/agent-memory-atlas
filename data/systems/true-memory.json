@@ -1,0 +1,55 @@
+{
+  "id": "true-memory",
+  "name": "True Memory",
+  "paper": {
+    "title": "Storage Is Not Memory: A Retrieval-Centered Architecture for Agent Recall",
+    "arxiv": "2605.04897",
+    "url": "https://arxiv.org/abs/2605.04897",
+    "venue": "arXiv (technical report, Sauron Labs)",
+    "year": 2026,
+    "code": "https://github.com/buildingjoshbetter/TrueMemory"
+  },
+  "axes": {
+    "unit": "event",
+    "text_kept_as": "verbatim",
+    "write_time": "consolidator kept alongside",
+    "organisation": "flat",
+    "selection": "BM25+dense RRF + cross-encoder"
+  },
+  "tags": {
+    "fidelity": "verbatim+derived",
+    "structure": [
+      "flat",
+      "profile"
+    ],
+    "write_time": [
+      "filter",
+      "consolidate"
+    ],
+    "selection": [
+      "hybrid",
+      "rerank"
+    ],
+    "memory_type": [
+      "episodic",
+      "semantic",
+      "profile"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "conversation"
+    ]
+  },
+  "stages": {
+    "ingestion": "An encoding gate (gzip-based novelty, salience, embedding prediction error) admits or rejects each event; it is disabled (every event admitted) in all reported benchmark numbers. Admitted events are written verbatim to a SQLite messages table with FTS5 and 256-d sqlite-vec indices.",
+    "construction": "Post-ingestion batch jobs build an L5 per-event surprise score and an L0 speaker engram (preference attribute map + char-n-gram style vector).",
+    "organization": "Single SQLite file: verbatim messages plus side tables (summaries, contradiction records, timelines, entity profiles, surprise scores, episodes).",
+    "update": "L4 consolidator produces cluster summaries, contradiction records and timeline rows with superseded-by links, kept alongside the verbatim events.",
+    "retrieval": "FTS5 BM25 and dense top-k fused by weighted RRF (k=60), reweighted by conditional temporal boost, speaker-engram prior and surprise boost, then cross-encoder rerank (pre-rerank window 100) with modality factor; top-k (default 10) to the answer model. Pro tier adds HyDE query expansion.",
+    "answer": "gpt-4.1-mini answers from the retrieved top-k (temperature 0, max 200 tokens).",
+    "learning": ""
+  },
+  "summary": "Retrieval-centered memory over verbatim events in a single SQLite file (BM25+dense RRF, salience/engram reweighting, cross-encoder rerank), arguing extraction at ingestion is the wrong primitive.",
+  "verified": false,
+  "notes": "Authors: Joshua Adler, Guy Zehavi (Sauron Labs). Three tiers: Edge (Model2Vec potion-base-8M + ms-marco-MiniLM-L-6-v2), Base (Qwen3-Embedding-0.6B@256d + gte-reranker-modernbert-base), Pro (= Base + HyDE query expansion). All scores use a semantic-match judge that the authors say is more lenient than strict-match; absolute numbers not comparable to strict-match baselines. AXES-CHECK: seed taxonomy row consistent; paper adds an ingestion gate (disabled in benchmarks), L3 salience/L0 speaker-prior reweighting and HyDE (Pro) at selection time."
+}

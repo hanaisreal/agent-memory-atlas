@@ -1,0 +1,192 @@
+[
+ {
+  "id": "locomo",
+  "name": "LoCoMo",
+  "title": "Evaluating Very Long-Term Conversational Memory of LLM Agents",
+  "arxiv": "2402.17753",
+  "url": "https://arxiv.org/abs/2402.17753",
+  "code": "https://github.com/snap-research/locomo",
+  "what": "10 very long two-speaker conversations (~300 turns, up to 35 sessions each) with QA in five categories.",
+  "versions": {
+   "original": "The released locomo10.json.",
+   "refined": "LoCoMo Refined (mem-eval-suite): cleaned answers plus a stricter judge prompt."
+  },
+  "pitfalls": [
+   "Category 5 (adversarial) is usually dropped, leaving about 1,540 of 1,986 questions; papers that keep it are not comparable with those that drop it.",
+   "The category ids in the released file are not in the order the paper lists them, and papers map ids to names differently. Check which mapping a paper used before comparing per-category scores.",
+   "'LLM-judge accuracy' depends heavily on the judge prompt: the Mem0-style lenient prompt and stricter prompts differ by many points on identical answers.",
+   "Some gold answers are wrong or ambiguous, which is what LoCoMo Refined fixes."
+  ]
+ },
+ {
+  "id": "locomo-refined",
+  "name": "LoCoMo Refined",
+  "title": "LoCoMo Refined: Recalibrating LoCoMo with Stricter LLM Judging and A Cleaned Dataset",
+  "arxiv": null,
+  "url": "https://github.com/mem-eval-suite/LoCoMo_refined",
+  "code": "https://github.com/mem-eval-suite/LoCoMo_refined",
+  "what": "LoCoMo with corrected gold answers and a stricter judge. Recorded as benchmark 'locomo', version 'refined', when a paper uses it.",
+  "versions": {},
+  "pitfalls": [
+   "Scores are not comparable with original-LoCoMo scores even for the same system and backbone."
+  ]
+ },
+ {
+  "id": "locomo-plus",
+  "name": "LoCoMo-Plus",
+  "title": "Locomo-Plus: Beyond-Factual Cognitive Memory Evaluation Framework for LLM Agents",
+  "arxiv": "2602.10715",
+  "url": "https://arxiv.org/abs/2602.10715",
+  "code": "https://github.com/xjtuleeyf/Locomo-Plus",
+  "what": "Extends LoCoMo beyond factual recall.",
+  "versions": {},
+  "pitfalls": []
+ },
+ {
+  "id": "longmemeval",
+  "name": "LongMemEval",
+  "title": "LongMemEval: Benchmarking Chat Assistants on Long-Term Interactive Memory",
+  "arxiv": "2410.10813",
+  "url": "https://arxiv.org/abs/2410.10813",
+  "code": "https://github.com/xiaowu0162/LongMemEval",
+  "what": "500 questions over user–assistant chat histories, testing extraction, multi-session reasoning, temporal reasoning, knowledge updates and abstention.",
+  "versions": {
+   "S": "~115K-token histories (about 50 sessions).",
+   "M": "~1.5M-token histories (about 500 sessions).",
+   "oracle": "Only the evidence sessions."
+  },
+  "pitfalls": [
+   "S, M and oracle are different difficulty levels; always record which one.",
+   "The official judge is GPT-4o with the benchmark's own prompt; papers that swap the judge are not directly comparable.",
+   "Some papers evaluate a subset of the 500 questions."
+  ]
+ },
+ {
+  "id": "personamem",
+  "name": "PersonaMem",
+  "title": "Know Me, Respond to Me: Benchmarking LLMs for Dynamic User Profiling and Personalized Responses at Scale",
+  "arxiv": "2504.14225",
+  "url": "https://arxiv.org/abs/2504.14225",
+  "code": null,
+  "what": "Multiple-choice questions on evolving user personas across long histories.",
+  "versions": {
+   "32k": "32K-token contexts.",
+   "128k": "128K-token contexts.",
+   "1M": "1M-token contexts."
+  },
+  "pitfalls": [
+   "Context length (32K / 128K / 1M) changes difficulty; record it as the version.",
+   "Multiple-choice accuracy; random baseline is not zero."
+  ]
+ },
+ {
+  "id": "personamem-v2",
+  "name": "PersonaMem-v2",
+  "title": "PersonaMem-v2",
+  "arxiv": null,
+  "url": "https://github.com/bowen-upenn/PersonaMem-v2",
+  "code": "https://github.com/bowen-upenn/PersonaMem-v2",
+  "what": "Second version of PersonaMem with implicit personas.",
+  "versions": {},
+  "pitfalls": [
+   "Not comparable with PersonaMem v1 scores."
+  ]
+ },
+ {
+  "id": "msc",
+  "name": "Multi-Session Chat (MSC)",
+  "title": "Beyond Goldfish Memory: Long-Term Open-Domain Conversation",
+  "arxiv": "2107.07567",
+  "url": "https://arxiv.org/abs/2107.07567",
+  "code": null,
+  "what": "Multi-session open-domain dialogues; memory papers often use it for response generation or derived QA.",
+  "versions": {},
+  "pitfalls": [
+   "Papers derive different QA sets from MSC (e.g. MemGPT's deep memory retrieval task); record which one in 'subset'."
+  ]
+ },
+ {
+  "id": "halumem",
+  "name": "HaluMem",
+  "title": "HaluMem: Evaluating Hallucinations in Memory Systems of Agents",
+  "arxiv": "2511.03506",
+  "url": "https://arxiv.org/abs/2511.03506",
+  "code": null,
+  "what": "Operation-level evaluation of memory extraction, updating and QA hallucination.",
+  "versions": {},
+  "pitfalls": []
+ },
+ {
+  "id": "memoryagentbench",
+  "name": "MemoryAgentBench",
+  "title": "Evaluating Memory in LLM Agents via Incremental Multi-Turn Interactions",
+  "arxiv": "2507.05257",
+  "url": "https://arxiv.org/abs/2507.05257",
+  "code": null,
+  "what": "Accurate retrieval, test-time learning, long-range understanding and conflict resolution.",
+  "versions": {},
+  "pitfalls": []
+ },
+ {
+  "id": "beam",
+  "name": "BEAM",
+  "title": "Beyond a Million Tokens: Benchmarking and Enhancing Long-Term Memory in LLMs",
+  "arxiv": "2510.27246",
+  "url": "https://arxiv.org/abs/2510.27246",
+  "code": "https://github.com/mohammadtavakoli78/BEAM",
+  "what": "Long-term memory QA over conversations of 100K to 10M tokens.",
+  "versions": {
+   "100K": "",
+   "500K": "",
+   "1M": "",
+   "10M": ""
+  },
+  "pitfalls": [
+   "Scale (100K / 500K / 1M / 10M) is the version and changes difficulty sharply."
+  ]
+ },
+ {
+  "id": "dialsim",
+  "name": "DialSim",
+  "title": "DialSim",
+  "arxiv": null,
+  "url": null,
+  "code": null,
+  "what": "Real-time dialogue simulation benchmark used by A-Mem. Link not yet verified.",
+  "versions": {},
+  "pitfalls": []
+ },
+ {
+  "id": "gvd",
+  "name": "GVD",
+  "title": "GVD dialogue set (from MemoryBank)",
+  "arxiv": "2305.10250",
+  "url": "https://arxiv.org/abs/2305.10250",
+  "code": null,
+  "what": "Multi-day dialogue set introduced with MemoryBank; MemoryOS reports judge-based scores on it.",
+  "versions": {},
+  "pitfalls": []
+ },
+ {
+  "id": "realtalk",
+  "name": "REALTALK",
+  "title": "REALTALK",
+  "arxiv": null,
+  "url": null,
+  "code": null,
+  "what": "Long-term real-world conversation dataset used by H-Mem. Link not yet verified.",
+  "versions": {},
+  "pitfalls": []
+ },
+ {
+  "id": "long-mt-bench-plus",
+  "name": "Long-MT-Bench+",
+  "title": "Long-MT-Bench+ (built by SeCom from MT-Bench+)",
+  "arxiv": "2502.05589",
+  "url": "https://arxiv.org/abs/2502.05589",
+  "code": "https://github.com/microsoft/SeCom",
+  "what": "Long multi-session conversations assembled from MT-Bench+ with QA, introduced in the SeCom paper.",
+  "versions": {},
+  "pitfalls": []
+ }
+]

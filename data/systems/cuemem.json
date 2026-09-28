@@ -1,0 +1,52 @@
+{
+  "id": "cuemem",
+  "name": "CueMem",
+  "paper": {
+    "title": "CueMem: Cue-Guided Context Reconstruction for Long-Term Conversational Memory",
+    "arxiv": "2609.12354",
+    "url": "https://arxiv.org/abs/2609.12354",
+    "venue": "arXiv",
+    "year": 2026,
+    "code": null
+  },
+  "axes": {
+    "unit": "turn (retrieved via triple cues)",
+    "text_kept_as": "verbatim turns + extracted triple cues",
+    "write_time": "LLM triple extraction linked to source turn; temporal + cue-similarity edges",
+    "organisation": "turn graph",
+    "selection": "dense top-m cues -> source-turn anchors -> 1-hop graph expansion (vector)"
+  },
+  "tags": {
+    "fidelity": "verbatim+derived",
+    "structure": [
+      "graph"
+    ],
+    "write_time": [
+      "extract",
+      "link"
+    ],
+    "selection": [
+      "dense",
+      "graph-expansion"
+    ],
+    "memory_type": [
+      "episodic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "conversation"
+    ]
+  },
+  "stages": {
+    "ingestion": "The dialogue history is treated as a chronological sequence of turns (user utterance + agent response, with timestamps).",
+    "construction": "An LLM extracts zero or more (subject, relation, object) triples per turn as memory cues, each with a pointer to its source turn; cues are embedded (all-MiniLM-L6-v2).",
+    "organization": "A turn-level graph with temporal edges (turns within a window w) and semantic edges (top-k cue-embedding neighbours mapped back to their source turns).",
+    "update": "ADD inserts cues and turn nodes for new turns; no specialised UPDATE (newer facts are added as new cues and the answer prompt says to prioritise recent evidence); DELETE can use standard forgetting policies such as time decay or LRU.",
+    "retrieval": "The query is embedded, top-m cues retrieved, their source turns used as anchors, and anchors plus their one-hop temporal/semantic neighbours are collected and ordered chronologically (about 2K tokens).",
+    "answer": "The reconstructed original-turn context is given to the LLM with an instruction to prioritise the most recent information closest to the question time.",
+    "learning": ""
+  },
+  "summary": "Uses extracted triples only as retrieval cues that point back to source turns, then reconstructs verbatim dialogue context by expanding over a temporal/semantic turn graph.",
+  "verified": false,
+  "notes": "AXES-CHECK: the seed taxonomy has no row for CueMem; the axes above were written by the annotator from the paper. No code URL found in the paper. The paper refers to an Appendix (extra LLM/embedding results, dataset statistics) that was not present in the HTML/PDF text retrievable here."
+}

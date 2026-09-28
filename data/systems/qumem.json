@@ -1,0 +1,54 @@
+{
+  "id": "qumem",
+  "name": "QUMem",
+  "paper": {
+    "title": "QUMem: Personalized Memory for Query-Conditioned User-State Inference in LLM Agents",
+    "arxiv": "2608.16168",
+    "url": "https://arxiv.org/abs/2608.16168",
+    "venue": "arXiv",
+    "year": 2026,
+    "code": null
+  },
+  "axes": {
+    "unit": "episode",
+    "text_kept_as": "original kept; layers extracted",
+    "write_time": "fact/preference/insight",
+    "organisation": "3 typed layers",
+    "selection": "query-conditioned, 3 agents (vector)"
+  },
+  "tags": {
+    "fidelity": "verbatim+derived",
+    "structure": [
+      "typed-stores"
+    ],
+    "write_time": [
+      "segment",
+      "extract"
+    ],
+    "selection": [
+      "planner",
+      "dense"
+    ],
+    "memory_type": [
+      "episodic",
+      "semantic",
+      "profile"
+    ],
+    "learning": "mixed",
+    "domain": [
+      "conversation"
+    ]
+  },
+  "stages": {
+    "ingestion": "A lightweight continuity classifier (fine-tuned from Qwen3.5-4B on LoCoMo-derived data) decides for each pair of adjacent user utterances whether they belong to the same event, producing variable-length dialogue episodes.",
+    "construction": "Each finished episode is decomposed by an LLM, called three times (once per type), into atomic factual, preference and transferable-insight memories, each with its temporal position and source turns; the episode itself is retained as context.",
+    "organization": "Three typed memory stores (F, P, I) linked back to source episodes.",
+    "update": "",
+    "retrieval": "Information-Need Agent identifies what must be verified; Retrieval Planning Agent rewrites needs into queries and routes each to one or more typed stores (top-k=5 per retrieval); results are merged and deduplicated.",
+    "answer": "User-State Inference Agent composes a query-conditioned user state (chronological facts, preference evolution, applicable insights) that is given with the query to the response model.",
+    "learning": "Only the episode-boundary classifier is fine-tuned (SFT); the rest is prompt-based."
+  },
+  "summary": "Semantic-continuity episodes decomposed into typed fact/preference/insight memories, with a three-agent query-conditioned pipeline that infers a temporally valid user state for personalization.",
+  "verified": false,
+  "notes": "Authors: Heng Wang, Yifei Li, Lingling Zhang, Pengyu Li, Xinyu Che, Xinyu Zhang, Zesheng Yang. 9 pages; no code link found. Evaluated on PersonaMem (32K/128K/1M) and KnowU-Bench (mobile-agent personalization; not recorded here as it is a GUI-agent benchmark with SR/Score metrics). AXES-CHECK: seed taxonomy row consistent; the main text does not say the per-store retrieval is vector/dense (retrieval method details deferred to an appendix not available in the fetched text), so '(vector)' is unverified."
+}

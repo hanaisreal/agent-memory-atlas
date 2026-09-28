@@ -1,0 +1,61 @@
+{
+  "id": "h-mem",
+  "name": "H-Mem",
+  "paper": {
+    "title": "H-Mem: A Novel Memory Mechanism for Evolving and Retrieving Agent Memory via a Hybrid Structure",
+    "arxiv": "2605.15701",
+    "url": "https://arxiv.org/abs/2605.15701",
+    "venue": "arXiv",
+    "year": 2026,
+    "code": null
+  },
+  "axes": {
+    "unit": "memory event (LLM-extracted; source fragments kept)",
+    "text_kept_as": "extracted + verbatim fragments",
+    "write_time": "event extraction, entity linking",
+    "organisation": "temporal-semantic tree + entity graph",
+    "selection": "sub-query planning + lexical/vector seeding + graph expansion + tree search + rerank"
+  },
+  "tags": {
+    "fidelity": "verbatim+derived",
+    "structure": [
+      "tree",
+      "graph",
+      "profile"
+    ],
+    "write_time": [
+      "extract",
+      "summarize",
+      "consolidate",
+      "link"
+    ],
+    "selection": [
+      "planner",
+      "dense",
+      "lexical",
+      "graph-expansion",
+      "rerank"
+    ],
+    "memory_type": [
+      "episodic",
+      "semantic",
+      "profile"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "conversation"
+    ]
+  },
+  "stages": {
+    "ingestion": "Original memory fragments (speaker, timestamp, conversation text) are kept; an LLM extracts one or more fine-grained memory events from each fragment.",
+    "construction": "Each event becomes a leaf of a temporal-semantic tree; in parallel an LLM extracts entities and relations per fragment, which are normalised/disambiguated (lemmatisation, token overlap, fuzzy match; spaCy NER fallback) into a knowledge graph whose entity nodes link back to source fragments.",
+    "organization": "Hybrid structure: a 4-level tree (day/week/month/year windows) whose upper nodes hold LLM summaries of semantically similar children within the same time window (thresholds 0.8/0.7/0.6), plus an entity-relation knowledge graph with profiles for salient entities; embeddings kept for fragments, events and summaries.",
+    "update": "Incremental bottom-up insertion: a new node joins a similar cluster in its time window (parent summary regenerated) or gets a new parent; graph entities merge on exact/fuzzy match and duplicate relations merge evidence. A consolidation count and last-consolidation time feed an Ebbinghaus-style robustness score.",
+    "retrieval": "An LLM decomposes the query into dependent sub-queries, each labelled Short/Long/Mixed scope with temporal hints; seed entities are found by lexical + vector matching, expanded multi-hop in the graph, mapped to fragments/events, then the tree is searched bottom-up; evidence is ranked by 0.70*semantic + 0.15*temporal + 0.15*robustness and reranked (Qwen3-Reranker-4B); a missing-information follow-up query fires when first-pass evidence is insufficient.",
+    "answer": "A sub-answer is generated per sub-query (using prerequisite sub-answers as context) and an LLM synthesises the final answer.",
+    "learning": ""
+  },
+  "summary": "Couples a temporal-semantic summary tree (short-term events consolidating into long-term summaries by time window) with an entity knowledge graph, and retrieves over both with LLM query decomposition and a time/robustness-aware evidence score.",
+  "verified": false,
+  "notes": "AXES CORRECTED from the paper; earlier taxonomy row was: turn | verbatim | write-time filter | dual tree | FAISS + LCA expansion (vector). AXES-CHECK: the seed taxonomy row (turn / verbatim / write-time filter / dual tree / FAISS + LCA expansion) does not match arXiv 2605.15701 and may describe a different H-Mem paper (e.g. 2507.22925). In 2605.15701: leaf unit is an LLM-extracted memory event (original fragments are also kept and retrievable); no write-time filter is described; organisation is one temporal-semantic tree plus an entity knowledge graph (not a dual tree); selection is LLM sub-query planning + lexical/vector entity seeding + multi-hop graph expansion + bottom-up tree search + reranking, with no FAISS or LCA mention. No code URL is given in the paper. Backbones in experiments: GPT-4o-mini and GPT-4.1-mini; embedding Qwen3-Embedding-4B, reranker Qwen3-Reranker-4B (Appendix A.2)."
+}

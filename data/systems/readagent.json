@@ -1,0 +1,52 @@
+{
+  "id": "readagent",
+  "name": "ReadAgent",
+  "paper": {
+    "title": "A Human-Inspired Reading Agent with Gist Memory of Very Long Contexts",
+    "arxiv": "2402.09727",
+    "url": "https://arxiv.org/abs/2402.09727",
+    "venue": "ICML 2024",
+    "year": 2024,
+    "code": "https://read-agent.github.io"
+  },
+  "axes": {
+    "unit": "page",
+    "text_kept_as": "verbatim + gist",
+    "write_time": "compressive gist 3.5–20x",
+    "organisation": "flat",
+    "selection": "model reads all gists (text)"
+  },
+  "tags": {
+    "fidelity": "verbatim+derived",
+    "structure": [
+      "flat"
+    ],
+    "write_time": [
+      "segment",
+      "summarize"
+    ],
+    "selection": [
+      "model-reads"
+    ],
+    "memory_type": [
+      "episodic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "long-document",
+      "web"
+    ]
+  },
+  "stages": {
+    "ingestion": "Reads the long text sequentially; the LLM picks a natural pause point between min_words and max_words (episode pagination).",
+    "construction": "Each page is shortened by the LLM into a gist, tagged with its page number; gists are concatenated into the gist memory.",
+    "organization": "Ordered flat list of page gists; raw pages are kept for look-up.",
+    "update": "",
+    "retrieval": "The LLM reads all gists and chooses which raw pages to look up, either all at once (ReadAgent-P) or one at a time (ReadAgent-S); looked-up pages replace their gists.",
+    "answer": "The LLM answers from the gist memory with expanded raw pages.",
+    "learning": ""
+  },
+  "summary": "Prompting-only reading agent that paginates long text, keeps short gists of every page, and interactively looks up raw pages when answering.",
+  "verified": false,
+  "notes": "AXES-CHECK: selection is not only reading gists - the model then retrieves raw pages (interactive look-up); '3.5-20x' in the paper is the effective context-length extension, not strictly a gist compression ratio. The paper evaluates on QuALITY, NarrativeQA, QMSum (long-document QA) and Mind2Web (web navigation) with PaLM 2-L (GPT-3.5 in App. B); no conversational-memory benchmark, so no results file was written. Code/prompts: project site read-agent.github.io."
+}

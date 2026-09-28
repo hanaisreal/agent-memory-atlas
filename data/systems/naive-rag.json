@@ -1,0 +1,43 @@
+{
+  "id": "naive-rag",
+  "name": "Naive RAG",
+  "paper": null,
+  "axes": {
+    "unit": "turn",
+    "text_kept_as": "verbatim",
+    "write_time": "none",
+    "organisation": "flat",
+    "selection": "dense top-k (vector)"
+  },
+  "tags": {
+    "fidelity": "verbatim",
+    "structure": [
+      "flat"
+    ],
+    "write_time": [
+      "none"
+    ],
+    "selection": [
+      "dense"
+    ],
+    "memory_type": [
+      "episodic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "History is split into turns or fixed-length chunks.",
+    "construction": "Chunks are embedded with a dense encoder.",
+    "organization": "Flat vector index.",
+    "update": "",
+    "retrieval": "Dense top-k similarity search against the question.",
+    "answer": "Retrieved raw chunks are concatenated as context for the answer LLM.",
+    "learning": ""
+  },
+  "summary": "Generic baseline, not a system: raw history chunks are embedded and the top-k most similar chunks are retrieved for the answer.",
+  "verified": false,
+  "notes": "Generic baseline used across papers; chunking differs by paper. Mem0 (2504.19413) uses fixed token chunks of 128-8192 tokens with k in {1,2} and 'text-embedding-small-3', recorded with variant 'k=..., chunk=...' - not per-turn units as in the seed taxonomy row."
+}

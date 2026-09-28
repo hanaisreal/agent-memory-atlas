@@ -1,0 +1,53 @@
+{
+  "id": "a-mem",
+  "name": "A-Mem",
+  "paper": {
+    "title": "A-Mem: Agentic Memory for LLM Agents",
+    "arxiv": "2502.12110",
+    "url": "https://arxiv.org/abs/2502.12110",
+    "venue": "NeurIPS 2025",
+    "year": 2025,
+    "code": "https://github.com/WujiangXu/AgenticMemory"
+  },
+  "axes": {
+    "unit": "note",
+    "text_kept_as": "partly rewritten",
+    "write_time": "keywords/tags/context, links",
+    "organisation": "linked notes",
+    "selection": "dense + links (vector)"
+  },
+  "tags": {
+    "fidelity": "verbatim+derived",
+    "structure": [
+      "linked-notes"
+    ],
+    "write_time": [
+      "extract",
+      "link",
+      "consolidate"
+    ],
+    "selection": [
+      "dense",
+      "graph-expansion"
+    ],
+    "memory_type": [
+      "episodic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "conversation"
+    ]
+  },
+  "stages": {
+    "ingestion": "Each new interaction becomes one memory note with its original content and timestamp.",
+    "construction": "An LLM generates keywords, tags and a contextual description for the note; content plus attributes are embedded (all-minilm-l6-v2 in experiments).",
+    "organization": "Zettelkasten-style network of notes; links are stored on notes and a note can sit in several 'boxes'.",
+    "update": "Link generation: top-k nearest notes are retrieved and an LLM decides which links to create. Memory evolution: an LLM may rewrite the context/keywords/tags of those neighbouring notes.",
+    "retrieval": "Cosine top-k over note embeddings (k=10 default, 10-50 per category in Table 8); notes linked within the same box are also returned.",
+    "answer": "Retrieved notes are inserted into the prompt of the backbone LLM.",
+    "learning": ""
+  },
+  "summary": "Agentic Zettelkasten memory: each interaction becomes an LLM-enriched note that is linked to related notes and can trigger rewriting ('evolution') of older notes' attributes.",
+  "verified": false,
+  "notes": "AXES-CHECK: consistent with the seed taxonomy row; the original interaction content c_i is kept and only LLM-generated attributes are rewritten during evolution, hence fidelity tag verbatim+derived. Separate production code: https://github.com/WujiangXu/A-mem-sys."
+}

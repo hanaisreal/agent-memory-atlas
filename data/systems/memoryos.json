@@ -1,0 +1,56 @@
+{
+  "id": "memoryos",
+  "name": "MemoryOS",
+  "paper": {
+    "title": "Memory OS of AI Agent",
+    "arxiv": "2506.06326",
+    "url": "https://arxiv.org/abs/2506.06326",
+    "venue": "EMNLP 2025",
+    "year": 2025,
+    "code": "https://github.com/BAI-LAB/MemoryOS"
+  },
+  "axes": {
+    "unit": "page/segment",
+    "text_kept_as": "partly rewritten",
+    "write_time": "heat-based promotion",
+    "organisation": "3 tiers + profile",
+    "selection": "similarity per tier (vector)"
+  },
+  "tags": {
+    "fidelity": "mixed",
+    "structure": [
+      "tiered",
+      "profile"
+    ],
+    "write_time": [
+      "summarize",
+      "extract",
+      "consolidate"
+    ],
+    "selection": [
+      "hybrid"
+    ],
+    "memory_type": [
+      "working",
+      "episodic",
+      "semantic",
+      "profile"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "conversation"
+    ]
+  },
+  "stages": {
+    "ingestion": "Each user query / model response pair with timestamp becomes a dialogue page in a fixed-length STM queue (length 7); an LLM decides chain linkage to prior pages and writes a chain summary (meta).",
+    "construction": "Pages evicted FIFO from STM are grouped into MTM topic segments when cosine(embedding) + Jaccard(LLM keywords) similarity exceeds theta=0.6; segment content is summarized by an LLM.",
+    "organization": "Three tiers: STM (dialogue pages), MTM (segmented paging, max 200 segments), LPM (user profile, User KB, 90-dimension User Traits, agent profile/traits).",
+    "update": "Segment heat = visits + page count + recency decay; lowest-heat segments are evicted, segments with heat > 5 are promoted to LPM where an LLM extracts user traits/KB facts (User KB and Agent Traits are FIFO queues of 100).",
+    "retrieval": "All STM pages; MTM two-stage: top-m=5 segments by the cosine+Jaccard score, then top-k pages (10 on LoCoMo) by semantic similarity; LPM: top-10 User KB and Agent Traits entries plus full profiles/traits.",
+    "answer": "Retrieved STM, MTM and LPM content is assembled into one prompt with the query for the LLM.",
+    "learning": ""
+  },
+  "summary": "OS-inspired three-tier memory (short-term pages, mid-term segment-paged topics, long-term persona) with FIFO and heat-based promotion/eviction between tiers.",
+  "verified": false,
+  "notes": "AXES-CHECK: MTM segment selection is not pure vector similarity - it uses cosine similarity plus Jaccard overlap of LLM-extracted keywords (Eq. 3); page selection within segments is semantic similarity. The embedding model is not named in the paper. Venue: EMNLP 2025 main (aclanthology 2025.emnlp-main.1318)."
+}

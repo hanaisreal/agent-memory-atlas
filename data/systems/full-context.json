@@ -1,0 +1,43 @@
+{
+  "id": "full-context",
+  "name": "Full context",
+  "paper": null,
+  "axes": {
+    "unit": "transcript",
+    "text_kept_as": "verbatim",
+    "write_time": "none",
+    "organisation": "none",
+    "selection": "none"
+  },
+  "tags": {
+    "fidelity": "verbatim",
+    "structure": [
+      "none"
+    ],
+    "write_time": [
+      "none"
+    ],
+    "selection": [
+      "full-context"
+    ],
+    "memory_type": [
+      "working"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "The whole history is kept as raw text.",
+    "construction": "",
+    "organization": "",
+    "update": "",
+    "retrieval": "None: the entire history is placed in the context window.",
+    "answer": "The LLM answers with the full transcript in context.",
+    "learning": ""
+  },
+  "summary": "Generic baseline, not a system: the whole conversation history is put in the model's context window with no memory mechanism.",
+  "verified": false,
+  "notes": "Generic baseline used across papers. Instances differ: Mem0 (2504.19413) passes ~26k tokens per LoCoMo conversation; A-Mem's and Mem0's 'LoCoMo' baseline (Maharana et al. 2024) is also recorded here with variant 'LoCoMo baseline' because A-Mem App. A.1 describes it as the complete preceding conversation in the prompt. Model and truncation differ by paper - see result notes."
+}

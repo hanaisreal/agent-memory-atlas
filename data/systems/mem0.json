@@ -1,0 +1,53 @@
+{
+  "id": "mem0",
+  "name": "Mem0",
+  "paper": {
+    "title": "Mem0: Building Production-Ready AI Agents with Scalable Long-Term Memory",
+    "arxiv": "2504.19413",
+    "url": "https://arxiv.org/abs/2504.19413",
+    "venue": "ECAI 2025",
+    "year": 2025,
+    "code": "https://github.com/mem0ai/mem0"
+  },
+  "axes": {
+    "unit": "fact",
+    "text_kept_as": "extracted",
+    "write_time": "add/update/delete",
+    "organisation": "flat (+graph)",
+    "selection": "dense top-10 (vector)"
+  },
+  "tags": {
+    "fidelity": "extracted",
+    "structure": [
+      "flat",
+      "graph"
+    ],
+    "write_time": [
+      "extract",
+      "consolidate"
+    ],
+    "selection": [
+      "dense",
+      "graph-expansion"
+    ],
+    "memory_type": [
+      "semantic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "conversation"
+    ]
+  },
+  "stages": {
+    "ingestion": "Processes each new message pair together with an asynchronously refreshed conversation summary and the last m=10 messages.",
+    "construction": "An LLM (GPT-4o-mini) extracts a set of salient candidate facts from the new exchange. Mem0^g additionally extracts entities and relationship triplets.",
+    "organization": "Flat store of natural-language memories in a vector database; the graph variant stores a directed labeled entity graph in Neo4j.",
+    "update": "Each candidate fact is compared with the top s=10 similar memories and an LLM tool call chooses ADD, UPDATE, DELETE or NOOP. Mem0^g marks conflicting relations invalid instead of deleting them.",
+    "retrieval": "Dense similarity search over memories; Mem0^g adds entity-anchored subgraph expansion plus dense matching over relationship triplets.",
+    "answer": "Retrieved timestamped memories of both speakers are placed in an answer prompt (App. A).",
+    "learning": ""
+  },
+  "summary": "Extracts salient facts from each message pair and lets an LLM consolidate them against similar existing memories with ADD/UPDATE/DELETE/NOOP; an optional graph variant stores entity-relation triplets.",
+  "verified": false,
+  "notes": "AXES-CHECK: the paper does not state a top-10 retrieval size at query time; s=10 is the number of similar memories used in the update phase (Sec 2.1). Embedding model for Mem0's own store is not named. Graph variant (Mem0^g) is recorded as system mem0, variant 'graph'. Venue from IOS Press FAIA vol. 413 (ECAI 2025); paper points to https://mem0.ai/research for code."
+}

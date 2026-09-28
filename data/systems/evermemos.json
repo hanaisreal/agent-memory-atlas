@@ -1,0 +1,58 @@
+{
+  "id": "evermemos",
+  "name": "EverMemOS",
+  "paper": {
+    "title": "EverMemOS: A Self-Organizing Memory Operating System for Structured Long-Horizon Reasoning",
+    "arxiv": "2601.02163",
+    "url": "https://arxiv.org/abs/2601.02163",
+    "venue": "ACL 2026",
+    "year": 2026,
+    "code": "https://github.com/EverMind-AI/EverMemOS"
+  },
+  "axes": {
+    "unit": "MemCell",
+    "text_kept_as": "rewritten narrative",
+    "write_time": "MemScene consolidation",
+    "organisation": "scenes + profile",
+    "selection": "Emb-4B + BM25 + Reranker-4B"
+  },
+  "tags": {
+    "fidelity": "rewritten",
+    "structure": [
+      "tree",
+      "profile"
+    ],
+    "write_time": [
+      "segment",
+      "summarize",
+      "extract",
+      "consolidate"
+    ],
+    "selection": [
+      "hybrid",
+      "rerank",
+      "planner"
+    ],
+    "memory_type": [
+      "episodic",
+      "semantic",
+      "profile"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "conversation"
+    ]
+  },
+  "stages": {
+    "ingestion": "An LLM-prompted Semantic Boundary Detector runs over a sliding window of the dialogue stream and cuts it into episode histories at topic shifts.",
+    "construction": "Each episode history is rewritten into a third-person Episode narrative (coreferences resolved), from which the LLM derives Atomic Facts and time-bounded Foresight signals with validity intervals; these plus metadata form a MemCell.",
+    "organization": "MemCells are incrementally clustered into thematic MemScenes (embedding similarity to scene centroid above threshold tau, with a max time-gap constraint); a user profile of explicit facts and implicit traits sits alongside.",
+    "update": "When a MemCell joins a MemScene the scene summary is updated and the user profile is refreshed from scene summaries with recency-aware updates and conflict tracking.",
+    "retrieval": "Dense (Qwen3-Embedding-4B) + BM25 over Atomic Facts fused by RRF; MemScenes scored by max member relevance (top N=10), Episodes pooled and re-ranked (Qwen3-Reranker-4B, K=10); an LLM sufficiency check triggers query rewriting (2-3 follow-up queries) when context is insufficient.",
+    "answer": "Reasoning mode answers from retrieved Episodes only; Chat mode additionally adds the User Profile and time-valid Foresight.",
+    "learning": ""
+  },
+  "summary": "Engram-inspired memory lifecycle: dialogue is segmented into MemCells (episode narrative, atomic facts, time-bounded foresight), clustered online into MemScenes with a user profile, and recalled via scene-guided agentic retrieval with a sufficiency check.",
+  "verified": false,
+  "notes": "AXES-CHECK: selection is broader than 'Emb-4B + BM25 + Reranker-4B' - retrieval is scene-guided (MemScene scored by max MemCell relevance) and includes an LLM sufficiency verifier with query rewriting (second round triggered for 31.0% of LoCoMo questions, App. A.1). Dense+BM25 run over Atomic Facts, reranker over Episodes. Venue: ACL 2026 long paper (aclanthology 2026.acl-long.2125); ACL version gives code URL https://github.com/EverMind-AI/EverOS. Text read from the HF paper.md mirror of the arXiv paper (matches the ACL abstract)."
+}

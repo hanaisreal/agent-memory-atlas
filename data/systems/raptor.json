@@ -1,0 +1,51 @@
+{
+  "id": "raptor",
+  "name": "RAPTOR",
+  "paper": {
+    "title": "RAPTOR: Recursive Abstractive Processing for Tree-Organized Retrieval",
+    "arxiv": "2401.18059",
+    "url": "https://arxiv.org/abs/2401.18059",
+    "venue": "ICLR 2024",
+    "year": 2024,
+    "code": "https://github.com/parthsarthi03/raptor"
+  },
+  "axes": {
+    "unit": "summary node",
+    "text_kept_as": "rewritten",
+    "write_time": "recursive summary",
+    "organisation": "tree",
+    "selection": "dense over nodes (vector)"
+  },
+  "tags": {
+    "fidelity": "verbatim+derived",
+    "structure": [
+      "tree"
+    ],
+    "write_time": [
+      "segment",
+      "summarize"
+    ],
+    "selection": [
+      "dense"
+    ],
+    "memory_type": [
+      "semantic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "long-document"
+    ]
+  },
+  "stages": {
+    "ingestion": "The corpus is split into ~100-token chunks without cutting sentences.",
+    "construction": "Chunks are embedded with SBERT (multi-qa-mpnet-base-cos-v1); GMM soft clustering over UMAP-reduced embeddings (BIC chooses cluster count) groups them and gpt-3.5-turbo summarises each cluster, recursively.",
+    "organization": "Multi-layer tree: raw chunks as leaves, cluster summaries as parent nodes.",
+    "update": "",
+    "retrieval": "Collapsed-tree retrieval (cosine top-k over all nodes of all layers up to a token budget) or tree traversal (top-k per layer from root down); collapsed tree performed better.",
+    "answer": "Retrieved node texts are concatenated as context for the reader LLM.",
+    "learning": ""
+  },
+  "summary": "Builds a tree of recursive cluster summaries over document chunks and retrieves across all abstraction levels.",
+  "verified": false,
+  "notes": "AXES-CHECK: leaf nodes are the original 100-token chunks kept verbatim and are retrievable alongside summaries, so 'text kept as: rewritten' understates it (fidelity tag set to verbatim+derived). Evaluated on NarrativeQA, QASPER, QuALITY (document QA); no conversational-memory benchmark, so no results file was written. Code URL not read in the paper text (known official repo)."
+}

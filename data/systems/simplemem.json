@@ -1,0 +1,56 @@
+{
+  "id": "simplemem",
+  "name": "SimpleMem",
+  "paper": {
+    "title": "SimpleMem: Efficient Lifelong Memory for LLM Agents",
+    "arxiv": "2601.02553",
+    "url": "https://arxiv.org/abs/2601.02553",
+    "venue": "arXiv",
+    "year": 2026,
+    "code": "https://github.com/aiming-lab/SimpleMem"
+  },
+  "axes": {
+    "unit": "memory unit",
+    "text_kept_as": "compressed",
+    "write_time": "semantic + lexical + symbolic",
+    "organisation": "flat",
+    "selection": "planner, adaptive k (multi-view)"
+  },
+  "tags": {
+    "fidelity": "compressed",
+    "structure": [
+      "flat"
+    ],
+    "write_time": [
+      "filter",
+      "extract",
+      "consolidate"
+    ],
+    "selection": [
+      "planner",
+      "hybrid",
+      "dense",
+      "lexical"
+    ],
+    "memory_type": [
+      "semantic",
+      "episodic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "conversation"
+    ]
+  },
+  "stages": {
+    "ingestion": "Dialogue is cut into overlapping sliding windows (20 turns, stride 5); an LLM-based implicit semantic-density gate emits nothing for low-information windows (e.g. phatic chit-chat).",
+    "construction": "For informative windows a single LLM pass (gpt-4.1-mini) extracts context-independent atomic memory units with coreference resolved and relative times converted to absolute ISO-8601 timestamps.",
+    "organization": "Each unit is indexed in three views in LanceDB: dense embedding (Qwen3-embedding-0.6b), BM25 sparse lexical index, and symbolic metadata (timestamp, entities, topic, salience) for SQL-style filtering; flat store.",
+    "update": "Online Semantic Synthesis consolidates related fragments within the current session into unified higher-density entries before they are written (v1 described this as asynchronous recursive consolidation).",
+    "retrieval": "An LLM planner infers search intent and emits semantic, lexical and symbolic queries plus a depth d; each view returns top-n (n proportional to d, range 3-20) and results are merged by set union.",
+    "answer": "The merged, deduplicated context is passed to the backbone LLM for answer generation.",
+    "learning": ""
+  },
+  "summary": "Compresses dialogue at write time into atomic, time-normalised memory units indexed in dense, BM25 and metadata views, and uses an LLM planner to set per-query retrieval depth, cutting query tokens to about 530-580.",
+  "verified": false,
+  "notes": "Annotated from the current arXiv HTML (fetched 2026-09-28); v1 used the stage names Recursive Memory Consolidation / Adaptive Query-Aware Retrieval and had no LongMemEval table; LoCoMo tables are numerically identical across v1 and the current version. Paper uses the ICML template but no acceptance is stated. AXES-CHECK: 'semantic + lexical + symbolic' in the seed taxonomy's write-time column is really the indexing (organisation) step; the write-time processing in the paper is LLM gating/filtering + atomic extraction with coreference and timestamp normalisation + intra-session synthesis (consolidation)."
+}

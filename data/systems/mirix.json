@@ -1,0 +1,60 @@
+{
+  "id": "mirix",
+  "name": "MIRIX",
+  "paper": {
+    "title": "MIRIX: Multi-Agent Memory System for LLM-Based Agents",
+    "arxiv": "2507.07957",
+    "url": "https://arxiv.org/abs/2507.07957",
+    "venue": "arXiv",
+    "year": 2025,
+    "code": "https://github.com/Mirix-AI/MIRIX"
+  },
+  "axes": {
+    "unit": "typed entry",
+    "text_kept_as": "rewritten",
+    "write_time": "meta-manager routing",
+    "organisation": "6 typed stores",
+    "selection": "topic search per store"
+  },
+  "tags": {
+    "fidelity": "mixed",
+    "structure": [
+      "typed-stores",
+      "profile"
+    ],
+    "write_time": [
+      "agent-chosen",
+      "extract",
+      "summarize"
+    ],
+    "selection": [
+      "llm-tool-call",
+      "dense",
+      "lexical"
+    ],
+    "memory_type": [
+      "episodic",
+      "semantic",
+      "procedural",
+      "profile"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "conversation",
+      "multimodal",
+      "gui"
+    ]
+  },
+  "stages": {
+    "ingestion": "New input (text or screenshots) triggers a search over the memory base; input plus retrieved context go to a Meta Memory Manager.",
+    "construction": "The Meta Memory Manager routes content to per-type Memory Managers that write structured entries (e.g., episodic: event_type/summary/details/actor/timestamp; semantic: name/summary/details/source) in parallel, avoiding redundancy.",
+    "organization": "Six typed stores: Core (persona + human blocks), Episodic, Semantic, Procedural, Resource, Knowledge Vault (verbatim sensitive values with access control).",
+    "update": "Memory Managers update their own stores; Core Memory is rewritten when above 90% capacity; the Chat Agent can directly request precise updates.",
+    "retrieval": "Active Retrieval: the agent generates a topic from context and retrieves the top-10 entries from each of the six stores into the system prompt; the Chat Agent can additionally call embedding_match, bm25_match or string_match on chosen stores.",
+    "answer": "Chat Agent consolidates retrieved, source-tagged memories and synthesizes the response.",
+    "learning": ""
+  },
+  "summary": "Multi-agent memory with six typed stores (core, episodic, semantic, procedural, resource, knowledge vault) coordinated by a meta memory manager, with topic-based active retrieval.",
+  "verified": false,
+  "notes": "AXES-CHECK: consistent with the paper; retrieval is 'topic search per store' (top-10 per store) plus agent-chosen embedding/BM25/string-match tool calls. Some stores keep verbatim content (Resource Memory, Knowledge Vault), so fidelity tagged mixed. No peer-reviewed venue found (arXiv preprint as of 2026-09). Also evaluated on the multimodal ScreenshotVQA (not recorded as it is not a conversational-memory benchmark)."
+}

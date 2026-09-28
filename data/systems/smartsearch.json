@@ -1,0 +1,51 @@
+{
+  "id": "smartsearch",
+  "name": "SmartSearch",
+  "paper": {
+    "title": "SmartSearch: How Ranking Beats Structure for Conversational Memory Retrieval",
+    "arxiv": "2603.15599",
+    "url": "https://arxiv.org/abs/2603.15599",
+    "venue": "arXiv",
+    "year": 2026,
+    "code": null
+  },
+  "axes": {
+    "unit": "turn",
+    "text_kept_as": "verbatim",
+    "write_time": "none",
+    "organisation": "flat",
+    "selection": "NER-weighted grep + cross-encoder + ColBERT"
+  },
+  "tags": {
+    "fidelity": "verbatim",
+    "structure": [
+      "flat"
+    ],
+    "write_time": [
+      "none"
+    ],
+    "selection": [
+      "lexical",
+      "rerank"
+    ],
+    "memory_type": [
+      "episodic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "conversation"
+    ]
+  },
+  "stages": {
+    "ingestion": "Raw, unstructured conversation history is stored as passages with no LLM structuring at ingestion.",
+    "construction": "",
+    "organization": "",
+    "update": "",
+    "retrieval": "Query parsed with SpaCy into NER/POS-weighted terms (PROPN 3.0 > NOUN 2.0 > VERB 1.0, +1.0 for entities); exact substring matching (grep) for recall with rule-based entity discovery for multi-hop and pseudo-relevance feedback; ColBERT dense fallback (~1% of queries). Candidates reranked by mxbai-rerank-large-v1 CrossEncoder + ColBERT fused by weighted RRF (0.7/0.3), then truncated by fixed word budget or score-adaptive threshold (alpha * max CE score).",
+    "answer": "Top passages within the token budget are given to the answer LLM (gpt-4o-mini or gpt-4.1-mini depending on protocol).",
+    "learning": ""
+  },
+  "summary": "Fully deterministic retrieve-then-rank pipeline over raw conversation text (NER-weighted grep + CrossEncoder/ColBERT RRF + score-adaptive truncation), arguing ranking, not ingestion-time structure, is the bottleneck.",
+  "verified": false,
+  "notes": "Authors: Derehag, Calva, Ghiurau (Midbrain). No code URL found in the paper text. Index-free variant drops ColBERT entirely and relies on grep + query expansion + single CrossEncoder. Paper explicitly warns LoCoMo numbers under the EverMemOS protocol and the MemOS protocol are not comparable (full-context swings 77.1 -> 91.2). AXES-CHECK: seed taxonomy row matches; note ColBERT is used as dense-retrieval fallback and as second ranker (indexed variant only)."
+}
