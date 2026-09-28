@@ -1,0 +1,68 @@
+{
+ "cuemem-2609.12354": {
+  "1": {
+   "crop": true,
+   "img": "tables/cuemem-2609.12354/table-1.png",
+   "page": 6,
+   "pdf": "1-CueMem-\uac00\uc7a5\uc720\uc0ac-arXiv2609.12354.pdf"
+  },
+  "2": {
+   "crop": true,
+   "img": "tables/cuemem-2609.12354/table-2.png",
+   "page": 6,
+   "pdf": "1-CueMem-\uac00\uc7a5\uc720\uc0ac-arXiv2609.12354.pdf"
+  },
+  "3": {
+   "crop": true,
+   "img": "tables/cuemem-2609.12354/table-3.png",
+   "page": 8,
+   "pdf": "1-CueMem-\uac00\uc7a5\uc720\uc0ac-arXiv2609.12354.pdf"
+  }
+ },
+ "evermemos-2601.02163": {
+  "1": {
+   "crop": true,
+   "img": "tables/evermemos-2601.02163/table-1.png",
+   "page": 6,
+   "pdf": "6-EverMemOS-arXiv2601.02163.pdf"
+  },
+  "2": {
+   "crop": true,
+   "img": "tables/evermemos-2601.02163/table-2.png",
+   "page": 6,
+   "pdf": "6-EverMemOS-arXiv2601.02163.pdf"
+  },
+  "4": {
+   "crop": true,
+   "img": "tables/evermemos-2601.02163/table-4.png",
+   "page": 7,
+   "pdf": "6-EverMemOS-arXiv2601.02163.pdf"
+  },
+  "9": {
+   "crop": true,
+   "img": "tables/evermemos-2601.02163/table-9.png",
+   "page": 13,
+   "pdf": "6-EverMemOS-arXiv2601.02163.pdf"
+  }
+ },
+ "h-mem-2605.15701": {
+  "2": {
+   "crop": true,
+   "img": "tables/h-mem-2605.15701/table-2.png",
+   "page": 7,
+   "pdf": "8-HMem-hybrid-structure-arXiv2605.15701.pdf"
+  },
+  "3": {
+   "crop": true,
+   "img": "tables/h-mem-2605.15701/table-3.png",
+   "page": 8,
+   "pdf": "8-HMem-hybrid-structure-arXiv2605.15701.pdf"
+  },
+  "4": {
+   "crop": true,
+   "img": "tables/h-mem-2605.15701/table-4.png",
+   "page": 8,
+   "pdf": "8-HMem-hybrid-structure-arXiv2605.15701.pdf"
+  }
+ }
+}

@@ -34,9 +34,11 @@ data/results/<reporter>.json  every score from one paper, with its settings and 
 data/benchmarks.json          benchmark registry with versions and pitfalls
 data/extra_systems.json       baselines that appear in results but are not annotated yet
 data/papers.json              generated paper index (do not edit by hand)
+data/table_images.json        which table images exist, and their page numbers (generated)
 schema/SCHEMA.md              field definitions, controlled vocabularies, comparability rule
 scripts/import_lists.py       regenerate data/papers.json from the upstream lists
 scripts/build.py              validate data/ and write site/atlas.json
+scripts/capture_tables.py     crop the cited tables out of paper PDFs into site/tables/
 site/                         static site (index.html, app.js, style.css, atlas.json)
 ```
 
@@ -49,6 +51,26 @@ python3 scripts/import_lists.py           # refresh the paper index (needs netwo
 ```
 
 The site is plain HTML/JS with no build step, so `site/` can be served from GitHub Pages as is.
+
+## Checking a number against its source
+
+Every table reference in the site ("Table 2 ↗") links to the paper, opening the arXiv PDF at the right
+page when it is known. Hovering or focusing the link shows an image of the table as printed in the
+paper, so any score can be checked without leaving the page.
+
+The images are cropped from the PDFs by `scripts/capture_tables.py`. PDFs are not committed; put them in
+any folder (file names must contain the arXiv id) and run:
+
+```bash
+pip install pymupdf
+python3 scripts/capture_tables.py --pdf-dir ~/papers
+python3 scripts/build.py
+```
+
+The script finds each cited table's caption, follows the table's horizontal rules to its edges, and
+falls back to the whole page when it cannot, so an image never shows the wrong table silently.
+Tables captured so far: EverMemOS, H-Mem and CueMem. The other papers link to the PDF without a preview
+until their PDFs are added.
 
 ## Adding a system or a paper's results
 

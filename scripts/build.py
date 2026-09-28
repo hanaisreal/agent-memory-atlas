@@ -11,6 +11,7 @@ data/extra_systems.json, and settings left null.
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -33,6 +34,7 @@ RUN_BY = {"self", "rerun", "copied", None}
 # Fields that must match (and be known) for two rows to be directly comparable.
 SETTING_FIELDS = ["benchmark", "benchmark_version", "subset", "category", "metric", "answer_model", "judge", "judge_prompt"]
 JUDGE_ONLY = {"judge", "judge_prompt"}
+TABLE_REF = re.compile(r"Table\s*(\d+)", re.I)
 
 
 class Report:
@@ -103,6 +105,10 @@ def main():
     if dup:
         rep.warn("data/extra_systems.json", f"ids also have system files: {sorted(dup)}")
 
+    tables_path = DATA / "table_images.json"
+    table_imgs = load(tables_path, rep) if tables_path.exists() else {}
+    table_imgs = table_imgs or {}
+
     reporters, rows = [], []
     for p in sorted((DATA / "results").glob("*.json")):
         doc = load(p, rep)
@@ -112,7 +118,8 @@ def main():
         rid = doc.get("reporter", {}).get("id")
         if rid != p.stem:
             rep.err(where, f"reporter.id must equal file name ('{rid}')")
-        reporters.append(doc["reporter"])
+        arxiv = rid.rsplit("-", 1)[-1] if rid else None
+        reporters.append({**doc["reporter"], "arxiv": arxiv if re.fullmatch(r"\d{4}\.\d{4,5}", arxiv or "") else None})
         for i, r in enumerate(doc.get("rows", [])):
             w = f"{where}#{i}"
             for f in ("system", "benchmark", "metric", "score"):
@@ -129,7 +136,15 @@ def main():
             if not isinstance(r.get("score"), (int, float)):
                 rep.err(w, "score must be a number")
             key, unknown = setting_key(r)
-            rows.append({**r, "reporter": rid, "setting_key": key, "unknown_settings": unknown})
+            source = {}
+            m = TABLE_REF.search(r.get("location") or "")
+            if m:
+                source["table_no"] = int(m.group(1))
+                shot = table_imgs.get(rid, {}).get(m.group(1))
+                if shot:
+                    source["table_img"] = shot["img"]
+                    source["table_page"] = shot["page"]
+            rows.append({**r, **source, "reporter": rid, "setting_key": key, "unknown_settings": unknown})
 
     annotated = {s["paper"]["arxiv"]: s["id"] for s in systems if s.get("paper") and s["paper"].get("arxiv")}
     for p in papers_doc["papers"]:

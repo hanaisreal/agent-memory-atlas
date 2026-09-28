@@ -72,7 +72,7 @@ fetch("atlas.json").then(r => r.json()).then(data => {
     const v = location.hash.slice(1);
     if (VIEWS.includes(v) && v !== S.view) { S.view = v; render(); }
   });
-  document.addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") { hideTip(); closeDrawer(); } });
   render();
 }).catch(err => {
   $("#main").innerHTML = `<p class="empty-state">Could not load atlas.json (${esc(err.message)}). Run <code>python3 scripts/build.py</code> and serve the <code>site/</code> folder over HTTP.</p>`;
@@ -217,6 +217,47 @@ function reporterShort(id) {
   return t.length > 34 ? t.slice(0, 32) + "…" : t;
 }
 
+/* Link to the table a row cites: the arXiv PDF at the captured page when known, else the paper.
+   Hover or keyboard focus shows the captured image of the table (see scripts/capture_tables.py). */
+function sourceLink(r) {
+  const rep = A.reporters.find(x => x.id === r.reporter) || {};
+  const base = rep.arxiv ? `https://arxiv.org/pdf/${rep.arxiv}` : rep.url;
+  if (!base) return esc(r.location || "");
+  const href = base + (rep.arxiv && r.table_page ? `#page=${r.table_page}` : "");
+  return `<a class="src" href="${esc(href)}" target="_blank" rel="noopener" data-img="${esc(r.table_img || "")}" data-page="${r.table_page || ""}" data-label="${esc((reporterShort(r.reporter)) + ", " + (r.location || "source"))}">${esc(r.location || "source")}<span aria-hidden="true"> ↗</span></a>`;
+}
+
+let tipEl = null;
+function showTip(a) {
+  hideTip();
+  tipEl = document.createElement("div");
+  tipEl.className = "tip";
+  tipEl.setAttribute("role", "tooltip");
+  const img = a.dataset.img;
+  tipEl.innerHTML = img
+    ? `<img src="${esc(img)}" alt="${esc(a.dataset.label)} as printed in the paper"><div class="tipcap">${esc(a.dataset.label)} · page ${esc(a.dataset.page)} of the PDF. Click to open the paper at that page.</div>`
+    : `<div class="tipcap">${esc(a.dataset.label)}. No image of this table has been captured yet. Click to open the paper.</div>`;
+  document.body.append(tipEl);
+  const place = () => {
+    if (!tipEl) return;
+    const b = a.getBoundingClientRect(), t = tipEl.getBoundingClientRect();
+    const vw = document.documentElement.clientWidth, vh = window.innerHeight;
+    let top = b.bottom + 8;
+    if (top + t.height > vh - 8 && b.top - t.height - 8 > 8) top = b.top - t.height - 8;
+    const left = Math.max(8, Math.min(b.left, vw - t.width - 8));
+    tipEl.style.top = `${Math.max(8, top)}px`;
+    tipEl.style.left = `${left}px`;
+  };
+  place();
+  tipEl.querySelector("img")?.addEventListener("load", place);
+}
+function hideTip() { tipEl?.remove(); tipEl = null; }
+document.addEventListener("mouseover", e => { const a = e.target.closest?.("a.src"); if (a) showTip(a); });
+document.addEventListener("mouseout", e => { const a = e.target.closest?.("a.src"); if (a && !a.contains(e.relatedTarget)) hideTip(); });
+document.addEventListener("focusin", e => { const a = e.target.closest?.("a.src"); a ? showTip(a) : hideTip(); });
+document.addEventListener("click", e => { if (e.target.closest?.("a.src")) { e.stopPropagation(); hideTip(); } }, true);
+window.addEventListener("scroll", hideTip, { passive: true });
+
 function resultColumns(rows) {
   const cols = new Map();
   for (const r of rows) {
@@ -277,7 +318,8 @@ function viewResults(main) {
     return `<th class="set" data-col="${esc(c.key)}" aria-pressed="${c.key === sel}" tabindex="0" title="${esc(c.setting)}">
       <b>${esc(reporterShort(c.reporter))}</b>
       ${esc(r.answer_model || "answer model ?")}${r.metric === "llm-judge" ? ` · judge ${esc(r.judge || "?")}` : ""}
-      <div class="dim">${esc([r.benchmark_version, r.subset, r.location].filter(Boolean).join(" · "))}</div>
+      <div class="dim">${esc([r.benchmark_version, r.subset].filter(Boolean).join(" · "))}</div>
+      <div>${sourceLink(r)}</div>
       ${c.group ? `<div class="grp">same setting ≡ ${c.group}</div>` : ""}${unk}</th>`;
   }).join("");
   const body = sysRows.map(sr => `<tr>
@@ -479,7 +521,7 @@ function openSystem(id) {
     <div class="stages">${A.stages.map(st => { const t = (s.stages || {})[st]; return `<div class="${t ? "on" : ""}"><b>${STAGE_LABEL[st][0]}</b>${t ? esc(t) : "no contribution"}</div>`; }).join("")}</div>
     <h3>Reported scores, overall (${res.length}${nCat ? `; ${nCat} per-category scores in Results` : ""})</h3>
     ${res.length ? `<div class="scroll"><table class="mini"><thead><tr><th>Benchmark</th><th class="num">Score</th><th>Metric</th><th>Answer model</th><th>Judge</th><th>Reported in</th></tr></thead><tbody>
-      ${res.sort((a, b) => a.benchmark.localeCompare(b.benchmark) || b.score - a.score).map(r => `<tr><td>${esc(A.benchmarks.find(b => b.id === r.benchmark)?.name || r.benchmark)}${r.benchmark_version ? ` <span class="dim">${esc(r.benchmark_version)}</span>` : ""}${r.variant ? ` <span class="tag">${esc(r.variant)}</span>` : ""}</td><td class="num">${fmt(r.score)}<sup>${RUN_MARK[r.run_by] || "?"}</sup></td><td>${esc(r.metric)}</td><td>${esc(r.answer_model || "?")}</td><td>${esc(r.judge || (r.metric === "llm-judge" ? "?" : "–"))}</td><td>${esc(reporterShort(r.reporter))} <span class="dim">${esc(r.location || "")}</span></td></tr>`).join("")}
+      ${res.sort((a, b) => a.benchmark.localeCompare(b.benchmark) || b.score - a.score).map(r => `<tr><td>${esc(A.benchmarks.find(b => b.id === r.benchmark)?.name || r.benchmark)}${r.benchmark_version ? ` <span class="dim">${esc(r.benchmark_version)}</span>` : ""}${r.variant ? ` <span class="tag">${esc(r.variant)}</span>` : ""}</td><td class="num">${fmt(r.score)}<sup>${RUN_MARK[r.run_by] || "?"}</sup></td><td>${esc(r.metric)}</td><td>${esc(r.answer_model || "?")}</td><td>${esc(r.judge || (r.metric === "llm-judge" ? "?" : "–"))}</td><td>${esc(reporterShort(r.reporter))}<br>${sourceLink(r)}</td></tr>`).join("")}
     </tbody></table></div>` : `<p class="dim">No scores recorded.</p>`}
     ${s.notes ? `<h3>Notes</h3><div class="note">${esc(s.notes)}</div>` : ""}`;
   document.body.append(scrim, d);
