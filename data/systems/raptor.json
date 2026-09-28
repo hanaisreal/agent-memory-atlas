@@ -9,12 +9,40 @@
     "year": 2024,
     "code": "https://github.com/parthsarthi03/raptor"
   },
-  "axes": {
-    "unit": "summary node",
-    "text_kept_as": "rewritten",
-    "write_time": "recursive summary",
-    "organisation": "tree",
-    "selection": "dense over nodes (vector)"
+  "design": {
+    "construction": {
+      "unit": "100-token chunk (leaf) or cluster summary node",
+      "kept_as": "leaves verbatim; parents LLM summaries",
+      "processing": "SBERT embed, UMAP+GMM soft clustering (BIC), gpt-3.5-turbo summaries, recursively",
+      "trigger": "offline-batch",
+      "writer": "gpt-3.5-turbo (summaries); SBERT multi-qa-mpnet-base-cos-v1 (embeddings)"
+    },
+    "organization": {
+      "structure": "tree of recursive summaries",
+      "stores": "one tree per corpus",
+      "index": "SBERT embeddings of all nodes"
+    },
+    "management": {
+      "operations": "none",
+      "conflicts": "none",
+      "forgetting": "none",
+      "timing": "none"
+    },
+    "retrieval": {
+      "query": "query embedded with SBERT",
+      "candidates": "collapsed tree: all nodes of all layers (or layer-wise traversal)",
+      "selection": "cosine top-k",
+      "budget": "token budget (collapsed tree), top-k per layer (traversal)"
+    },
+    "use": {
+      "context": "concatenated retrieved node texts",
+      "reasoning": "single reader call"
+    },
+    "control": {
+      "construction": "fixed-rule",
+      "management": "none",
+      "retrieval": "fixed-rule"
+    }
   },
   "tags": {
     "fidelity": "verbatim+derived",
@@ -47,5 +75,5 @@
   },
   "summary": "Builds a tree of recursive cluster summaries over document chunks and retrieves across all abstraction levels.",
   "verified": false,
-  "notes": "AXES-CHECK: leaf nodes are the original 100-token chunks kept verbatim and are retrievable alongside summaries, so 'text kept as: rewritten' understates it (fidelity tag set to verbatim+derived). Evaluated on NarrativeQA, QASPER, QuALITY (document QA); no conversational-memory benchmark, so no results file was written. Code URL not read in the paper text (known official repo)."
+  "notes": "AXES-CHECK: leaf nodes are the original 100-token chunks kept verbatim and are retrievable alongside summaries, so 'text kept as: rewritten' understates it (fidelity tag set to verbatim+derived). Evaluated on NarrativeQA, QASPER, QuALITY (document QA); no conversational-memory benchmark, so no results file was written. Code URL not read in the paper text (known official repo).\nDESIGN: Sec 3 (overview, clustering, summarization, querying). Corrected: kept_as 'rewritten' -> leaves verbatim + summaries."
 }

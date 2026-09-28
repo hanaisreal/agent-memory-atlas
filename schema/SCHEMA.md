@@ -19,12 +19,40 @@ One file per memory system that is annotated in depth.
     "year": 2025,
     "code": "https://github.com/mem0ai/mem0"   // null if none
   },
-  "axes": {                           // the five-axis table, free text, short
-    "unit": "fact",
-    "text_kept_as": "extracted",
-    "write_time": "add/update/delete",
-    "organisation": "flat (+graph)",
-    "selection": "dense top-10 (vector)"
+  "design": {                        // grouped by pipeline stage; short phrases; null = the paper does not say
+    "construction": {                 // writing memory
+      "unit": "fact",                 // what one stored item is
+      "kept_as": "extracted",         // how faithful the stored text is to the conversation
+      "processing": "LLM extracts salient facts from each message pair plus a running summary",
+      "trigger": "every-exchange",    // vocab: when writing happens
+      "writer": "backbone LLM (GPT-4o-mini)"   // which model or component writes
+    },
+    "organization": {                 // how stored items relate
+      "structure": "flat (+ entity graph in Mem0^g)",
+      "stores": "one vector store (+ Neo4j graph)",   // tiers or typed stores
+      "index": "dense embeddings"
+    },
+    "management": {                   // changing memory after it is written
+      "operations": "ADD / UPDATE / DELETE / NOOP chosen per fact",
+      "conflicts": "LLM compares a new fact with the 10 most similar memories",
+      "forgetting": null,
+      "timing": "online"              // vocab
+    },
+    "retrieval": {                    // reading memory for a question
+      "query": "question used as is",
+      "candidates": "dense similarity search",
+      "selection": "top-k by similarity",
+      "budget": null
+    },
+    "use": {                          // answering with what was read
+      "context": "retrieved memories with timestamps, both speakers",
+      "reasoning": "single answer call"
+    },
+    "control": {                      // who decides, per stage (vocab)
+      "construction": "prompted-llm",
+      "management": "prompted-llm",
+      "retrieval": "fixed-rule"
+    }
   },
   "tags": {                           // controlled vocabularies (see below) — used for filtering
     "fidelity": "extracted",
@@ -51,6 +79,21 @@ One file per memory system that is annotated in depth.
 ```
 
 ### Controlled vocabularies
+
+Design fields with a fixed vocabulary:
+
+| Field | Allowed values |
+|---|---|
+| `construction.trigger` | `every-turn`, `every-exchange`, `session-end`, `buffer-full`, `agent-decides`, `offline-batch`, `other` |
+| `management.timing` | `online`, `offline`, `both`, `none` |
+| `control.*` | `none`, `fixed-rule`, `prompted-llm`, `agent-tool-calls`, `learned-rl`, `learned-sft`, `feedback-optimized` |
+
+`control` records who makes the decision at each stage: a fixed rule written by the designer, an LLM
+following a prompt, an agent choosing tool calls, a policy trained with RL or SFT, or a strategy that
+the system revises from task feedback. One value per stage, because systems often differ by stage
+(Mem0 writes with a prompted LLM but retrieves with a fixed rule).
+
+Filter tags:
 
 | Tag | Allowed values |
 |---|---|

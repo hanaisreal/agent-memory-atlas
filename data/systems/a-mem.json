@@ -9,12 +9,40 @@
     "year": 2025,
     "code": "https://github.com/WujiangXu/AgenticMemory"
   },
-  "axes": {
-    "unit": "note",
-    "text_kept_as": "partly rewritten",
-    "write_time": "keywords/tags/context, links",
-    "organisation": "linked notes",
-    "selection": "dense + links (vector)"
+  "design": {
+    "construction": {
+      "unit": "note (one interaction + LLM attributes)",
+      "kept_as": "original content kept; keywords/tags/context LLM-generated",
+      "processing": "LLM writes keywords, tags, contextual description; note embedded",
+      "trigger": null,
+      "writer": "backbone LLM (GPT-4o-mini, GPT-4o, Qwen2.5, Llama 3.2 ...)"
+    },
+    "organization": {
+      "structure": "linked notes (Zettelkasten 'boxes')",
+      "stores": "one note store",
+      "index": "all-minilm-l6-v2 embeddings of content + attributes"
+    },
+    "management": {
+      "operations": "link generation; memory evolution rewrites neighbours' context/keywords/tags",
+      "conflicts": "none (no contradiction handling described)",
+      "forgetting": null,
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "query text embedded as is",
+      "candidates": "cosine similarity over all notes, plus notes linked in same box",
+      "selection": "top-k (k=10 default; 10-50 per category, Table 8)",
+      "budget": "k notes"
+    },
+    "use": {
+      "context": "retrieved notes in the prompt",
+      "reasoning": "single answer call"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "prompted-llm",
+      "retrieval": "fixed-rule"
+    }
   },
   "tags": {
     "fidelity": "verbatim+derived",
@@ -49,5 +77,5 @@
   },
   "summary": "Agentic Zettelkasten memory: each interaction becomes an LLM-enriched note that is linked to related notes and can trigger rewriting ('evolution') of older notes' attributes.",
   "verified": false,
-  "notes": "AXES-CHECK: consistent with the seed taxonomy row; the original interaction content c_i is kept and only LLM-generated attributes are rewritten during evolution, hence fidelity tag verbatim+derived. Separate production code: https://github.com/WujiangXu/A-mem-sys."
+  "notes": "AXES-CHECK: consistent with the seed taxonomy row; the original interaction content c_i is kept and only LLM-generated attributes are rewritten during evolution, hence fidelity tag verbatim+derived. Separate production code: https://github.com/WujiangXu/A-mem-sys.\nDESIGN: Sec 3.1-3.4, Sec 4.2, App. A.5 (Table 8). Corrected: 'partly rewritten' clarified (content kept, attributes rewritten); links moved from processing to management.operations."
 }

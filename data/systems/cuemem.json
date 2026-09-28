@@ -9,12 +9,40 @@
     "year": 2026,
     "code": null
   },
-  "axes": {
-    "unit": "turn (retrieved via triple cues)",
-    "text_kept_as": "verbatim turns + extracted triple cues",
-    "write_time": "LLM triple extraction linked to source turn; temporal + cue-similarity edges",
-    "organisation": "turn graph",
-    "selection": "dense top-m cues -> source-turn anchors -> 1-hop graph expansion (vector)"
+  "design": {
+    "construction": {
+      "unit": "dialogue turn, reached via (subject, relation, object) triple cues",
+      "kept_as": "verbatim turns + extracted triple cues pointing to source turn",
+      "processing": "LLM extracts zero or more triples per turn; cues embedded; turn-graph edges",
+      "trigger": "every-turn",
+      "writer": "Llama-3.3-70B-Instruct (experiments); all-MiniLM-L6-v2 embeddings"
+    },
+    "organization": {
+      "structure": "turn graph",
+      "stores": "cue records, source-turn nodes, graph edges",
+      "index": "all-MiniLM-L6-v2 cue embeddings; temporal-window and cue-kNN semantic edges"
+    },
+    "management": {
+      "operations": "ADD cues per new turn; no UPDATE; DELETE via standard policies (proposed)",
+      "conflicts": "none stored; answer prompt prioritises most recent evidence",
+      "forgetting": "time-decay or LRU deletion suggested, not evaluated",
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "question embedded as is",
+      "candidates": "top-m cues by cosine similarity, mapped to source-turn anchors",
+      "selection": "anchors plus one-hop temporal/semantic neighbours, chronological order",
+      "budget": "about 2K tokens of reconstructed context; m, w, k values not retrievable"
+    },
+    "use": {
+      "context": "reconstructed original turns in chronological order",
+      "reasoning": "single answer call with recency-priority instruction"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "fixed-rule",
+      "retrieval": "fixed-rule"
+    }
   },
   "tags": {
     "fidelity": "verbatim+derived",
@@ -48,5 +76,5 @@
   },
   "summary": "Uses extracted triples only as retrieval cues that point back to source turns, then reconstructs verbatim dialogue context by expanding over a temporal/semantic turn graph.",
   "verified": false,
-  "notes": "AXES-CHECK: the seed taxonomy has no row for CueMem; the axes above were written by the annotator from the paper. No code URL found in the paper. The paper refers to an Appendix (extra LLM/embedding results, dataset statistics) that was not present in the HTML/PDF text retrievable here."
+  "notes": "AXES-CHECK: the seed taxonomy has no row for CueMem; the axes above were written by the annotator from the paper. No code URL found in the paper. The paper refers to an Appendix (extra LLM/embedding results, dataset statistics) that was not present in the HTML/PDF text retrievable here.\nDESIGN: Sec 3, Sec 4.1-4.4, Sec 5.1, Sec 5.4 (appendix not retrievable)."
 }

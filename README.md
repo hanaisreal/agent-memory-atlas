@@ -14,7 +14,7 @@ and which questions were kept, which most papers report only partly.
 
 | View | What it shows |
 |---|---|
-| **Systems** | Annotated systems on five shared axes (unit, text kept as, write-time processing, organisation, selection), filterable by controlled tags |
+| **Systems** | Annotated systems described stage by stage (construction, organization, management, retrieval, use) plus who decides at each stage, filterable by controlled tags; column groups can be hidden |
 | **Pipeline** | The same systems by pipeline stage: ingestion, construction, organization, update, retrieval, answer, learning |
 | **Results** | Every score, one column per evaluation setting; spread of each system across settings; head-to-head comparison restricted to shared settings |
 | **Papers** | 684 entries merged from four community lists, keeping each list's own axis as a filter |
@@ -29,7 +29,7 @@ Paper index sources (pinned in `scripts/import_lists.py`):
 ## Layout
 
 ```
-data/systems/<id>.json        one annotated system (axes, tags, pipeline stages)
+data/systems/<id>.json        one annotated system (grouped design fields, tags, pipeline stages)
 data/results/<reporter>.json  every score from one paper, with its settings and table reference
 data/benchmarks.json          benchmark registry with versions and pitfalls
 data/extra_systems.json       baselines that appear in results but are not annotated yet
@@ -40,6 +40,7 @@ scripts/import_lists.py       regenerate data/papers.json from the upstream list
 scripts/build.py              validate data/ and write site/atlas.json
 scripts/capture_tables.py     crop the cited tables out of paper PDFs into site/tables/
 site/                         static site (index.html, app.js, style.css, atlas.json)
+site/tables/, site/figures/   table and system images, captured by hand or by script
 ```
 
 ## Run it
@@ -54,23 +55,35 @@ The site is plain HTML/JS with no build step, so `site/` can be served from GitH
 
 ## Checking a number against its source
 
-Every table reference in the site ("Table 2 ↗") links to the paper, opening the arXiv PDF at the right
+Every table reference in the site ("Table 2 ↗") links to the paper, opening the arXiv PDF at the cited
 page when it is known. Hovering or focusing the link shows an image of the table as printed in the
 paper, so any score can be checked without leaving the page.
 
-The images are cropped from the PDFs by `scripts/capture_tables.py`. PDFs are not committed; put them in
-any folder (file names must contain the arXiv id) and run:
+### Adding images by hand
+
+Drop screenshots into these folders; `scripts/build.py` picks them up by file name, no other edits needed.
+
+| What | Path | Example |
+|---|---|---|
+| A results table a paper reports | `site/tables/<reporter-id>/table-<n>.png` | `site/tables/mem0-2504.19413/table-1.png` |
+| A system's architecture figure | `site/figures/<system-id>.png` | `site/figures/mem0.png` |
+
+`<reporter-id>` is the results file name without `.json` (see `data/results/`); `<n>` is the table number
+used in the rows' `location`; `<system-id>` is the system file name in `data/systems/`. PNG, JPG, WebP
+and SVG all work. Then run `python3 scripts/build.py` and commit the images with `site/atlas.json`.
+System figures show at the top of the system's panel and as a "figure ↗" link in the Systems table.
+
+### Capturing tables automatically
+
+`scripts/capture_tables.py` crops cited tables out of PDFs (not committed; file names must contain the
+arXiv id). It follows each table's horizontal rules from its caption and falls back to the whole page
+when it cannot find them, so check the crops before committing.
 
 ```bash
 pip install pymupdf
 python3 scripts/capture_tables.py --pdf-dir ~/papers
 python3 scripts/build.py
 ```
-
-The script finds each cited table's caption, follows the table's horizontal rules to its edges, and
-falls back to the whole page when it cannot, so an image never shows the wrong table silently.
-Tables captured so far: EverMemOS, H-Mem and CueMem. The other papers link to the PDF without a preview
-until their PDFs are added.
 
 ## Adding a system or a paper's results
 

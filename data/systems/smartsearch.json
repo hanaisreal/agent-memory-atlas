@@ -9,12 +9,40 @@
     "year": 2026,
     "code": null
   },
-  "axes": {
-    "unit": "turn",
-    "text_kept_as": "verbatim",
-    "write_time": "none",
-    "organisation": "flat",
-    "selection": "NER-weighted grep + cross-encoder + ColBERT"
+  "design": {
+    "construction": {
+      "unit": "passage (raw conversation turn)",
+      "kept_as": "verbatim",
+      "processing": "none; raw history stored unstructured",
+      "trigger": null,
+      "writer": "none (no LLM at ingestion)"
+    },
+    "organization": {
+      "structure": "flat",
+      "stores": "raw conversation history",
+      "index": "none (index-free) or ColBERT index (indexed variant)"
+    },
+    "management": {
+      "operations": "none",
+      "conflicts": "none",
+      "forgetting": "none",
+      "timing": "none"
+    },
+    "retrieval": {
+      "query": "SpaCy NER/POS-weighted terms; entity discovery and PRF expansion",
+      "candidates": "exact substring grep; ColBERT dense fallback for ~1% of queries",
+      "selection": "mxbai-rerank-large-v1 CrossEncoder + ColBERT, weighted RRF (0.7/0.3)",
+      "budget": "2,000-word budget or score-adaptive alpha*max CE (top-K 60)"
+    },
+    "use": {
+      "context": "ranked raw passages within budget (~3.1K tokens on LoCoMo)",
+      "reasoning": "answer LLM call; answer prompt varies by protocol"
+    },
+    "control": {
+      "construction": "none",
+      "management": "none",
+      "retrieval": "fixed-rule"
+    }
   },
   "tags": {
     "fidelity": "verbatim",
@@ -47,5 +75,5 @@
   },
   "summary": "Fully deterministic retrieve-then-rank pipeline over raw conversation text (NER-weighted grep + CrossEncoder/ColBERT RRF + score-adaptive truncation), arguing ranking, not ingestion-time structure, is the bottleneck.",
   "verified": false,
-  "notes": "Authors: Derehag, Calva, Ghiurau (Midbrain). No code URL found in the paper text. Index-free variant drops ColBERT entirely and relies on grep + query expansion + single CrossEncoder. Paper explicitly warns LoCoMo numbers under the EverMemOS protocol and the MemOS protocol are not comparable (full-context swings 77.1 -> 91.2). AXES-CHECK: seed taxonomy row matches; note ColBERT is used as dense-retrieval fallback and as second ranker (indexed variant only)."
+  "notes": "Authors: Derehag, Calva, Ghiurau (Midbrain). No code URL found in the paper text. Index-free variant drops ColBERT entirely and relies on grep + query expansion + single CrossEncoder. Paper explicitly warns LoCoMo numbers under the EverMemOS protocol and the MemOS protocol are not comparable (full-context swings 77.1 -> 91.2). AXES-CHECK: seed taxonomy row matches; note ColBERT is used as dense-retrieval fallback and as second ranker (indexed variant only).\nDESIGN: Sec 3.1-3.6, 4.4, Fig. 1. trigger null: paper does not describe when history is appended."
 }

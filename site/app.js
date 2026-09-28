@@ -14,10 +14,29 @@ const TAG_LABEL = {
   fidelity: "Text kept as", structure: "Organisation", write_time: "Write-time processing",
   selection: "Selection", memory_type: "Memory type", learning: "Learning", domain: "Domain",
 };
-const AXIS_LABEL = {
-  unit: "Unit", text_kept_as: "Text kept as", write_time: "Write-time processing",
-  organisation: "Organisation", selection: "Selection",
-};
+/* The grouped design description, by pipeline stage. Order here is column order in the Systems table. */
+const DESIGN = [
+  ["construction", "Construction", "writing memory", [["unit", "Memory unit"], ["kept_as", "Text kept as"], ["processing", "Write-time processing"], ["trigger", "Write trigger"], ["writer", "Writer"]]],
+  ["organization", "Organization", "how items relate", [["structure", "Structure"], ["stores", "Stores / tiers"], ["index", "Index"]]],
+  ["management", "Management", "changing memory", [["operations", "Operations"], ["conflicts", "Conflict handling"], ["forgetting", "Forgetting"], ["timing", "Timing"]]],
+  ["retrieval", "Retrieval", "reading memory", [["query", "Query processing"], ["candidates", "Candidates"], ["selection", "Selection"], ["budget", "Budget"]]],
+  ["use", "Use", "answering with it", [["context", "Prompt context"], ["reasoning", "Reasoning"]]],
+  ["control", "Control", "who decides", [["construction", "Construction"], ["management", "Management"], ["retrieval", "Retrieval"]]],
+];
+const VOCAB_FIELDS = new Set(["construction.trigger", "management.timing", "control.construction", "control.management", "control.retrieval"]);
+let shownGroups;
+try { shownGroups = new Set(JSON.parse(localStorage.getItem("atlas.groups") || "null") || DESIGN.map(g => g[0])); }
+catch (_) { shownGroups = new Set(DESIGN.map(g => g[0])); }
+function designCell(s, g, f, first) {
+  const v = s.design?.[g]?.[f];
+  const cls = first ? " gstart" : "";
+  if (v == null || v === "") return `<td class="nd${cls}" title="Not stated in the paper">–</td>`;
+  if (VOCAB_FIELDS.has(`${g}.${f}`)) return `<td class="${cls}"><span class="tag${v === "none" ? " dim" : ""}">${esc(v)}</span></td>`;
+  return `<td class="${cls}">${esc(v)}</td>`;
+}
+function figureLink(s) {
+  return s.figure ? ` <a class="src" href="${esc(s.figure)}" target="_blank" rel="noopener" data-img="${esc(s.figure)}" data-label="${esc(s.name)} system figure">figure<span aria-hidden="true"> ↗</span></a>` : "";
+}
 const RUN_MARK = { self: "s", rerun: "r", copied: "c" };
 const RUN_TEXT = { self: "run by the system's authors", rerun: "re-run by the reporting paper", copied: "copied from another paper" };
 const PAPER_FACETS = [
@@ -108,7 +127,7 @@ function filteredSystems(ignoreKey) {
     }
     if (S.view === "pipeline" && S.stage && !(s.stages || {})[S.stage]) return false;
     if (q) {
-      const hay = [s.name, s.summary, ...Object.values(s.axes || {}), ...Object.values(s.stages || {})].join(" ").toLowerCase();
+      const hay = [s.name, s.summary, ...Object.values(s.design || {}).flatMap(g => Object.values(g || {})), ...Object.values(s.stages || {})].join(" ").toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -150,26 +169,38 @@ function resultCount(id) { return A.results.filter(r => r.system === id).length;
 /* ---------------- Systems ---------------- */
 function viewSystems(main) {
   const list = filteredSystems();
+  const groups = DESIGN.filter(g => shownGroups.has(g[0]));
+  const nCols = 3 + groups.reduce((n, g) => n + g[3].length, 0);
   const rows = list.map(s => `
     <tr class="click" data-sys="${esc(s.id)}" tabindex="0">
-      <td class="name">${esc(s.name)}<small>${esc(venueYear(s.paper))}</small></td>
-      ${Object.keys(AXIS_LABEL).map(a => `<td>${esc(s.axes?.[a] || "")}</td>`).join("")}
+      <td class="name sticky">${esc(s.name)}<small>${esc(venueYear(s.paper))}${figureLink(s)}</small></td>
+      ${groups.map(([g, , , fields]) => fields.map(([f], i) => designCell(s, g, f, i === 0)).join("")).join("")}
       <td class="num">${resultCount(s.id) || '<span class="dim">–</span>'}</td>
       <td>${s.verified ? '<span class="flag ok">checked</span>' : '<span class="flag warn">draft</span>'}</td>
     </tr>`).join("");
   main.innerHTML = `
-    <p class="lede">Each memory system described on the <b>same five axes</b>: what one stored unit is, how faithfully its text is kept, what happens at write time, how units are organised, and how the answering step selects them. Use the filters to slice by any axis. Click a system for its pipeline stages and every score reported for it.</p>
+    <p class="lede">Each memory system described <b>stage by stage</b>: how memory is written, organised, changed, read and used, and <b>who makes the decision</b> at each stage (a fixed rule, a prompted LLM, an agent's tool calls, a trained policy, or feedback). A dash means the paper does not say. Use the filters to slice by any tag, and hide groups you don't need.</p>
     <div class="cols">${systemRail()}
       <section>
         <div class="meta"><span>${list.length} of ${A.systems.length} systems</span><span>“draft” = extracted from the paper, not yet checked by a person</span></div>
-        <div class="scroll"><table>
-          <thead><tr><th>System</th>${Object.values(AXIS_LABEL).map(l => `<th>${l}</th>`).join("")}<th class="num">Scores</th><th>Status</th></tr></thead>
-          <tbody>${rows || `<tr><td colspan="8" class="empty-state">No system matches these filters.</td></tr>`}</tbody>
+        <div class="groupbar" role="group" aria-label="Column groups">${DESIGN.map(([g, label]) => `<button class="chip" data-group="${g}" aria-pressed="${shownGroups.has(g)}">${label}</button>`).join("")}</div>
+        <div class="scroll"><table class="design">
+          <thead>
+            <tr><th rowspan="2" class="sticky">System</th>${groups.map(([g, label, sub, fields]) => `<th colspan="${fields.length}" class="grp g-${g}">${label}<span>${sub}</span></th>`).join("")}<th rowspan="2" class="num">Scores</th><th rowspan="2">Status</th></tr>
+            <tr>${groups.map(([g, , , fields]) => fields.map(([, l], i) => `<th class="${i === 0 ? "gstart" : ""}">${l}</th>`).join("")).join("")}</tr>
+          </thead>
+          <tbody>${rows || `<tr><td colspan="${nCols}" class="empty-state">No system matches these filters.</td></tr>`}</tbody>
         </table></div>
       </section>
     </div>`;
   bindSystemRail(main);
   bindRowOpen(main);
+  main.querySelectorAll("[data-group]").forEach(b => b.addEventListener("click", () => {
+    const g = b.dataset.group;
+    if (shownGroups.has(g)) { if (shownGroups.size > 1) shownGroups.delete(g); } else shownGroups.add(g);
+    try { localStorage.setItem("atlas.groups", JSON.stringify([...shownGroups])); } catch (_) { /* storage blocked */ }
+    render();
+  }));
 }
 
 function bindRowOpen(main) {
@@ -235,7 +266,7 @@ function showTip(a) {
   tipEl.setAttribute("role", "tooltip");
   const img = a.dataset.img;
   tipEl.innerHTML = img
-    ? `<img src="${esc(img)}" alt="${esc(a.dataset.label)} as printed in the paper"><div class="tipcap">${esc(a.dataset.label)} · page ${esc(a.dataset.page)} of the PDF. Click to open the paper at that page.</div>`
+    ? `<img src="${esc(img)}" alt="${esc(a.dataset.label)} as printed in the paper"><div class="tipcap">${esc(a.dataset.label)}${a.dataset.page ? ` · page ${esc(a.dataset.page)} of the PDF. Click to open the paper at that page.` : ". Click to open the full image."}</div>`
     : `<div class="tipcap">${esc(a.dataset.label)}. No image of this table has been captured yet. Click to open the paper.</div>`;
   document.body.append(tipEl);
   const place = () => {
@@ -513,8 +544,9 @@ function openSystem(id) {
     <h2>${esc(s.name)}</h2>
     <div class="sub">${p.title ? `${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.title)}</a>` : esc(p.title)}` : "Generic baseline"}${venueYear(p) ? ` · ${esc(venueYear(p))}` : ""}${p.code ? ` · <a href="${esc(p.code)}" target="_blank" rel="noopener">code</a>` : ""}</div>
     ${s.summary ? `<p class="summary">${esc(s.summary)}</p>` : ""}
-    <h3>Five axes</h3>
-    <dl class="kv">${Object.entries(AXIS_LABEL).map(([k, l]) => `<dt>${l}</dt><dd>${esc(s.axes?.[k] || "–")}</dd>`).join("")}</dl>
+    ${s.figure ? `<a class="figure" href="${esc(s.figure)}" target="_blank" rel="noopener"><img src="${esc(s.figure)}" alt="${esc(s.name)} system figure from the paper"></a>` : ""}
+    ${DESIGN.map(([g, label, sub, fields]) => `<h3>${label} <span class="dim">· ${sub}</span></h3>
+    <dl class="kv">${fields.map(([f, l]) => { const v = s.design?.[g]?.[f]; return `<dt>${l}</dt><dd>${v == null || v === "" ? '<span class="dim">not stated</span>' : esc(v)}</dd>`; }).join("")}</dl>`).join("")}
     <h3>Tags</h3>
     <div>${Object.entries(s.tags || {}).flatMap(([k, v]) => (Array.isArray(v) ? v : [v]).map(x => `<span class="tag" title="${esc(TAG_LABEL[k] || k)}">${esc(x)}</span>`)).join("")}</div>
     <h3>Pipeline</h3>

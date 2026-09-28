@@ -9,12 +9,40 @@
     "year": 2026,
     "code": "https://github.com/buildingjoshbetter/TrueMemory"
   },
-  "axes": {
-    "unit": "event",
-    "text_kept_as": "verbatim",
-    "write_time": "consolidator kept alongside",
-    "organisation": "flat",
-    "selection": "BM25+dense RRF + cross-encoder"
+  "design": {
+    "construction": {
+      "unit": "event (one verbatim message row)",
+      "kept_as": "verbatim",
+      "processing": "write message row + FTS5 and 256-d vector rows; encoding gate disabled in benchmarks",
+      "trigger": "every-turn",
+      "writer": "L1 writer (no LLM); gate uses gzip novelty, salience, prediction error"
+    },
+    "organization": {
+      "structure": "flat event table plus derived side tables",
+      "stores": "single SQLite file: messages, summaries, timelines, entity profiles, surprise scores",
+      "index": "FTS5 BM25 + sqlite-vec 256-d dense (Qwen3-Embedding-0.6B or Model2Vec)"
+    },
+    "management": {
+      "operations": "L4 consolidator writes cluster summaries, contradiction records, timeline rows",
+      "conflicts": "contradiction records by entity/predicate; superseded-by timeline links",
+      "forgetting": null,
+      "timing": "offline"
+    },
+    "retrieval": {
+      "query": "question; HyDE expansion in Pro tier",
+      "candidates": "FTS5 BM25 top-k + dense top-k, weighted RRF (k=60)",
+      "selection": "temporal/engram/surprise reweighting, cross-encoder rerank of top 100",
+      "budget": "top-k=10 to answer model"
+    },
+    "use": {
+      "context": "top-10 reranked events",
+      "reasoning": "single gpt-4.1-mini answer call, max 200 tokens"
+    },
+    "control": {
+      "construction": "fixed-rule",
+      "management": null,
+      "retrieval": "fixed-rule"
+    }
   },
   "tags": {
     "fidelity": "verbatim+derived",
@@ -51,5 +79,5 @@
   },
   "summary": "Retrieval-centered memory over verbatim events in a single SQLite file (BM25+dense RRF, salience/engram reweighting, cross-encoder rerank), arguing extraction at ingestion is the wrong primitive.",
   "verified": false,
-  "notes": "Authors: Joshua Adler, Guy Zehavi (Sauron Labs). Three tiers: Edge (Model2Vec potion-base-8M + ms-marco-MiniLM-L-6-v2), Base (Qwen3-Embedding-0.6B@256d + gte-reranker-modernbert-base), Pro (= Base + HyDE query expansion). All scores use a semantic-match judge that the authors say is more lenient than strict-match; absolute numbers not comparable to strict-match baselines. AXES-CHECK: seed taxonomy row consistent; paper adds an ingestion gate (disabled in benchmarks), L3 salience/L0 speaker-prior reweighting and HyDE (Pro) at selection time."
+  "notes": "Authors: Joshua Adler, Guy Zehavi (Sauron Labs). Three tiers: Edge (Model2Vec potion-base-8M + ms-marco-MiniLM-L-6-v2), Base (Qwen3-Embedding-0.6B@256d + gte-reranker-modernbert-base), Pro (= Base + HyDE query expansion). All scores use a semantic-match judge that the authors say is more lenient than strict-match; absolute numbers not comparable to strict-match baselines. AXES-CHECK: seed taxonomy row consistent; paper adds an ingestion gate (disabled in benchmarks), L3 salience/L0 speaker-prior reweighting and HyDE (Pro) at selection time.\nDESIGN: Sec 4.1 (Stages 1-10), 5, 5.2, 6 (Table 1). forgetting null: no deletion described; control.management null: consolidator mechanism (LLM or rule) not stated."
 }

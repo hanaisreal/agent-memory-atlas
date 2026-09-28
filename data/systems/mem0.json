@@ -9,12 +9,40 @@
     "year": 2025,
     "code": "https://github.com/mem0ai/mem0"
   },
-  "axes": {
-    "unit": "fact",
-    "text_kept_as": "extracted",
-    "write_time": "add/update/delete",
-    "organisation": "flat (+graph)",
-    "selection": "dense top-10 (vector)"
+  "design": {
+    "construction": {
+      "unit": "fact (Mem0^g: entity nodes + relation triplets)",
+      "kept_as": "extracted",
+      "processing": "LLM extracts salient facts from message pair, summary, last 10 messages",
+      "trigger": "every-exchange",
+      "writer": "GPT-4o-mini"
+    },
+    "organization": {
+      "structure": "flat (+ directed labeled entity graph in Mem0^g)",
+      "stores": "vector database (+ Neo4j graph for Mem0^g)",
+      "index": "dense embeddings (model not named)"
+    },
+    "management": {
+      "operations": "ADD / UPDATE / DELETE / NOOP chosen per candidate fact",
+      "conflicts": "LLM compares each new fact with the 10 most similar memories",
+      "forgetting": "DELETE of contradicted memories; Mem0^g marks relations invalid instead",
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": null,
+      "candidates": "Mem0^g: entity-anchored subgraph plus query-triplet similarity; base Mem0 unstated",
+      "selection": "Mem0^g: triplets above relevance threshold, ranked by similarity",
+      "budget": null
+    },
+    "use": {
+      "context": "timestamped memories of both speakers (+ graph relations for Mem0^g)",
+      "reasoning": "single answer call, step-by-step prompt"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "prompted-llm",
+      "retrieval": "fixed-rule"
+    }
   },
   "tags": {
     "fidelity": "extracted",
@@ -49,5 +77,5 @@
   },
   "summary": "Extracts salient facts from each message pair and lets an LLM consolidate them against similar existing memories with ADD/UPDATE/DELETE/NOOP; an optional graph variant stores entity-relation triplets.",
   "verified": false,
-  "notes": "AXES-CHECK: the paper does not state a top-10 retrieval size at query time; s=10 is the number of similar memories used in the update phase (Sec 2.1). Embedding model for Mem0's own store is not named. Graph variant (Mem0^g) is recorded as system mem0, variant 'graph'. Venue from IOS Press FAIA vol. 413 (ECAI 2025); paper points to https://mem0.ai/research for code."
+  "notes": "AXES-CHECK: the paper does not state a top-10 retrieval size at query time; s=10 is the number of similar memories used in the update phase (Sec 2.1). Embedding model for Mem0's own store is not named. Graph variant (Mem0^g) is recorded as system mem0, variant 'graph'. Venue from IOS Press FAIA vol. 413 (ECAI 2025); paper points to https://mem0.ai/research for code.\nDESIGN: Sec 2.1-2.2, Sec 3.3, Sec 4.5, App. A. Corrected: 'add/update/delete' moved from construction.processing to management.operations; retrieval 'dense top-10' dropped (s=10 is update-phase, query-time k not stated)."
 }

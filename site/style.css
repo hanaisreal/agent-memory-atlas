@@ -240,3 +240,20 @@ a.src:hover, a.src:focus-visible { text-decoration-style: solid; }
 }
 .tip img { display: block; max-width: 100%; max-height: 60vh; width: auto; height: auto; background: #fff; border-radius: 4px; }
 .tipcap { font-size: 12px; color: var(--muted); padding: 6px 2px 0; max-width: 60ch; }
+
+/* grouped design table */
+.groupbar { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+table.design { font-size: 13px; }
+table.design td { min-width: 130px; max-width: 220px; }
+table.design td.name { min-width: 150px; }
+table.design td.nd { color: var(--muted); text-align: center; }
+table.design th.grp { text-align: left; border-left: 2px solid var(--rule-strong); font: 600 12px var(--f-display); letter-spacing: 0; text-transform: none; color: var(--ink); }
+table.design th.grp span { font: 400 11px var(--f-body); color: var(--muted); margin-left: 6px; }
+table.design thead tr:first-child th { top: 0; }
+table.design thead tr:nth-child(2) th { top: 31px; }
+table.design .gstart { border-left: 2px solid var(--rule-strong); }
+.sticky { position: sticky; left: 0; z-index: 2; background: var(--surface); box-shadow: 1px 0 0 var(--rule); }
+thead .sticky { background: var(--sunk); z-index: 3; }
+tbody tr.click:hover td.sticky { background: var(--accent-soft); }
+.drawer .figure { display: block; margin: 4px 0 8px; }
+.drawer .figure img { width: 100%; height: auto; border: 1px solid var(--rule); border-radius: 6px; background: #fff; }

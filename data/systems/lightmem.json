@@ -9,12 +9,40 @@
     "year": 2026,
     "code": "https://github.com/zjunlp/LightMem"
   },
-  "axes": {
-    "unit": "STM/LTM entry",
-    "text_kept_as": "compressed",
-    "write_time": "LLMLingua-2 compression + topic segmentation; LLM writes entries; offline LTM update",
-    "organisation": "sensory -> STM -> LTM (flat)",
-    "selection": "dense top-k (vector)"
+  "design": {
+    "construction": {
+      "unit": "entry {topic, summary embedding, user turn, model turn}",
+      "kept_as": "LLMLingua-2-compressed turns + LLM topic summary",
+      "processing": "LLMLingua-2 token compression; attention+similarity topic segmentation; LLM summarizes each topic group",
+      "trigger": "buffer-full",
+      "writer": "backbone LLM (GPT-4o-mini / Qwen3-30B-A3B / GLM-4.6); LLMLingua-2 compresses"
+    },
+    "organization": {
+      "structure": "flat LTM; sensory and STM are transient buffers",
+      "stores": "one LTM store (512-token sensory buffer, th-token STM buffer before it)",
+      "index": "all-MiniLM-L6-v2 embeddings of summaries"
+    },
+    "management": {
+      "operations": "test-time soft insert only; offline parallel LLM update (add/delete/update/merge)",
+      "conflicts": "each entry's queue: top-k similar entries with later timestamps may update it",
+      "forgetting": null,
+      "timing": "offline"
+    },
+    "retrieval": {
+      "query": "user query as is",
+      "candidates": "cosine similarity over all LTM entry embeddings",
+      "selection": "top-k; retriever and k shared with baselines (k value not stated)",
+      "budget": null
+    },
+    "use": {
+      "context": "retrieved entries appended to the query",
+      "reasoning": "single answer call"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "prompted-llm",
+      "retrieval": "fixed-rule"
+    }
   },
   "tags": {
     "fidelity": "compressed",
@@ -50,5 +78,5 @@
   },
   "summary": "Atkinson-Shiffrin-inspired pipeline: token-level pre-compression and topic segmentation (sensory), topic-batched summarization (STM), and offline parallel 'sleep-time' LTM updates, cutting memory-construction tokens and API calls by 1-2 orders of magnitude.",
   "verified": false,
-  "notes": "AXES CORRECTED from the paper; earlier taxonomy row was: MTM entry | compressed | SLM write, offline LTM graph | STM/MTM/LTM | vector 2K -> SLM filter K. AXES-CHECK: the paper disagrees with the seed taxonomy row in several places. (1) Stages are sensory memory -> STM -> LTM; there is no 'MTM'. (2) Entries are written by the backbone LLM (GPT-4o-mini / Qwen3-30B-A3B / GLM-4.6); the small model (LLMLingua-2) only compresses tokens and gives attention for topic segmentation, it does not write entries. (3) LTM is a flat store of entries with an offline parallel update; no graph (a KG is listed only as future work). (4) Retrieval is plain cosine top-k with all-MiniLM-L6-v2; the paper describes no '2K candidates -> SLM filter K' stage (that may come from a later code release; not verified). VENUE: the seed taxonomy listed an ACL version, but LightMem was accepted at ICLR 2026 (OpenReview dyJ0GWpjJB, ICLR 2026 poster; GitHub README). No ACL version found; the same group's StructMem was accepted at ACL 2026, and EverMemOS is ACL 2026 - possibly the source of the mix-up. Numbers taken from the latest arXiv HTML (which adds LoCoMo and GLM-4.6; the v1 abstract covered only LongMemEval)."
+  "notes": "AXES CORRECTED from the paper; earlier taxonomy row was: MTM entry | compressed | SLM write, offline LTM graph | STM/MTM/LTM | vector 2K -> SLM filter K. AXES-CHECK: the paper disagrees with the seed taxonomy row in several places. (1) Stages are sensory memory -> STM -> LTM; there is no 'MTM'. (2) Entries are written by the backbone LLM (GPT-4o-mini / Qwen3-30B-A3B / GLM-4.6); the small model (LLMLingua-2) only compresses tokens and gives attention for topic segmentation, it does not write entries. (3) LTM is a flat store of entries with an offline parallel update; no graph (a KG is listed only as future work). (4) Retrieval is plain cosine top-k with all-MiniLM-L6-v2; the paper describes no '2K candidates -> SLM filter K' stage (that may come from a later code release; not verified). VENUE: the seed taxonomy listed an ACL version, but LightMem was accepted at ICLR 2026 (OpenReview dyJ0GWpjJB, ICLR 2026 poster; GitHub README). No ACL version found; the same group's StructMem was accepted at ACL 2026, and EverMemOS is ACL 2026 - possibly the source of the mix-up. Numbers taken from the latest arXiv HTML (which adds LoCoMo and GLM-4.6; the v1 abstract covered only LongMemEval).\nDESIGN: Sec 3.1-3.3, 5.1, App. A.1 (Tables 4-5), C.1, D. Corrected prefill: 'offline LTM update' moved from construction.processing to management; structure clarified as flat LTM (sensory/STM are buffers, no MTM, no graph); unit made concrete. Nulls: forgetting (no deletion policy beyond LLM update ops), retrieval budget (number of retrieved entries not stated)."
 }

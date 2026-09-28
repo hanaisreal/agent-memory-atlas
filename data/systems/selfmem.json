@@ -9,12 +9,40 @@
     "year": 2026,
     "code": null
   },
-  "axes": {
-    "unit": "transcript + notes",
-    "text_kept_as": "verbatim + agent notes",
-    "write_time": "agent-chosen",
-    "organisation": "free",
-    "selection": "agent tool calls"
+  "design": {
+    "construction": {
+      "unit": "agent-written workspace items over an immutable raw transcript",
+      "kept_as": "raw transcript verbatim; workspace agent-written",
+      "processing": "agent reads transcript via SQL, writes, reviews and revises memory operations",
+      "trigger": "offline-batch",
+      "writer": "memory agent (GPT-5.4-nano) via tool calls"
+    },
+    "organization": {
+      "structure": "free-form workspace; structure chosen by the agent",
+      "stores": "read-only SQLite turns table + memory workspace",
+      "index": "SQLite turns table queried by read-only SQL"
+    },
+    "management": {
+      "operations": "add, replace, merge, archive, delete, pin, reorganize (Table 2)",
+      "conflicts": "review tools flag contradictions/stale facts; agent revises",
+      "forgetting": "agent archives stale items or deletes via write tools",
+      "timing": "offline"
+    },
+    "retrieval": {
+      "query": null,
+      "candidates": "relevant transcript turns/snippets; zero embedding requests reported",
+      "selection": "fixed answer-time retrieval guided by the workspace (App. B)",
+      "budget": null
+    },
+    "use": {
+      "context": "workspace JSON + last five Q/A + top retrieved chunks",
+      "reasoning": "single answer call; retrieved evidence overrides memory"
+    },
+    "control": {
+      "construction": "agent-tool-calls",
+      "management": "agent-tool-calls",
+      "retrieval": "fixed-rule"
+    }
   },
   "tags": {
     "fidelity": "verbatim+derived",
@@ -48,5 +76,5 @@
   },
   "summary": "Keeps the raw transcript immutable and lets an LLM agent decide, via memory tools and feedback diagnostics, what to write, revise and later retrieve, optionally refining its own memory strategy from aggregate feedback.",
   "verified": false,
-  "notes": "Authors: Shu Yang, Junchao Wu, Derek F. Wong, Di Wang (KAUST PRADA Lab; University of Macau). An OpenReview forum entry exists (id fXHmKW9H8r) but no acceptance venue was confirmed. No code URL found. Only benchmark is BEAM (100K/500K/1M); no LoCoMo/LongMemEval results. AXES-CHECK: seed taxonomy row consistent with the paper."
+  "notes": "Authors: Shu Yang, Junchao Wu, Derek F. Wong, Di Wang (KAUST PRADA Lab; University of Macau). An OpenReview forum entry exists (id fXHmKW9H8r) but no acceptance venue was confirmed. No code URL found. Only benchmark is BEAM (100K/500K/1M); no LoCoMo/LongMemEval results. AXES-CHECK: seed taxonomy row consistent with the paper.\nDESIGN: Sec 3.3-3.7, 4.1, App. A Table 2, App. B, App. C Prompts 2-3. Table 2 describes SelfMem as conditionally retrieving, but App. B says answer-time retrieval is fixed; control.retrieval follows App. B. Optional strategy refinement from aggregate feedback (Sec 5) revises the construction policy. query/budget null: not specified."
 }

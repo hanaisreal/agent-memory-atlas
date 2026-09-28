@@ -2,12 +2,40 @@
   "id": "full-context",
   "name": "Full context",
   "paper": null,
-  "axes": {
-    "unit": "transcript",
-    "text_kept_as": "verbatim",
-    "write_time": "none",
-    "organisation": "none",
-    "selection": "none"
+  "design": {
+    "construction": {
+      "unit": "whole transcript",
+      "kept_as": "verbatim",
+      "processing": "none",
+      "trigger": "every-turn",
+      "writer": "none"
+    },
+    "organization": {
+      "structure": "none",
+      "stores": "context window only",
+      "index": "none"
+    },
+    "management": {
+      "operations": "none",
+      "conflicts": "none",
+      "forgetting": "none (truncation depends on paper configuration)",
+      "timing": "none"
+    },
+    "retrieval": {
+      "query": "none",
+      "candidates": "entire history",
+      "selection": "none",
+      "budget": null
+    },
+    "use": {
+      "context": "full transcript + question",
+      "reasoning": null
+    },
+    "control": {
+      "construction": "none",
+      "management": "none",
+      "retrieval": "none"
+    }
   },
   "tags": {
     "fidelity": "verbatim",
@@ -39,5 +67,5 @@
   },
   "summary": "Generic baseline, not a system: the whole conversation history is put in the model's context window with no memory mechanism.",
   "verified": false,
-  "notes": "Generic baseline used across papers. Instances differ: Mem0 (2504.19413) passes ~26k tokens per LoCoMo conversation; A-Mem's and Mem0's 'LoCoMo' baseline (Maharana et al. 2024) is also recorded here with variant 'LoCoMo baseline' because A-Mem App. A.1 describes it as the complete preceding conversation in the prompt. Model and truncation differ by paper - see result notes."
+  "notes": "Generic baseline used across papers. Instances differ: Mem0 (2504.19413) passes ~26k tokens per LoCoMo conversation; A-Mem's and Mem0's 'LoCoMo' baseline (Maharana et al. 2024) is also recorded here with variant 'LoCoMo baseline' because A-Mem App. A.1 describes it as the complete preceding conversation in the prompt. Model and truncation differ by paper - see result notes.\nDESIGN: generic baseline; Mem0 Sec 3.3 and A-Mem App. A.1 descriptions. Budget/reasoning depend on the reporting paper."
 }

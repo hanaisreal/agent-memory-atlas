@@ -9,12 +9,40 @@
     "year": 2024,
     "code": "https://read-agent.github.io"
   },
-  "axes": {
-    "unit": "page",
-    "text_kept_as": "verbatim + gist",
-    "write_time": "compressive gist 3.5–20x",
-    "organisation": "flat",
-    "selection": "model reads all gists (text)"
+  "design": {
+    "construction": {
+      "unit": "page (episode) + its gist",
+      "kept_as": "raw page kept + LLM gist ('shorten')",
+      "processing": "LLM chooses pause points (min/max words), then shortens each page into gist",
+      "trigger": "offline-batch",
+      "writer": "backbone LLM (PaLM 2-L; GPT-3.5 in App. B)"
+    },
+    "organization": {
+      "structure": "flat ordered list of page-tagged gists",
+      "stores": "gist memory + original pages",
+      "index": "page numbers (no vector index)"
+    },
+    "management": {
+      "operations": "none",
+      "conflicts": "none",
+      "forgetting": "none",
+      "timing": "none"
+    },
+    "retrieval": {
+      "query": "task/question as is",
+      "candidates": "all gists in context",
+      "selection": "LLM picks raw pages to look up (parallel -P or sequential -S)",
+      "budget": "max look-up pages per task (e.g. 1-2, up to 5-6)"
+    },
+    "use": {
+      "context": "gists with looked-up raw pages substituted in place",
+      "reasoning": "look-up call(s) then answer call"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "none",
+      "retrieval": "prompted-llm"
+    }
   },
   "tags": {
     "fidelity": "verbatim+derived",
@@ -48,5 +76,5 @@
   },
   "summary": "Prompting-only reading agent that paginates long text, keeps short gists of every page, and interactively looks up raw pages when answering.",
   "verified": false,
-  "notes": "AXES-CHECK: selection is not only reading gists - the model then retrieves raw pages (interactive look-up); '3.5-20x' in the paper is the effective context-length extension, not strictly a gist compression ratio. The paper evaluates on QuALITY, NarrativeQA, QMSum (long-document QA) and Mind2Web (web navigation) with PaLM 2-L (GPT-3.5 in App. B); no conversational-memory benchmark, so no results file was written. Code/prompts: project site read-agent.github.io."
+  "notes": "AXES-CHECK: selection is not only reading gists - the model then retrieves raw pages (interactive look-up); '3.5-20x' in the paper is the effective context-length extension, not strictly a gist compression ratio. The paper evaluates on QuALITY, NarrativeQA, QMSum (long-document QA) and Mind2Web (web navigation) with PaLM 2-L (GPT-3.5 in App. B); no conversational-memory benchmark, so no results file was written. Code/prompts: project site read-agent.github.io.\nDESIGN: Sec 3.1-3.4, Sec 4 intro. Corrected: selection is not only reading gists - LLM then retrieves raw pages; '3.5-20x' is effective context extension."
 }

@@ -2,12 +2,40 @@
   "id": "naive-rag",
   "name": "Naive RAG",
   "paper": null,
-  "axes": {
-    "unit": "turn",
-    "text_kept_as": "verbatim",
-    "write_time": "none",
-    "organisation": "flat",
-    "selection": "dense top-k (vector)"
+  "design": {
+    "construction": {
+      "unit": null,
+      "kept_as": "verbatim",
+      "processing": "chunking + dense embedding",
+      "trigger": null,
+      "writer": "none (embedding model only)"
+    },
+    "organization": {
+      "structure": "flat",
+      "stores": "one vector index",
+      "index": "dense embeddings (model varies by paper)"
+    },
+    "management": {
+      "operations": "none",
+      "conflicts": "none",
+      "forgetting": "none",
+      "timing": "none"
+    },
+    "retrieval": {
+      "query": "question as is",
+      "candidates": "dense similarity over chunks",
+      "selection": "top-k by similarity",
+      "budget": null
+    },
+    "use": {
+      "context": "retrieved raw chunks + question",
+      "reasoning": "single answer call"
+    },
+    "control": {
+      "construction": "fixed-rule",
+      "management": "none",
+      "retrieval": "fixed-rule"
+    }
   },
   "tags": {
     "fidelity": "verbatim",
@@ -39,5 +67,5 @@
   },
   "summary": "Generic baseline, not a system: raw history chunks are embedded and the top-k most similar chunks are retrieved for the answer.",
   "verified": false,
-  "notes": "Generic baseline used across papers; chunking differs by paper. Mem0 (2504.19413) uses fixed token chunks of 128-8192 tokens with k in {1,2} and 'text-embedding-small-3', recorded with variant 'k=..., chunk=...' - not per-turn units as in the seed taxonomy row."
+  "notes": "Generic baseline used across papers; chunking differs by paper. Mem0 (2504.19413) uses fixed token chunks of 128-8192 tokens with k in {1,2} and 'text-embedding-small-3', recorded with variant 'k=..., chunk=...' - not per-turn units as in the seed taxonomy row.\nDESIGN: generic baseline; Mem0 Sec 3.3 (RAG). Unit (turn vs 128-8192-token chunk), trigger and budget depend on the reporting paper."
 }

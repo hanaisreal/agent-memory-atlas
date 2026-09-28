@@ -9,12 +9,40 @@
     "year": 2026,
     "code": null
   },
-  "axes": {
-    "unit": "episode",
-    "text_kept_as": "original kept; layers extracted",
-    "write_time": "fact/preference/insight",
-    "organisation": "3 typed layers",
-    "selection": "query-conditioned, 3 agents (vector)"
+  "design": {
+    "construction": {
+      "unit": "atomic typed memory, linked to a variable-length episode",
+      "kept_as": "episode retained; atomic memories extracted",
+      "processing": "LLM decomposes each episode into factual, preference, insight memories (3 calls)",
+      "trigger": "other",
+      "writer": "LLM decomposer; Qwen3.5-4B SFT continuity classifier sets episode boundaries"
+    },
+    "organization": {
+      "structure": "three typed stores linked to source episodes",
+      "stores": "factual, preference, transferable-insight stores",
+      "index": null
+    },
+    "management": {
+      "operations": null,
+      "conflicts": null,
+      "forgetting": null,
+      "timing": null
+    },
+    "retrieval": {
+      "query": "A1 identifies information needs; A2 rewrites them into multiple queries",
+      "candidates": "A2 routes each query to chosen typed stores; merge and deduplicate",
+      "selection": "A3 selects task-relevant evidence into a user state",
+      "budget": "top-k=5 per retrieval"
+    },
+    "use": {
+      "context": "query-conditioned user state: chronological facts, preference evolution, insights",
+      "reasoning": "three sequential agents, then downstream response model"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": null,
+      "retrieval": "prompted-llm"
+    }
   },
   "tags": {
     "fidelity": "verbatim+derived",
@@ -50,5 +78,5 @@
   },
   "summary": "Semantic-continuity episodes decomposed into typed fact/preference/insight memories, with a three-agent query-conditioned pipeline that infers a temporally valid user state for personalization.",
   "verified": false,
-  "notes": "Authors: Heng Wang, Yifei Li, Lingling Zhang, Pengyu Li, Xinyu Che, Xinyu Zhang, Zesheng Yang. 9 pages; no code link found. Evaluated on PersonaMem (32K/128K/1M) and KnowU-Bench (mobile-agent personalization; not recorded here as it is a GUI-agent benchmark with SR/Score metrics). AXES-CHECK: seed taxonomy row consistent; the main text does not say the per-store retrieval is vector/dense (retrieval method details deferred to an appendix not available in the fetched text), so '(vector)' is unverified."
+  "notes": "Authors: Heng Wang, Yifei Li, Lingling Zhang, Pengyu Li, Xinyu Che, Xinyu Zhang, Zesheng Yang. 9 pages; no code link found. Evaluated on PersonaMem (32K/128K/1M) and KnowU-Bench (mobile-agent personalization; not recorded here as it is a GUI-agent benchmark with SR/Score metrics). AXES-CHECK: seed taxonomy row consistent; the main text does not say the per-store retrieval is vector/dense (retrieval method details deferred to an appendix not available in the fetched text), so '(vector)' is unverified.\nDESIGN: Sec 3.2-3.4, 4.1. trigger 'other' = when the classifier closes an episode. index and all management fields null: main text does not describe the retrieval index or any update/forgetting; appendix not available."
 }

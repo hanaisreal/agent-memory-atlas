@@ -9,12 +9,40 @@
     "year": 2026,
     "code": "https://github.com/mindscale-noah/MindMemOS"
   },
-  "axes": {
-    "unit": "schema entry",
-    "text_kept_as": "rewritten",
-    "write_time": "schema learning, dreaming",
-    "organisation": "typed schema",
-    "selection": "LLM planner over BM25+dense RRF + graph traversal"
+  "design": {
+    "construction": {
+      "unit": "entity-property-time record (MindSchema); flat typed record (MindVanilla)",
+      "kept_as": "extracted, with source references",
+      "processing": "LLM segments episodes, extracts schema entities/properties, fuses entities",
+      "trigger": "other",
+      "writer": "LLM extractor guided by scenario schema (schema evolved by MindMemEvolve)"
+    },
+    "organization": {
+      "structure": "3D entity-property-time graph with relation and timeline links",
+      "stores": "memory graph + archive; separate skill registry",
+      "index": "BM25 + dense embeddings"
+    },
+    "management": {
+      "operations": "Add/Reinforce/Update/Merge/Skip; dreaming merges/archives; feedback add/update/delete",
+      "conflicts": "entity fusion expires outdated values; dreaming resolves conflicts with two LLM calls",
+      "forgetting": "dreaming archives obsolete or redundant records",
+      "timing": "both"
+    },
+    "retrieval": {
+      "query": "LLM controller sets temporal scope, memory types, search queries",
+      "candidates": "BM25 + dense RRF with forward/reverse entity-property traversal",
+      "selection": "iterative plan; sufficiency check; temporal/relational expansion",
+      "budget": "top-k=50 in MemoryAgentBench runs"
+    },
+    "use": {
+      "context": "entity-centred memories with property timelines",
+      "reasoning": null
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "prompted-llm",
+      "retrieval": "agent-tool-calls"
+    }
   },
   "tags": {
     "fidelity": "extracted",
@@ -57,5 +85,5 @@
   },
   "summary": "Memory layer built on an entity-property-time graph with schema-guided extraction, offline 'dreaming' consolidation, feedback-driven correction and evolutionary search over the memory schema itself.",
   "verified": false,
-  "notes": "AXES CORRECTED from the paper; earlier taxonomy row was: schema entry | rewritten | schema learning, dreaming | typed schema | feedback-driven (vector). Authors: Kaichao Liang et al. (MindMemOS Team, Noah's Ark Lab, Huawei). Two add policies: MindVanilla (schema-free) and MindSchema (schema-guided). GitHub README reports LoCoMo overall 93.64 for MindMemOS-schema, whereas the paper's Table 1 reports 94.03. AXES-CHECK: the seed taxonomy's selection 'feedback-driven (vector)' disagrees with the paper: selection is an LLM agentic planner over hybrid BM25+dense RRF with bidirectional graph traversal; feedback is a memory-maintenance (update) mechanism, not a selection mechanism. The seed taxonomy's 'schema learning' corresponds to MindMemEvolve (offline, validation-driven), which is only used for MindSchema."
+  "notes": "AXES CORRECTED from the paper; earlier taxonomy row was: schema entry | rewritten | schema learning, dreaming | typed schema | feedback-driven (vector). Authors: Kaichao Liang et al. (MindMemOS Team, Noah's Ark Lab, Huawei). Two add policies: MindVanilla (schema-free) and MindSchema (schema-guided). GitHub README reports LoCoMo overall 93.64 for MindMemOS-schema, whereas the paper's Table 1 reports 94.03. AXES-CHECK: the seed taxonomy's selection 'feedback-driven (vector)' disagrees with the paper: selection is an LLM agentic planner over hybrid BM25+dense RRF with bidirectional graph traversal; feedback is a memory-maintenance (update) mechanism, not a selection mechanism. The seed taxonomy's 'schema learning' corresponds to MindMemEvolve (offline, validation-driven), which is only used for MindSchema.\nDESIGN: Sec 2.2, 3.1-3.6, 4.1-4.2. Corrected: construction.processing was 'schema learning, dreaming' (dreaming is management; schema learning is offline MindMemEvolve). trigger 'other' = per memory-add request (async mode buffers until topic shift). use.reasoning null: answer procedure not described."
 }

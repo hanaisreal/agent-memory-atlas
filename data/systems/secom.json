@@ -9,12 +9,40 @@
     "year": 2025,
     "code": "https://github.com/microsoft/SeCom"
   },
-  "axes": {
-    "unit": "segment",
-    "text_kept_as": "verbatim",
-    "write_time": "denoise 75%",
-    "organisation": "flat",
-    "selection": "dense (vector)"
+  "design": {
+    "construction": {
+      "unit": "topical segment of consecutive turns within a session",
+      "kept_as": "verbatim segments; LLMLingua-2-compressed copy used for retrieval",
+      "processing": "LLM conversation segmentation; LLMLingua-2 denoising at 75% compression",
+      "trigger": null,
+      "writer": "GPT-4 zero-shot segmenter (Mistral-7B, RoBERTa alternatives); LLMLingua-2 xlm-roberta-large"
+    },
+    "organization": {
+      "structure": "flat segment-level memory bank",
+      "stores": "single memory bank",
+      "index": "BM25 or MPNet (multi-qa-mpnet-base-dot-v1) with FAISS"
+    },
+    "management": {
+      "operations": "none (memory bank only built, never edited)",
+      "conflicts": "none",
+      "forgetting": null,
+      "timing": "none"
+    },
+    "retrieval": {
+      "query": "user request used as is",
+      "candidates": "BM25 or MPNet similarity over denoised units",
+      "selection": "top-N units within context budget",
+      "budget": "4k tokens LOCOMO (~10 segments); 1k tokens Long-MT-Bench+"
+    },
+    "use": {
+      "context": "retrieved units in time order",
+      "reasoning": "single response call (GPT-35-Turbo; Mistral-7B also)"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "none",
+      "retrieval": "fixed-rule"
+    }
   },
   "tags": {
     "fidelity": "verbatim",
@@ -48,5 +76,5 @@
   },
   "summary": "Builds conversational memory at topical-segment granularity and denoises memory units with LLMLingua-2 compression to improve retrieval.",
   "verified": false,
-  "notes": "Venue ICLR 2025 confirmed via iclr.cc poster page and Microsoft Research page (not stated in the arXiv text itself). Code URL from the Hugging Face paper page (auto-linked); project page https://aka.ms/secom. AXES-CHECK: the paper evaluates both BM25 (lexical) and MPNet (dense) retrievers, and its best LOCOMO result uses BM25, so 'dense (vector)' is only one of the two configurations. It is not fully clear from Eq. 2 whether the LLM receives the compressed or the original segment text."
+  "notes": "Venue ICLR 2025 confirmed via iclr.cc poster page and Microsoft Research page (not stated in the arXiv text itself). Code URL from the Hugging Face paper page (auto-linked); project page https://aka.ms/secom. AXES-CHECK: the paper evaluates both BM25 (lexical) and MPNet (dense) retrievers, and its best LOCOMO result uses BM25, so 'dense (vector)' is only one of the two configurations. It is not fully clear from Eq. 2 whether the LLM receives the compressed or the original segment text.\nDESIGN: Sec 2.1-2.3, Sec 3 (Implementation Details, Baselines), Table 1 caption, App. A.1."
 }

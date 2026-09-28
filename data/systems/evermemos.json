@@ -9,12 +9,40 @@
     "year": 2026,
     "code": "https://github.com/EverMind-AI/EverMemOS"
   },
-  "axes": {
-    "unit": "MemCell",
-    "text_kept_as": "rewritten narrative",
-    "write_time": "MemScene consolidation",
-    "organisation": "scenes + profile",
-    "selection": "Emb-4B + BM25 + Reranker-4B"
+  "design": {
+    "construction": {
+      "unit": "MemCell: Episode, Atomic Facts, Foresight, Metadata",
+      "kept_as": "rewritten third-person episode narrative + extracted atomic facts",
+      "processing": "LLM boundary detection at topic shifts; rewrite episode; derive facts and time-bounded foresight",
+      "trigger": "other",
+      "writer": "backbone LLM (GPT-4.1-mini or GPT-4o-mini)"
+    },
+    "organization": {
+      "structure": "MemCells clustered into thematic MemScenes + user profile",
+      "stores": "MemScene pool of MemCells; user profile (explicit facts, implicit traits)",
+      "index": "Qwen3-Embedding-4B dense + BM25 over atomic facts; scene centroids"
+    },
+    "management": {
+      "operations": "assimilate MemCell into nearest MemScene (sim > tau) or create new; refresh scene summary and profile",
+      "conflicts": "profile updated from scene summaries with recency-aware updates and conflict tracking",
+      "forgetting": null,
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "question; LLM writes 2-3 follow-up queries if context insufficient",
+      "candidates": "dense + BM25 fused by RRF over atomic facts; top N=10 MemScenes by max MemCell score",
+      "selection": "Qwen3-Reranker-4B reranks pooled episodes, keep K=10; LLM sufficiency check",
+      "budget": "N=10 scenes, K=10 episodes (~2.3-2.5k tokens on LoCoMo)"
+    },
+    "use": {
+      "context": "retrieved Episodes only (reasoning mode); chat mode adds profile and time-valid foresight",
+      "reasoning": "single answer call after up to two retrieval rounds"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "fixed-rule",
+      "retrieval": "prompted-llm"
+    }
   },
   "tags": {
     "fidelity": "rewritten",
@@ -54,5 +82,5 @@
   },
   "summary": "Engram-inspired memory lifecycle: dialogue is segmented into MemCells (episode narrative, atomic facts, time-bounded foresight), clustered online into MemScenes with a user profile, and recalled via scene-guided agentic retrieval with a sufficiency check.",
   "verified": false,
-  "notes": "AXES-CHECK: selection is broader than 'Emb-4B + BM25 + Reranker-4B' - retrieval is scene-guided (MemScene scored by max MemCell relevance) and includes an LLM sufficiency verifier with query rewriting (second round triggered for 31.0% of LoCoMo questions, App. A.1). Dense+BM25 run over Atomic Facts, reranker over Episodes. Venue: ACL 2026 long paper (aclanthology 2026.acl-long.2125); ACL version gives code URL https://github.com/EverMind-AI/EverOS. Text read from the HF paper.md mirror of the arXiv paper (matches the ACL abstract)."
+  "notes": "AXES-CHECK: selection is broader than 'Emb-4B + BM25 + Reranker-4B' - retrieval is scene-guided (MemScene scored by max MemCell relevance) and includes an LLM sufficiency verifier with query rewriting (second round triggered for 31.0% of LoCoMo questions, App. A.1). Dense+BM25 run over Atomic Facts, reranker over Episodes. Venue: ACL 2026 long paper (aclanthology 2026.acl-long.2125); ACL version gives code URL https://github.com/EverMind-AI/EverOS. Text read from the HF paper.md mirror of the arXiv paper (matches the ACL abstract).\nDESIGN: Sec 3.2-3.5, 4.1, App. A.1, A.3, C.1. Corrected prefill: 'MemScene consolidation' moved from construction.processing to management.operations; retrieval selection split into candidates (Emb-4B+BM25) and selection (Reranker-4B + sufficiency check). Foresight expiry is a retrieval-time filter, not deletion, so forgetting=null. control.management=fixed-rule for threshold clustering (profile refresh itself is a prompted LLM)."
 }

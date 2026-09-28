@@ -9,12 +9,40 @@
     "year": 2025,
     "code": "https://github.com/BAI-LAB/MemoryOS"
   },
-  "axes": {
-    "unit": "page/segment",
-    "text_kept_as": "partly rewritten",
-    "write_time": "heat-based promotion",
-    "organisation": "3 tiers + profile",
-    "selection": "similarity per tier (vector)"
+  "design": {
+    "construction": {
+      "unit": "dialogue page (query, response, timestamp, chain meta)",
+      "kept_as": "verbatim pages + LLM chain/segment summaries; LPM holds extracted traits/facts",
+      "processing": "LLM links page into dialogue chain and summarizes; pages grouped into topic segments",
+      "trigger": "every-exchange",
+      "writer": "backbone LLM (GPT-4o-mini / Qwen2.5)"
+    },
+    "organization": {
+      "structure": "3 tiers: STM queue, MTM segmented paging, LPM persona",
+      "stores": "STM (7 pages); MTM (<=200 segments); LPM user profile/KB/traits, agent profile/traits",
+      "index": "page/segment embeddings + LLM keyword sets (cosine + Jaccard); embedding model unnamed"
+    },
+    "management": {
+      "operations": "STM->MTM FIFO; heat-based segment eviction; heat > 5 promotes segment to LPM",
+      "conflicts": null,
+      "forgetting": "lowest-heat MTM segments evicted; User KB and Agent Traits FIFO at 100",
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "user query as is",
+      "candidates": "top-m=5 MTM segments by cosine + Jaccard keyword score",
+      "selection": "top-k pages by semantic similarity (k=10 LoCoMo, 5 GVD); LPM top-10 KB/traits",
+      "budget": "k=10 pages; ~3,874 recalled tokens on LoCoMo (Table 3)"
+    },
+    "use": {
+      "context": "all STM pages + retrieved MTM pages + LPM profile/traits/KB in one prompt",
+      "reasoning": "single answer call"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "fixed-rule",
+      "retrieval": "fixed-rule"
+    }
   },
   "tags": {
     "fidelity": "mixed",
@@ -52,5 +80,5 @@
   },
   "summary": "OS-inspired three-tier memory (short-term pages, mid-term segment-paged topics, long-term persona) with FIFO and heat-based promotion/eviction between tiers.",
   "verified": false,
-  "notes": "AXES-CHECK: MTM segment selection is not pure vector similarity - it uses cosine similarity plus Jaccard overlap of LLM-extracted keywords (Eq. 3); page selection within segments is semantic similarity. The embedding model is not named in the paper. Venue: EMNLP 2025 main (aclanthology 2025.emnlp-main.1318)."
+  "notes": "AXES-CHECK: MTM segment selection is not pure vector similarity - it uses cosine similarity plus Jaccard overlap of LLM-extracted keywords (Eq. 3); page selection within segments is semantic similarity. The embedding model is not named in the paper. Venue: EMNLP 2025 main (aclanthology 2025.emnlp-main.1318).\nDESIGN: Sec 3.1-3.5, 4.1 (implementation details), Table 3. Corrected prefill: 'heat-based promotion' moved from construction.processing to management.operations; retrieval is not pure vector (cosine + Jaccard of LLM keywords). conflicts=null: the paper describes no contradiction handling."
 }

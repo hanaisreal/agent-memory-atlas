@@ -9,12 +9,40 @@
     "year": 2026,
     "code": "https://github.com/aiming-lab/SimpleMem"
   },
-  "axes": {
-    "unit": "memory unit",
-    "text_kept_as": "compressed",
-    "write_time": "semantic + lexical + symbolic",
-    "organisation": "flat",
-    "selection": "planner, adaptive k (multi-view)"
+  "design": {
+    "construction": {
+      "unit": "atomic memory unit: self-contained factual statement with metadata",
+      "kept_as": "compressed (LLM-rewritten atomic statements)",
+      "processing": "LLM gate drops low-info windows; coreference and ISO-8601 time normalisation; atomisation",
+      "trigger": "buffer-full",
+      "writer": "gpt-4.1-mini, temperature 0 (Table 7); 20-turn windows, stride 5"
+    },
+    "organization": {
+      "structure": "flat",
+      "stores": "one LanceDB store with three index views",
+      "index": "Qwen3-embedding-0.6b dense + BM25 sparse + metadata (time, entities, topic, salience)"
+    },
+    "management": {
+      "operations": "online semantic synthesis merges related units within session before commit",
+      "conflicts": "answer prompt prioritises most recent memory unit",
+      "forgetting": null,
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "LLM planner writes semantic, lexical and temporal queries plus complexity/depth",
+      "candidates": "top-n per view: cosine, BM25, metadata constraint filter",
+      "selection": "set union of the three views, deduplicated",
+      "budget": "n proportional to inferred depth, range 3-20 (Table 7)"
+    },
+    "use": {
+      "context": "abstract representations plus detailed units, ordered by relevance",
+      "reasoning": "single answer call; recency-first conflict rule; abstain if missing"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "prompted-llm",
+      "retrieval": "prompted-llm"
+    }
   },
   "tags": {
     "fidelity": "compressed",
@@ -52,5 +80,5 @@
   },
   "summary": "Compresses dialogue at write time into atomic, time-normalised memory units indexed in dense, BM25 and metadata views, and uses an LLM planner to set per-query retrieval depth, cutting query tokens to about 530-580.",
   "verified": false,
-  "notes": "Annotated from the current arXiv HTML (fetched 2026-09-28); v1 used the stage names Recursive Memory Consolidation / Adaptive Query-Aware Retrieval and had no LongMemEval table; LoCoMo tables are numerically identical across v1 and the current version. Paper uses the ICML template but no acceptance is stated. AXES-CHECK: 'semantic + lexical + symbolic' in the seed taxonomy's write-time column is really the indexing (organisation) step; the write-time processing in the paper is LLM gating/filtering + atomic extraction with coreference and timestamp normalisation + intra-session synthesis (consolidation)."
+  "notes": "Annotated from the current arXiv HTML (fetched 2026-09-28); v1 used the stage names Recursive Memory Consolidation / Adaptive Query-Aware Retrieval and had no LongMemEval table; LoCoMo tables are numerically identical across v1 and the current version. Paper uses the ICML template but no acceptance is stated. AXES-CHECK: 'semantic + lexical + symbolic' in the seed taxonomy's write-time column is really the indexing (organisation) step; the write-time processing in the paper is LLM gating/filtering + atomic extraction with coreference and timestamp normalisation + intra-session synthesis (consolidation).\nDESIGN: Sec 2.1-2.3, Sec 3.1, App. A.1-A.3, App. B.2 (Table 7)."
 }

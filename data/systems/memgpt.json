@@ -9,12 +9,40 @@
     "year": 2023,
     "code": "https://research.memgpt.ai"
   },
-  "axes": {
-    "unit": "message / text object",
-    "text_kept_as": "verbatim",
-    "write_time": "LLM chooses what to save; evicted messages summarised",
-    "organisation": "working context / recall / archival",
-    "selection": "LLM function calls (vector)"
+  "design": {
+    "construction": {
+      "unit": "message / text object",
+      "kept_as": "verbatim messages; LLM-written working context; recursive summary",
+      "processing": "LLM saves facts to working context or archival via function calls",
+      "trigger": "agent-decides",
+      "writer": "backbone LLM (GPT-3.5 Turbo / GPT-4 / GPT-4 Turbo)"
+    },
+    "organization": {
+      "structure": "tiered: main context vs external context",
+      "stores": "working context + FIFO queue (main); recall storage + archival storage (external)",
+      "index": "archival: text-embedding-ada-002 cosine (doc QA); recall search unstated"
+    },
+    "management": {
+      "operations": "function-call edits of working context; queue eviction with recursive summary",
+      "conflicts": null,
+      "forgetting": "evicted messages leave context but are kept in recall storage",
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "LLM writes its own search function call",
+      "candidates": "paginated search results from recall/archival storage",
+      "selection": "LLM decides pages/calls via function chaining",
+      "budget": "context window; memory-pressure warning at ~70%, flush at 100%"
+    },
+    "use": {
+      "context": "system instructions, working context, FIFO queue, retrieved results",
+      "reasoning": "multi-step function-call loop before replying"
+    },
+    "control": {
+      "construction": "agent-tool-calls",
+      "management": "agent-tool-calls",
+      "retrieval": "agent-tool-calls"
+    }
   },
   "tags": {
     "fidelity": "verbatim+derived",
@@ -49,5 +77,5 @@
   },
   "summary": "OS-inspired virtual context management: the LLM pages information between a bounded main context and external recall/archival stores via its own function calls.",
   "verified": false,
-  "notes": "AXES CORRECTED from the paper; earlier taxonomy row was: page | verbatim | none | main/archival | LLM function calls (vector). AXES-CHECK: the paper has three stores (working context in main context, recall storage of all messages, archival storage), not only main/archival; write-time is not 'none' - the LLM chooses what to save to working context/archival storage and evicted messages are recursively summarised; 'page' refers to paginated retrieval results, the stored unit is messages/text objects. The paper does not specify the search mechanism of recall/archival storage in the sections read (embeddings are mentioned for the document-analysis archival store). Code URL as given in the paper; project continues as Letta (system id 'letta')."
+  "notes": "AXES CORRECTED from the paper; earlier taxonomy row was: page | verbatim | none | main/archival | LLM function calls (vector). AXES-CHECK: the paper has three stores (working context in main context, recall storage of all messages, archival storage), not only main/archival; write-time is not 'none' - the LLM chooses what to save to working context/archival storage and evicted messages are recursively summarised; 'page' refers to paginated retrieval results, the stored unit is messages/text objects. The paper does not specify the search mechanism of recall/archival storage in the sections read (embeddings are mentioned for the document-analysis archival store). Code URL as given in the paper; project continues as Letta (system id 'letta').\nDESIGN: Sec 2.1-2.4, Sec 3 (implementation details), 3.1, 3.2.1, App. 6.1. Corrected: 'page' unit -> message/text object; write-time 'none' -> agent-chosen saves + recursive summary; stores include recall storage."
 }

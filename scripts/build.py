@@ -28,7 +28,21 @@ VOCAB = {
     "domain": {"conversation", "long-document", "web", "gui", "embodied", "code", "multimodal", "general"},
 }
 STAGES = ["ingestion", "construction", "organization", "update", "retrieval", "answer", "learning"]
-AXES = ["unit", "text_kept_as", "write_time", "organisation", "selection"]
+DESIGN = {
+    "construction": ["unit", "kept_as", "processing", "trigger", "writer"],
+    "organization": ["structure", "stores", "index"],
+    "management": ["operations", "conflicts", "forgetting", "timing"],
+    "retrieval": ["query", "candidates", "selection", "budget"],
+    "use": ["context", "reasoning"],
+    "control": ["construction", "management", "retrieval"],
+}
+CONTROL = {"none", "fixed-rule", "prompted-llm", "agent-tool-calls", "learned-rl", "learned-sft", "feedback-optimized"}
+DESIGN_VOCAB = {
+    ("construction", "trigger"): {"every-turn", "every-exchange", "session-end", "buffer-full", "agent-decides", "offline-batch", "other"},
+    ("management", "timing"): {"online", "offline", "both", "none"},
+    ("control", "construction"): CONTROL, ("control", "management"): CONTROL, ("control", "retrieval"): CONTROL,
+}
+IMG_EXT = (".png", ".jpg", ".jpeg", ".webp", ".svg")
 METRICS = {"llm-judge", "f1", "bleu-1", "em", "mc-acc", "rouge-l", "recall@k", "other"}
 RUN_BY = {"self", "rerun", "copied", None}
 # Fields that must match (and be known) for two rows to be directly comparable.
@@ -57,14 +71,27 @@ def load(path, rep):
 
 
 def check_system(s, where, rep):
-    for f in ("id", "name", "axes", "tags", "stages"):
+    for f in ("id", "name", "design", "tags", "stages"):
         if f not in s:
             rep.err(where, f"missing '{f}'")
     if where.stem != s.get("id"):
         rep.err(where, f"file name must equal id '{s.get('id')}'")
-    for a in AXES:
-        if a not in s.get("axes", {}):
-            rep.warn(where, f"axes.{a} missing")
+    design = s.get("design", {})
+    for g in design:
+        if g not in DESIGN:
+            rep.err(where, f"unknown design group '{g}'")
+    for g, fields in DESIGN.items():
+        grp = design.get(g) or {}
+        for f in grp:
+            if f not in fields:
+                rep.err(where, f"unknown field design.{g}.{f}")
+        for f in fields:
+            if f not in grp:
+                rep.warn(where, f"design.{g}.{f} missing (use null when the paper does not say)")
+            v = grp.get(f)
+            allowed = DESIGN_VOCAB.get((g, f))
+            if allowed and v is not None and v not in allowed:
+                rep.err(where, f"design.{g}.{f}: '{v}' not in {sorted(allowed)}")
     for k, v in s.get("tags", {}).items():
         if k not in VOCAB:
             rep.err(where, f"unknown tag '{k}'")
@@ -99,6 +126,11 @@ def main():
         if s:
             check_system(s, p.relative_to(ROOT), rep)
             systems.append(s)
+    # One figure per system, captured by hand: site/figures/<system-id>.<png|jpg|webp|svg>
+    for s in systems:
+        fig = next((f for f in sorted((ROOT / "site" / "figures").glob(f"{s['id']}.*")) if f.suffix.lower() in IMG_EXT), None)
+        if fig:
+            s["figure"] = f"figures/{fig.name}"
     sys_ids = {s["id"] for s in systems}
     extra_ids = {e["id"] for e in extra}
     dup = sys_ids & extra_ids
@@ -106,8 +138,14 @@ def main():
         rep.warn("data/extra_systems.json", f"ids also have system files: {sorted(dup)}")
 
     tables_path = DATA / "table_images.json"
-    table_imgs = load(tables_path, rep) if tables_path.exists() else {}
-    table_imgs = table_imgs or {}
+    table_imgs = (load(tables_path, rep) if tables_path.exists() else {}) or {}
+    # Hand-captured images count too: site/tables/<reporter-id>/table-<n>.<png|jpg|webp|svg>.
+    # A file on disk wins over the manifest; the manifest only adds the page number.
+    for img in sorted((ROOT / "site" / "tables").glob("*/table-*")):
+        m = re.fullmatch(r"table-(\d+)", img.stem)
+        if m and img.suffix.lower() in IMG_EXT:
+            entry = table_imgs.setdefault(img.parent.name, {}).setdefault(m.group(1), {})
+            entry["img"] = f"tables/{img.parent.name}/{img.name}"
 
     reporters, rows = [], []
     for p in sorted((DATA / "results").glob("*.json")):
@@ -143,7 +181,8 @@ def main():
                 shot = table_imgs.get(rid, {}).get(m.group(1))
                 if shot:
                     source["table_img"] = shot["img"]
-                    source["table_page"] = shot["page"]
+                    if shot.get("page"):
+                        source["table_page"] = shot["page"]
             rows.append({**r, **source, "reporter": rid, "setting_key": key, "unknown_settings": unknown})
 
     annotated = {s["paper"]["arxiv"]: s["id"] for s in systems if s.get("paper") and s["paper"].get("arxiv")}
