@@ -1,6 +1,6 @@
 "use strict";
 
-const VIEWS = ["systems", "pipeline", "results", "papers", "method"];
+const VIEWS = ["map", "systems", "pipeline", "results", "papers", "method"];
 const STAGE_LABEL = {
   ingestion: ["Ingestion", "segmenting the stream"],
   construction: ["Construction", "what gets written"],
@@ -55,7 +55,7 @@ const SOURCE_NAME = { liu: "Liu et al.", teleai: "TeleAI", deep: "DEEP-PolyU", y
 let A = null;             // atlas.json
 const sysById = new Map();
 const S = {               // UI state
-  view: "systems",
+  view: "map", mapStage: "retrieval", mapFacet: 0, mapMore: false,
   q: "", tags: {},        // systems/pipeline filters
   stage: null,
   bench: null, cat: "overall", metric: null, version: "all", copied: true, col: null,
@@ -106,13 +106,13 @@ function go(v) {
 
 function render() {
   const counts = {
-    systems: A.systems.length, pipeline: A.systems.length,
+    map: "", systems: A.systems.length, pipeline: A.systems.length,
     results: A.results.length, papers: A.papers.length, method: "",
   };
-  $("#tabs").innerHTML = [["systems", "Systems"], ["pipeline", "Pipeline"], ["results", "Results"], ["papers", "Papers"], ["method", "Method"]]
+  $("#tabs").innerHTML = [["map", "Map"], ["systems", "Systems"], ["pipeline", "Pipeline"], ["results", "Results"], ["papers", "Papers"], ["method", "Method"]]
     .map(([v, l]) => `<button role="tab" data-view="${v}" aria-selected="${S.view === v}">${l}${counts[v] !== "" ? `<span class="n">${counts[v]}</span>` : ""}</button>`).join("");
   const main = $("#main");
-  ({ systems: viewSystems, pipeline: viewPipeline, results: viewResults, papers: viewPapers, method: viewMethod })[S.view](main);
+  ({ map: viewMap, systems: viewSystems, pipeline: viewPipeline, results: viewResults, papers: viewPapers, method: viewMethod })[S.view](main);
 }
 
 /* ---------------- shared system filtering ---------------- */
@@ -165,28 +165,128 @@ function bindSystemRail(main) {
 }
 
 function resultCount(id) { return A.results.filter(r => r.system === id).length; }
+function resultSummary(id) {
+  const rows = A.results.filter(r => r.system === id);
+  if (!rows.length) return '<span class="dim">none</span>';
+  const papers = new Set(rows.map(r => r.reporter)).size;
+  return `${rows.length}<small class="dim"> in ${papers} paper${papers > 1 ? "s" : ""}</small>`;
+}
+
+/* ---------------- Map ----------------
+   Stages on the left; the selected stage fans out to its approaches, and each approach to the systems
+   that use it. Connectors are drawn in an SVG overlay from the laid-out boxes. */
+const ctl = (s, g) => [s.design?.control?.[g]].filter(Boolean);
+const MAP_STAGES = [
+  { id: "type", n: "00", title: "What is remembered", sub: "memory type",
+    facets: [["Memory type", s => tagVals(s, "memory_type")]], note: s => s.summary },
+  { id: "construction", n: "01", title: "Construction", sub: "writing memory", deep: "Extraction",
+    facets: [["Text kept as", s => tagVals(s, "fidelity")], ["Write-time processing", s => tagVals(s, "write_time")], ["Who decides", s => ctl(s, "construction")]],
+    note: s => [s.design?.construction?.unit, s.design?.construction?.processing].filter(Boolean).join(". ") },
+  { id: "organization", n: "02", title: "Organization", sub: "how items relate", deep: "Storage",
+    facets: [["Structure", s => tagVals(s, "structure")]],
+    note: s => [s.design?.organization?.structure, s.design?.organization?.stores].filter(Boolean).join(". ") },
+  { id: "management", n: "03", title: "Management", sub: "changing memory", deep: "Evolution",
+    facets: [["Who decides", s => ctl(s, "management")], ["Timing", s => [s.design?.management?.timing].filter(Boolean)]],
+    note: s => [s.design?.management?.operations, s.design?.management?.conflicts].filter(Boolean).join(". ") },
+  { id: "retrieval", n: "04", title: "Retrieval", sub: "reading memory", deep: "Retrieval",
+    facets: [["Selection", s => tagVals(s, "selection")], ["Who decides", s => ctl(s, "retrieval")]],
+    note: s => [s.design?.retrieval?.candidates, s.design?.retrieval?.selection].filter(Boolean).join(". ") },
+  { id: "learning", n: "05", title: "Learning", sub: "is anything trained?",
+    facets: [["Learning", s => tagVals(s, "learning")]], note: s => s.stages?.learning || "No trained component." },
+];
+
+function viewMap(main) {
+  const st = MAP_STAGES.find(x => x.id === S.mapStage) || MAP_STAGES[4];
+  if (S.mapFacet >= st.facets.length) S.mapFacet = 0;
+  const [facetLabel, get] = st.facets[S.mapFacet];
+  const groups = new Map();
+  for (const s of A.systems) {
+    const vals = get(s);
+    for (const v of vals.length ? vals : ["not stated"]) (groups.get(v) || groups.set(v, []).get(v)).push(s);
+  }
+  const branches = [...groups.entries()].sort((a, b) => (a[0] === "not stated") - (b[0] === "not stated") || b[1].length - a[1].length);
+  const deepPapers = st.deep ? A.papers.filter(p => (p.facets.deep_stage || []).includes(st.deep)) : [];
+  const deepGroups = new Map();
+  for (const p of deepPapers) { const k = (p.facets.deep_data || ["other"])[0]; (deepGroups.get(k) || deepGroups.set(k, []).get(k)).push(p); }
+  const short = t => { const x = t.split(/:\s/)[0]; return x.length > 48 ? x.slice(0, 46) + "…" : x; };
+
+  main.innerHTML = `
+    <p class="lede">Pick a stage of the memory pipeline on the left. It spans out to the approaches systems take at that stage, and each approach to the systems that use it. Hover a system for what it does at this stage; click it for everything recorded about it. A system appears under every approach it combines.</p>
+    <div class="map" id="map">
+      <svg class="wires" aria-hidden="true"></svg>
+      <ol class="mstages">${MAP_STAGES.map(x => `<li><button class="mstage" data-stage="${x.id}" aria-pressed="${x.id === st.id}">
+        <span class="mn">${x.n}</span><span class="mt">${esc(x.title)}</span><span class="ms">${esc(x.sub)}</span><span class="ma" aria-hidden="true">→</span></button></li>`).join("")}</ol>
+      <section class="fan" aria-label="${esc(st.title)} approaches">
+        <div class="fanhead">
+          <span class="fantitle">${esc(st.title)}, branched by</span>
+          ${st.facets.map(([l], i) => `<button class="chip" data-facet="${i}" aria-pressed="${i === S.mapFacet}">${esc(l)}</button>`).join("")}
+          ${deepPapers.length ? `<label class="check" for="mm"><input id="mm" type="checkbox" ${S.mapMore ? "checked" : ""}> Also show ${deepPapers.length} papers the DEEP-PolyU list files under ${esc(st.deep.toLowerCase())}</label>` : ""}
+        </div>
+        ${branches.map(([v, list]) => `<div class="branch">
+          <div class="bnode${v === "not stated" ? " unk" : ""}">${esc(v)}<span class="bc">${list.length}</span></div>
+          <div class="leaves">${list.map(s => `<button class="leaf" data-sys="${esc(s.id)}" data-label="${esc(s.name)} · ${esc(st.title.toLowerCase())}" data-note="${esc(st.note(s) || "")}">${esc(s.name)}</button>`).join("")}</div>
+        </div>`).join("")}
+        ${S.mapMore ? [...deepGroups.entries()].sort((a, b) => b[1].length - a[1].length).map(([k, ps]) => `<div class="branch more">
+          <div class="bnode">${esc(k)}<span class="bc">${ps.length}</span><span class="bsrc">DEEP-PolyU list</span></div>
+          <div class="leaves">${ps.map(p => `<a class="leaf paper" href="${esc(p.url || "#")}" target="_blank" rel="noopener" title="${esc(p.title)}">${esc(short(p.title))}</a>`).join("")}</div>
+        </div>`).join("") : ""}
+      </section>
+    </div>`;
+  main.querySelectorAll(".mstage").forEach(b => b.addEventListener("click", () => { S.mapStage = b.dataset.stage; S.mapFacet = 0; render(); }));
+  main.querySelectorAll("[data-facet]").forEach(b => b.addEventListener("click", () => { S.mapFacet = +b.dataset.facet; render(); }));
+  $("#mm", main)?.addEventListener("change", e => { S.mapMore = e.target.checked; render(); });
+  main.querySelectorAll("button.leaf").forEach(b => {
+    b.addEventListener("click", () => openSystem(b.dataset.sys));
+    b.addEventListener("mouseenter", () => main.querySelectorAll(`.leaf[data-sys="${CSS.escape(b.dataset.sys)}"]`).forEach(x => x.classList.add("same")));
+    b.addEventListener("mouseleave", () => main.querySelectorAll(".leaf.same").forEach(x => x.classList.remove("same")));
+  });
+  requestAnimationFrame(drawWires);
+  document.fonts?.ready.then(() => S.view === "map" && drawWires());
+}
+
+function drawWires() {
+  const root = $("#map");
+  if (!root) return;
+  const svg = root.querySelector("svg.wires");
+  const R = root.getBoundingClientRect();
+  svg.setAttribute("width", root.scrollWidth);
+  svg.setAttribute("height", root.scrollHeight);
+  const from = root.querySelector('.mstage[aria-pressed="true"]');
+  if (!from || getComputedStyle(svg).display === "none") { svg.innerHTML = ""; return; }
+  const f = from.getBoundingClientRect();
+  const fx = f.right - R.left, fy = f.top + f.height / 2 - R.top;
+  let d = "", dd = "";
+  root.querySelectorAll(".branch").forEach(br => {
+    const n = br.querySelector(".bnode").getBoundingClientRect(), l = br.querySelector(".leaves").getBoundingClientRect();
+    const tx = n.left - R.left, ty = n.top + n.height / 2 - R.top, k = Math.max(40, (tx - fx) / 2);
+    const trunk = `M${fx},${fy} C${fx + k},${fy} ${tx - k},${ty} ${tx},${ty}`;
+    const twig = `M${n.right - R.left},${ty} L${l.left - R.left - 2},${ty}`;
+    if (br.classList.contains("more")) dd += trunk + twig; else d += trunk + twig;
+  });
+  svg.innerHTML = `<path d="${d}" class="w"/><path d="${dd}" class="w dash"/>`;
+}
+window.addEventListener("resize", () => S.view === "map" && drawWires());
 
 /* ---------------- Systems ---------------- */
 function viewSystems(main) {
   const list = filteredSystems();
   const groups = DESIGN.filter(g => shownGroups.has(g[0]));
-  const nCols = 3 + groups.reduce((n, g) => n + g[3].length, 0);
+  const nCols = 2 + groups.reduce((n, g) => n + g[3].length, 0);
   const rows = list.map(s => `
     <tr class="click" data-sys="${esc(s.id)}" tabindex="0">
       <td class="name sticky">${esc(s.name)}<small>${esc(venueYear(s.paper))}${figureLink(s)}</small></td>
       ${groups.map(([g, , , fields]) => fields.map(([f], i) => designCell(s, g, f, i === 0)).join("")).join("")}
-      <td class="num">${resultCount(s.id) || '<span class="dim">–</span>'}</td>
-      <td>${s.verified ? '<span class="flag ok">checked</span>' : '<span class="flag warn">draft</span>'}</td>
+      <td class="num">${resultSummary(s.id)}</td>
     </tr>`).join("");
   main.innerHTML = `
     <p class="lede">Each memory system described <b>stage by stage</b>: how memory is written, organised, changed, read and used, and <b>who makes the decision</b> at each stage (a fixed rule, a prompted LLM, an agent's tool calls, a trained policy, or feedback). A dash means the paper does not say. Use the filters to slice by any tag, and hide groups you don't need.</p>
     <div class="cols">${systemRail()}
       <section>
-        <div class="meta"><span>${list.length} of ${A.systems.length} systems</span><span>“draft” = extracted from the paper, not yet checked by a person</span></div>
+        <div class="meta"><span>${list.length} of ${A.systems.length} systems</span><span>All entries are extracted from the papers and not yet checked line by line by a person</span></div>
         <div class="groupbar" role="group" aria-label="Column groups">${DESIGN.map(([g, label]) => `<button class="chip" data-group="${g}" aria-pressed="${shownGroups.has(g)}">${label}</button>`).join("")}</div>
         <div class="scroll"><table class="design">
           <thead>
-            <tr><th rowspan="2" class="sticky">System</th>${groups.map(([g, label, sub, fields]) => `<th colspan="${fields.length}" class="grp g-${g}">${label}<span>${sub}</span></th>`).join("")}<th rowspan="2" class="num">Scores</th><th rowspan="2">Status</th></tr>
+            <tr><th rowspan="2" class="sticky">System</th>${groups.map(([g, label, sub, fields]) => `<th colspan="${fields.length}" class="grp g-${g}">${label}<span>${sub}</span></th>`).join("")}<th rowspan="2" class="num" title="How many scores are recorded for this system, counting every paper, benchmark, question category and metric. A count, not a performance score.">Recorded<br>results</th></tr>
             <tr>${groups.map(([g, , , fields]) => fields.map(([, l], i) => `<th class="${i === 0 ? "gstart" : ""}">${l}</th>`).join("")).join("")}</tr>
           </thead>
           <tbody>${rows || `<tr><td colspan="${nCols}" class="empty-state">No system matches these filters.</td></tr>`}</tbody>
@@ -265,7 +365,9 @@ function showTip(a) {
   tipEl.className = "tip";
   tipEl.setAttribute("role", "tooltip");
   const img = a.dataset.img;
-  tipEl.innerHTML = img
+  tipEl.innerHTML = a.dataset.note != null
+    ? `<div class="tipnote"><b>${esc(a.dataset.label || "")}</b>${esc(a.dataset.note || "Not stated in the paper.")}</div>`
+    : img
     ? `<img src="${esc(img)}" alt="${esc(a.dataset.label)} as printed in the paper"><div class="tipcap">${esc(a.dataset.label)}${a.dataset.page ? ` · page ${esc(a.dataset.page)} of the PDF. Click to open the paper at that page.` : ". Click to open the full image."}</div>`
     : `<div class="tipcap">${esc(a.dataset.label)}. No image of this table has been captured yet. Click to open the paper.</div>`;
   document.body.append(tipEl);
@@ -283,9 +385,10 @@ function showTip(a) {
   tipEl.querySelector("img")?.addEventListener("load", place);
 }
 function hideTip() { tipEl?.remove(); tipEl = null; }
-document.addEventListener("mouseover", e => { const a = e.target.closest?.("a.src"); if (a) showTip(a); });
-document.addEventListener("mouseout", e => { const a = e.target.closest?.("a.src"); if (a && !a.contains(e.relatedTarget)) hideTip(); });
-document.addEventListener("focusin", e => { const a = e.target.closest?.("a.src"); a ? showTip(a) : hideTip(); });
+const TIP_SEL = "a.src, [data-note]";
+document.addEventListener("mouseover", e => { const a = e.target.closest?.(TIP_SEL); if (a) showTip(a); });
+document.addEventListener("mouseout", e => { const a = e.target.closest?.(TIP_SEL); if (a && !a.contains(e.relatedTarget)) hideTip(); });
+document.addEventListener("focusin", e => { const a = e.target.closest?.(TIP_SEL); a ? showTip(a) : hideTip(); });
 document.addEventListener("click", e => { if (e.target.closest?.("a.src")) { e.stopPropagation(); hideTip(); } }, true);
 window.addEventListener("scroll", hideTip, { passive: true });
 

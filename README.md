@@ -14,6 +14,7 @@ and which questions were kept, which most papers report only partly.
 
 | View | What it shows |
 |---|---|
+| **Map** | Pick a pipeline stage; it spans out to the approaches systems take at that stage and to the systems using each. Optionally adds the papers the DEEP-PolyU list files under that stage |
 | **Systems** | Annotated systems described stage by stage (construction, organization, management, retrieval, use) plus who decides at each stage, filterable by controlled tags; column groups can be hidden |
 | **Pipeline** | The same systems by pipeline stage: ingestion, construction, organization, update, retrieval, answer, learning |
 | **Results** | Every score, one column per evaluation setting; spread of each system across settings; head-to-head comparison restricted to shared settings |
