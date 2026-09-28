@@ -92,5 +92,363 @@
   },
   "summary": "Engram-inspired memory lifecycle: dialogue is segmented into MemCells (episode narrative, atomic facts, time-bounded foresight), clustered online into MemScenes with a user profile, and recalled via scene-guided agentic retrieval with a sufficiency check.",
   "verified": false,
-  "notes": "AXES-CHECK: selection is broader than 'Emb-4B + BM25 + Reranker-4B' - retrieval is scene-guided (MemScene scored by max MemCell relevance) and includes an LLM sufficiency verifier with query rewriting (second round triggered for 31.0% of LoCoMo questions, App. A.1). Dense+BM25 run over Atomic Facts, reranker over Episodes. Venue: ACL 2026 long paper (aclanthology 2026.acl-long.2125); ACL version gives code URL https://github.com/EverMind-AI/EverOS. Text read from the HF paper.md mirror of the arXiv paper (matches the ACL abstract).\nDESIGN: Sec 3.2-3.5, 4.1, App. A.1, A.3, C.1. Corrected prefill: 'MemScene consolidation' moved from construction.processing to management.operations; retrieval selection split into candidates (Emb-4B+BM25) and selection (Reranker-4B + sufficiency check). Foresight expiry is a retrieval-time filter, not deletion, so forgetting=null. control.management=fixed-rule for threshold clustering (profile refresh itself is a prompted LLM)."
+  "notes": "AXES-CHECK: selection is broader than 'Emb-4B + BM25 + Reranker-4B' - retrieval is scene-guided (MemScene scored by max MemCell relevance) and includes an LLM sufficiency verifier with query rewriting (second round triggered for 31.0% of LoCoMo questions, App. A.1). Dense+BM25 run over Atomic Facts, reranker over Episodes. Venue: ACL 2026 long paper (aclanthology 2026.acl-long.2125); ACL version gives code URL https://github.com/EverMind-AI/EverOS. Text read from the HF paper.md mirror of the arXiv paper (matches the ACL abstract).\nDESIGN: Sec 3.2-3.5, 4.1, App. A.1, A.3, C.1. Corrected prefill: 'MemScene consolidation' moved from construction.processing to management.operations; retrieval selection split into candidates (Emb-4B+BM25) and selection (Reranker-4B + sufficiency check). Foresight expiry is a retrieval-time filter, not deletion, so forgetting=null. control.management=fixed-rule for threshold clustering (profile refresh itself is a prompted LLM).",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2601.02163 (PDF read 2026-09-28)",
+      "code": "https://github.com/EverMind-AI/EverMemOS/tree/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/",
+      "code_note": "Commit 99aa0cad (2026-03-15, PR #134) adds scene retrieval; its comments cite 93% on LoCoMo, so it is taken as the evaluation code behind the paper's numbers. It is two months after paper v2, and the current repo (renamed EverOS) restarted its history in 2026-06, so exact identity with the paper's runs is not guaranteed."
+    },
+    "headline": [
+      "The answer model reads LLM-rewritten episodes, never the original dialogue.",
+      "MemScenes route candidates in round 1 only; nothing from a scene itself (summary, centroid) reaches the reranker or the answer.",
+      "Round 2 (31% of LoCoMo questions) searches all MemCells without scenes."
+    ],
+    "units": [
+      {
+        "name": "MemCell",
+        "role": "one topic segment of the dialogue; the basic unit",
+        "made_by": "backbone LLM (segmentation, rewrite, extraction)",
+        "fields": [
+          {
+            "name": "subject",
+            "what": "LLM title of the episode, 10-20 words",
+            "kept_as": "rewritten",
+            "used_for": [
+              "index",
+              "answer",
+              "verifier"
+            ],
+            "src": "code episode_mem_prompts.py L29",
+            "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/src/memory_layer/prompts/en/episode_mem_prompts.py#L29"
+          },
+          {
+            "name": "episode",
+            "what": "third-person rewrite of the segment; relative dates get the absolute date added; prompt asks for length similar to or shorter than the original",
+            "kept_as": "rewritten",
+            "used_for": [
+              "rerank",
+              "answer",
+              "verifier"
+            ],
+            "src": "code episode_mem_prompts.py L22-L50",
+            "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/src/memory_layer/prompts/en/episode_mem_prompts.py#L22-L50"
+          },
+          {
+            "name": "summary",
+            "what": "first 200 characters of the episode (a cut, not a summary)",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code stage1 L200-L203",
+            "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/stage1_memcells_extraction.py#L200-L203"
+          },
+          {
+            "name": "atomic facts",
+            "what": "short facts the LLM extracts from the episode",
+            "kept_as": "extracted",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §3.2; code stage2 L90-L160",
+            "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/stage2_index_building.py#L90-L160"
+          },
+          {
+            "name": "foresight",
+            "what": "predicted future states with a validity interval",
+            "kept_as": "extracted",
+            "used_for": [
+              "chat mode only"
+            ],
+            "src": "paper §3.2, App. A.1",
+            "url": "https://arxiv.org/pdf/2601.02163"
+          },
+          {
+            "name": "original dialogue",
+            "what": "the raw turns of the segment",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "stored as original_data; read by no retrieval or answer code"
+          }
+        ]
+      },
+      {
+        "name": "MemScene",
+        "role": "cluster of MemCells on one theme",
+        "made_by": "embedding similarity rule (no LLM in the evaluated setting)",
+        "fields": [
+          {
+            "name": "memcell ids",
+            "what": "members of the scene",
+            "kept_as": "derived",
+            "used_for": [
+              "scene routing"
+            ],
+            "src": "code stage2 L530-L545",
+            "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/stage2_index_building.py#L530-L545"
+          },
+          {
+            "name": "centroid",
+            "what": "mean embedding of the members, used only when clustering",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "code stage2 L530-L545",
+            "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/stage2_index_building.py#L530-L545"
+          },
+          {
+            "name": "scene summary",
+            "what": "LLM summary refreshed when a MemCell joins; feeds the profile",
+            "kept_as": "summarized",
+            "used_for": [
+              "profile"
+            ],
+            "src": "paper §3.3; absent from the evaluation code's scene index",
+            "url": "https://arxiv.org/pdf/2601.02163"
+          }
+        ]
+      },
+      {
+        "name": "User profile",
+        "role": "explicit facts and implicit traits about the user",
+        "made_by": "LLM, from scene summaries",
+        "fields": [
+          {
+            "name": "profile",
+            "what": "recency-aware updates with conflict tracking",
+            "kept_as": "summarized",
+            "used_for": [
+              "chat mode only"
+            ],
+            "src": "paper §3.3, Table 4",
+            "url": "https://arxiv.org/pdf/2601.02163"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Segment",
+        "how": "LLM boundary detector over a sliding window cuts the stream at topic shifts",
+        "out": "70.2 MemCells per LoCoMo conversation (34-95); 109.5 on LongMemEval",
+        "src": "paper §3.2, Table 5",
+        "url": "https://arxiv.org/pdf/2601.02163"
+      },
+      {
+        "step": "Rewrite",
+        "how": "LLM turns each segment into a subject and a third-person episode, adding absolute dates",
+        "src": "code episode_mem_prompts.py",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/src/memory_layer/prompts/en/episode_mem_prompts.py#L22-L50"
+      },
+      {
+        "step": "Extract",
+        "how": "LLM derives atomic facts and time-bounded foresight from the episode",
+        "src": "paper §3.2",
+        "url": "https://arxiv.org/pdf/2601.02163"
+      },
+      {
+        "step": "Cluster",
+        "how": "join the nearest MemScene if similarity to its centroid > τ and the closest-in-time member is within the max gap; otherwise start a new scene",
+        "params": {
+          "τ": "0.70 LoCoMo / 0.50 LongMemEval",
+          "max gap": "7 / 30 days"
+        },
+        "out": "2.45 MemCells per scene on LoCoMo, 1.36 on LongMemEval",
+        "src": "paper Tables 5-6; code config.py L19-L20",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/config.py#L19-L20"
+      },
+      {
+        "step": "Consolidate",
+        "how": "refresh scene summary and user profile",
+        "note": "not run in the Episodes-only evaluation (no LLM tokens in Phase II, App. A.3)",
+        "src": "paper §3.3, App. A.3",
+        "url": "https://arxiv.org/pdf/2601.02163"
+      }
+    ],
+    "read": [
+      {
+        "step": "Match",
+        "round": 1,
+        "input": "question",
+        "scores": "atomic facts + subject + first 200 chars of episode (paper says atomic facts only)",
+        "how": "Qwen3-Embedding-4B dense and BM25, fused by RRF",
+        "params": {
+          "dense": "top 50",
+          "BM25": "top 50",
+          "RRF k": "40"
+        },
+        "src": "code scene_retrieval.py L150-L157, config.py L57-L59",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/scene_retrieval.py#L150-L157"
+      },
+      {
+        "step": "Route to scenes",
+        "round": 1,
+        "how": "walk the fused list; a scene scores the max of its MemCells; stop once 10 scenes are covered",
+        "params": {
+          "N": "10 scenes"
+        },
+        "src": "paper §3.4, App. A.1; code L160-L195",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/scene_retrieval.py#L160-L195"
+      },
+      {
+        "step": "Expand",
+        "round": 1,
+        "how": "take every MemCell in those scenes; all reset to score 1.0, so match scores are discarded",
+        "out": "31 MemCells in the paper's trace example",
+        "src": "code L198-L206; paper App. C.2",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/scene_retrieval.py#L198-L206"
+      },
+      {
+        "step": "Rerank",
+        "round": 1,
+        "input": "question",
+        "scores": "episode text only (no subject, date or facts)",
+        "how": "Qwen3-Reranker-4B cross-encoder",
+        "params": {
+          "K": "10 episodes"
+        },
+        "src": "code stage3 L82-L130",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/stage3_memory_retrivel.py#L82-L130"
+      },
+      {
+        "step": "Sufficiency check",
+        "round": 1,
+        "how": "LLM reads the 10 as Title / Date / Content (content cut at 500 chars) and decides whether they answer the question",
+        "out": "insufficient for 31.0% of LoCoMo questions (GPT-4.1-mini)",
+        "src": "paper App. A.1; code agentic_utils.py L31-L66",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/tools/agentic_utils.py#L31-L66"
+      },
+      {
+        "step": "Rewrite and search all",
+        "round": 2,
+        "how": "LLM writes follow-up queries; each searches ALL MemCells (no scenes) with dense + BM25 + RRF; results merged by multi-query RRF",
+        "params": {
+          "queries": "2-3 (paper), 3 (code)",
+          "per query": "50 + 50",
+          "kept": "top 40"
+        },
+        "src": "paper App. A.1; code L290-L331",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/scene_retrieval.py#L290-L331"
+      },
+      {
+        "step": "Merge and rerank",
+        "round": 2,
+        "how": "round-1 10 kept first, filled with new candidates up to 40, reranked against the original question",
+        "params": {
+          "K": "10"
+        },
+        "src": "code L333-L356",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/scene_retrieval.py#L333-L356"
+      }
+    ],
+    "answer_context": {
+      "sees": "10 rewritten episodes",
+      "format": "\"{subject}: {episode}\" ×10, under the header \"Episodes memories for conversation between {A} and {B}\"",
+      "excludes": [
+        "original dialogue",
+        "atomic facts",
+        "dates as a field",
+        "scene summary",
+        "user profile",
+        "foresight"
+      ],
+      "note": "Chat mode adds the user profile and time-valid foresight; it is shown only as a case study.",
+      "src": "code evermemos_adapter.py L798-L815",
+      "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos_adapter.py#L798-L815"
+    },
+    "compression": [
+      {
+        "what": "answer context vs one LoCoMo conversation",
+        "kept": 2.3,
+        "of": 9,
+        "unit": "k tokens",
+        "basis": "Table 1 Avg. Tokens, GPT-4.1-mini (2.5k with GPT-4o-mini), over ~9K-token dialogues (§4.1)",
+        "src": "paper Table 1, §4.1",
+        "url": "https://arxiv.org/pdf/2601.02163"
+      },
+      {
+        "what": "answer context vs one LongMemEval-S conversation",
+        "kept": 2.8,
+        "of": 115,
+        "unit": "k tokens",
+        "basis": "Table 2 Token column over ~115k-token histories (§4.1)",
+        "src": "paper Table 2, §4.1",
+        "url": "https://arxiv.org/pdf/2601.02163"
+      },
+      {
+        "what": "stored episode vs its source segment",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported. The prompt only asks for similar or shorter length.",
+        "src": "code episode_mem_prompts.py L50",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/src/memory_layer/prompts/en/episode_mem_prompts.py#L50"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Full system, LoCoMo (GPT-4.1-mini)",
+        "value": "93.05",
+        "src": "paper Fig. 4"
+      },
+      {
+        "label": "w/o MemScene (flat MemCell retrieval)",
+        "value": "89.16",
+        "src": "paper Fig. 4"
+      },
+      {
+        "label": "w/o MemCell (retrieval over raw dialogue)",
+        "value": "81.82",
+        "src": "paper Fig. 4"
+      },
+      {
+        "label": "No memory",
+        "value": "0.52",
+        "src": "paper Fig. 4"
+      },
+      {
+        "label": "Same four on LongMemEval",
+        "value": "83.00 / 79.60 / 71.20 / 5.00",
+        "src": "paper Fig. 4"
+      },
+      {
+        "label": "Search + answer tokens per question, LoCoMo",
+        "value": "~6.7k (GPT-4.1-mini), ~6.0k (GPT-4o-mini)",
+        "src": "paper App. A.3, Table 8"
+      },
+      {
+        "label": "Memory-building tokens, all of LoCoMo",
+        "value": "9.42M (GPT-4.1-mini)",
+        "src": "paper Table 8"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "What round 1 matches",
+        "paper": "atomic facts",
+        "code": "atomic facts + subject + first 200 chars of episode",
+        "src": "stage2 L90-L160",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/stage2_index_building.py#L90-L160"
+      },
+      {
+        "topic": "Scene guidance",
+        "paper": "retrieval described as MemScene-guided throughout",
+        "code": "round 2 searches all MemCells without scenes; the paper's own trace example finds its answer in round 2",
+        "src": "scene_retrieval.py L299",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/scene_retrieval.py#L299"
+      },
+      {
+        "topic": "Scene summary",
+        "paper": "updated as MemCells join",
+        "code": "not stored in the evaluation scene index",
+        "src": "stage2 L530-L545",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/stage2_index_building.py#L530-L545"
+      }
+    ],
+    "open_questions": [
+      "Is the w/o MemScene gain (89.16 → 93.05) from narrative grouping or from pulling unmatched sibling MemCells into the rerank pool? Scene summaries never reach the answer, and the ablation cannot separate the two.",
+      "On LongMemEval scenes average 1.36 MemCells, so top-10 scenes → rerank is close to top-10 MemCells → rerank.",
+      "No run pairs rewritten-episode retrieval with raw-dialogue answering; w/o MemCell changes the retrieval unit and the answer context at once."
+    ]
+  }
 }

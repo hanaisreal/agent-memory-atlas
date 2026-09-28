@@ -3275,14 +3275,25 @@
     {
      "list": "teleai",
      "section": "Surveys"
+    },
+    {
+     "list": "deep",
+     "section": "Related Survey Papers"
     }
    ],
    "facets": {
     "teleai_section": [
      "Surveys"
+    ],
+    "deep_data": [
+     "Related Survey Papers"
     ]
    },
-   "venue": null
+   "venue": {
+    "venue": "TMLR",
+    "year": 2025,
+    "track": "journal"
+   }
   },
   {
    "id": "2601.07978",
@@ -9920,6 +9931,50 @@
    }
   },
   {
+   "id": "2506.06326",
+   "title": "Memory OS of AI Agent",
+   "url": "https://arxiv.org/abs/2506.06326",
+   "arxiv": "2506.06326",
+   "code": null,
+   "date": "2025-05",
+   "kind": "method",
+   "description": null,
+   "sources": [
+    {
+     "list": "deep",
+     "section": "Taxonomy / Memory Evolution / Internal Self-Evolving"
+    },
+    {
+     "list": "yyy",
+     "section": "Methods / Procedural Memory"
+    }
+   ],
+   "facets": {
+    "deep_stage": [
+     "Evolution"
+    ],
+    "deep_data": [
+     "Internal Self-Evolving"
+    ],
+    "yyy_section": [
+     "Procedural Memory"
+    ],
+    "yyy_tags": [
+     "Method",
+     "External",
+     "Prompt-based",
+     "Episodic",
+     "Procedural",
+     "Semantic"
+    ]
+   },
+   "venue": {
+    "venue": "EMNLP",
+    "year": 2025,
+    "track": "main"
+   }
+  },
+  {
    "id": "2505.22657",
    "title": "3DLLM-Mem: Long-Term Spatial-Temporal Memory for Embodied 3D Large Language Model",
    "url": "https://arxiv.org/abs/2505.22657",
@@ -9944,36 +9999,6 @@
      "Prompt-based",
      "Episodic",
      "Multimodal",
-     "Semantic"
-    ]
-   },
-   "venue": null
-  },
-  {
-   "id": "2506.06326",
-   "title": "Memory OS of AI Agent",
-   "url": "https://arxiv.org/abs/2506.06326",
-   "arxiv": "2506.06326",
-   "code": null,
-   "date": "2025-05",
-   "kind": "method",
-   "description": null,
-   "sources": [
-    {
-     "list": "yyy",
-     "section": "Methods / Procedural Memory"
-    }
-   ],
-   "facets": {
-    "yyy_section": [
-     "Procedural Memory"
-    ],
-    "yyy_tags": [
-     "Method",
-     "External",
-     "Prompt-based",
-     "Episodic",
-     "Procedural",
      "Semantic"
     ]
    },
@@ -10105,10 +10130,10 @@
    "venue": null
   },
   {
-   "id": "memoragboostinglongcontextprocessingwithglobalmemoryenhanced",
+   "id": "2409.05591",
    "title": "MemoRAG: Boosting Long Context Processing with Global Memory-Enhanced Retrieval Augmentation",
-   "url": "https://doi.org/10.1145/3696410.3714805",
-   "arxiv": null,
+   "url": "https://arxiv.org/abs/2409.05591",
+   "arxiv": "2409.05591",
    "code": null,
    "date": "2025-04",
    "kind": "method",
@@ -10117,6 +10142,10 @@
     {
      "list": "liu",
      "section": "Paper list / Working Memory / Latent"
+    },
+    {
+     "list": "teleai",
+     "section": "Papers - Nonparametric Memory / Text Memory"
     }
    ],
    "facets": {
@@ -10125,6 +10154,12 @@
     ],
     "liu_form": [
      "Latent"
+    ],
+    "teleai_section": [
+     "Nonparametric Memory"
+    ],
+    "teleai_subsection": [
+     "Text Memory"
     ]
    },
    "venue": null
@@ -10334,10 +10369,10 @@
    "venue": null
   },
   {
-   "id": "inprospectandretrospectreflectivememorymanagementforlongterm",
+   "id": "2503.08026",
    "title": "In Prospect and Retrospect: Reflective Memory Management for Long-term Personalized Dialogue Agents",
-   "url": "https://aclanthology.org/2025.acl-long.413/",
-   "arxiv": null,
+   "url": "https://arxiv.org/abs/2503.08026",
+   "arxiv": "2503.08026",
    "code": null,
    "date": "2025-03",
    "kind": "method",
@@ -10350,6 +10385,10 @@
     {
      "list": "teleai",
      "section": "Papers - Nonparametric Memory / Text Memory"
+    },
+    {
+     "list": "deep",
+     "section": "Taxonomy / Memory Retrieval / Retrieval Techniques"
     }
    ],
    "facets": {
@@ -10364,9 +10403,19 @@
     ],
     "teleai_subsection": [
      "Text Memory"
+    ],
+    "deep_stage": [
+     "Retrieval"
+    ],
+    "deep_data": [
+     "Retrieval Techniques"
     ]
    },
-   "venue": null
+   "venue": {
+    "venue": "ACL",
+    "year": 2025,
+    "track": "main"
+   }
   },
   {
    "id": "2502.00592",
@@ -10563,35 +10612,6 @@
     "venue": "arXiv",
     "year": 2025,
     "track": "preprint"
-   }
-  },
-  {
-   "id": "2503.08026",
-   "title": "In Prospect and Retrospect: Reflective Memory Management for Long-term Personalized Dialogue Agents",
-   "url": "https://arxiv.org/abs/2503.08026",
-   "arxiv": "2503.08026",
-   "code": null,
-   "date": "2025-03",
-   "kind": "method",
-   "description": null,
-   "sources": [
-    {
-     "list": "deep",
-     "section": "Taxonomy / Memory Retrieval / Retrieval Techniques"
-    }
-   ],
-   "facets": {
-    "deep_stage": [
-     "Retrieval"
-    ],
-    "deep_data": [
-     "Retrieval Techniques"
-    ]
-   },
-   "venue": {
-    "venue": "ACL",
-    "year": 2025,
-    "track": "main"
    }
   },
   {
@@ -10946,6 +10966,10 @@
     {
      "list": "yyy",
      "section": "Methods / Semantic Memory"
+    },
+    {
+     "list": "deep",
+     "section": "Taxonomy / Memory Evolution / Internal Self-Evolving"
     }
    ],
    "facets": {
@@ -10970,9 +10994,19 @@
      "Internal",
      "Prompt-based",
      "Semantic"
+    ],
+    "deep_stage": [
+     "Evolution"
+    ],
+    "deep_data": [
+     "Internal Self-Evolving"
     ]
    },
-   "venue": null
+   "venue": {
+    "venue": "ICML",
+    "year": 2025,
+    "track": "main"
+   }
   },
   {
    "id": "softcotsoftchainofthoughtforefficientreasoningwithllms",
@@ -12072,31 +12106,6 @@
    "venue": null
   },
   {
-   "id": "2409.05591",
-   "title": "MemoRAG: Boosting Long Context Processing with Global Memory-Enhanced Retrieval Augmentation",
-   "url": "https://arxiv.org/abs/2409.05591",
-   "arxiv": "2409.05591",
-   "code": null,
-   "date": "2024-09",
-   "kind": "method",
-   "description": null,
-   "sources": [
-    {
-     "list": "teleai",
-     "section": "Papers - Nonparametric Memory / Text Memory"
-    }
-   ],
-   "facets": {
-    "teleai_section": [
-     "Nonparametric Memory"
-    ],
-    "teleai_subsection": [
-     "Text Memory"
-    ]
-   },
-   "venue": null
-  },
-  {
    "id": "2409.13265",
    "title": "Towards LifeSpan Cognitive Systems",
    "url": "https://arxiv.org/abs/2409.13265",
@@ -12117,44 +12126,6 @@
     ],
     "teleai_subsection": [
      "Text Memory"
-    ]
-   },
-   "venue": null
-  },
-  {
-   "id": "2409.07429",
-   "title": "Agent Workflow Memory",
-   "url": "https://arxiv.org/abs/2409.07429",
-   "arxiv": "2409.07429",
-   "code": "https://github.com/zorazrw/agent-workflow-memory",
-   "date": "2024-09",
-   "kind": "method",
-   "description": null,
-   "sources": [
-    {
-     "list": "teleai",
-     "section": "Papers - Nonparametric Memory / Text Memory"
-    },
-    {
-     "list": "yyy",
-     "section": "Methods / Procedural Memory"
-    }
-   ],
-   "facets": {
-    "teleai_section": [
-     "Nonparametric Memory"
-    ],
-    "teleai_subsection": [
-     "Text Memory"
-    ],
-    "yyy_section": [
-     "Procedural Memory"
-    ],
-    "yyy_tags": [
-     "Method",
-     "External",
-     "Prompt-based",
-     "Procedural"
     ]
    },
    "venue": null
@@ -12236,11 +12207,11 @@
    "venue": null
   },
   {
-   "id": "augmentinglanguagemodelswithlongtermmemory",
+   "id": "2306.07174",
    "title": "Augmenting Language Models with Long-Term Memory",
-   "url": "http://papers.nips.cc/paper_files/paper/2023/hash/ebd82705f44793b6f9ade5a669d0f0bf-Abstract-Conference.html",
-   "arxiv": null,
-   "code": null,
+   "url": "https://arxiv.org/abs/2306.07174",
+   "arxiv": "2306.07174",
+   "code": "https://github.com/Victorwz/LongMem",
    "date": "2024-08",
    "kind": "method",
    "description": null,
@@ -12248,6 +12219,10 @@
     {
      "list": "liu",
      "section": "Paper list / Working Memory / Latent"
+    },
+    {
+     "list": "teleai",
+     "section": "Papers - Parametric Memory"
     }
    ],
    "facets": {
@@ -12256,13 +12231,16 @@
     ],
     "liu_form": [
      "Latent"
+    ],
+    "teleai_section": [
+     "Parametric Memory"
     ]
    },
    "venue": null
   },
   {
    "id": "2408.03615",
-   "title": "Optimus-1: Hybrid Multimodal Memory Empowered Agents Excel in Long-Horizon Tasks",
+   "title": "Optimus-1: Hybrid multimodal memory empowered agents excel in long-horizon tasks",
    "url": "https://arxiv.org/abs/2408.03615",
    "arxiv": "2408.03615",
    "code": "https://github.com/JiuTian-VL/Optimus-1",
@@ -12270,6 +12248,14 @@
    "kind": "method",
    "description": null,
    "sources": [
+    {
+     "list": "deep",
+     "section": "Taxonomy / Memory Extraction / Multimodal Data"
+    },
+    {
+     "list": "deep",
+     "section": "Taxonomy / Memory Retrieval / Retrieval Techniques"
+    },
     {
      "list": "deep",
      "section": "Taxonomy / Memory Storage / Hybrid Graph Architectures"
@@ -12281,9 +12267,13 @@
    ],
    "facets": {
     "deep_stage": [
+     "Extraction",
+     "Retrieval",
      "Storage"
     ],
     "deep_data": [
+     "Multimodal Data",
+     "Retrieval Techniques",
      "Hybrid Graph Architectures"
     ],
     "yyy_section": [
@@ -12297,9 +12287,9 @@
     ]
    },
    "venue": {
-    "venue": "arXiv",
+    "venue": "NeurIPS",
     "year": 2024,
-    "track": "preprint"
+    "track": "main"
    }
   },
   {
@@ -12358,11 +12348,11 @@
    "venue": null
   },
   {
-   "id": "humaninspiredepisodicmemoryforinfinitecontextllms",
+   "id": "2407.09450",
    "title": "Human-inspired Episodic Memory for Infinite Context LLMs",
-   "url": "https://openreview.net/forum?id=BI2int5SAC",
-   "arxiv": null,
-   "code": null,
+   "url": "https://arxiv.org/abs/2407.09450",
+   "arxiv": "2407.09450",
+   "code": "https://github.com/em-llm/EM-LLM-model",
    "date": "2024-07",
    "kind": "method",
    "description": null,
@@ -12370,6 +12360,10 @@
     {
      "list": "liu",
      "section": "Paper list / Factual Memory / Token-level"
+    },
+    {
+     "list": "teleai",
+     "section": "Papers - Nonparametric Memory / Text Memory"
     }
    ],
    "facets": {
@@ -12378,6 +12372,12 @@
     ],
     "liu_form": [
      "Token-level"
+    ],
+    "teleai_section": [
+     "Nonparametric Memory"
+    ],
+    "teleai_subsection": [
+     "Text Memory"
     ]
    },
    "venue": null
@@ -12530,11 +12530,11 @@
    "venue": null
   },
   {
-   "id": "agentworkflowmemory",
+   "id": "2409.07429",
    "title": "Agent Workflow Memory",
-   "url": "https://openreview.net/forum?id=NTAhi2JEEE",
-   "arxiv": null,
-   "code": null,
+   "url": "https://arxiv.org/abs/2409.07429",
+   "arxiv": "2409.07429",
+   "code": "https://github.com/zorazrw/agent-workflow-memory",
    "date": "2024-07",
    "kind": "method",
    "description": null,
@@ -12542,6 +12542,14 @@
     {
      "list": "liu",
      "section": "Paper list / Experiential Memory / Token-level"
+    },
+    {
+     "list": "teleai",
+     "section": "Papers - Nonparametric Memory / Text Memory"
+    },
+    {
+     "list": "yyy",
+     "section": "Methods / Procedural Memory"
     }
    ],
    "facets": {
@@ -12550,6 +12558,21 @@
     ],
     "liu_form": [
      "Token-level"
+    ],
+    "teleai_section": [
+     "Nonparametric Memory"
+    ],
+    "teleai_subsection": [
+     "Text Memory"
+    ],
+    "yyy_section": [
+     "Procedural Memory"
+    ],
+    "yyy_tags": [
+     "Method",
+     "External",
+     "Prompt-based",
+     "Procedural"
     ]
    },
    "venue": null
@@ -12625,31 +12648,6 @@
     ],
     "teleai_subsection": [
      "Dynamic Benchmarks & Simulation Environments"
-    ]
-   },
-   "venue": null
-  },
-  {
-   "id": "2407.09450",
-   "title": "Human-inspired Episodic Memory for Infinite Context LLMs",
-   "url": "https://arxiv.org/abs/2407.09450",
-   "arxiv": "2407.09450",
-   "code": "https://github.com/em-llm/EM-LLM-model",
-   "date": "2024-07",
-   "kind": "method",
-   "description": null,
-   "sources": [
-    {
-     "list": "teleai",
-     "section": "Papers - Nonparametric Memory / Text Memory"
-    }
-   ],
-   "facets": {
-    "teleai_section": [
-     "Nonparametric Memory"
-    ],
-    "teleai_subsection": [
-     "Text Memory"
     ]
    },
    "venue": null
@@ -12902,11 +12900,11 @@
    "venue": null
   },
   {
-   "id": "wiserethinkingtheknowledgememoryforlifelongmodeleditingoflar",
+   "id": "2405.14768",
    "title": "WISE: Rethinking the Knowledge Memory for Lifelong Model Editing of Large Language Models",
-   "url": "http://papers.nips.cc/paper_files/paper/2024/hash/60960ad78868fce5c165295fbd895060-Abstract-Conference.html",
-   "arxiv": null,
-   "code": null,
+   "url": "https://arxiv.org/abs/2405.14768",
+   "arxiv": "2405.14768",
+   "code": "https://github.com/zjunlp/EasyEdit",
    "date": "2024-05",
    "kind": "method",
    "description": null,
@@ -12914,6 +12912,10 @@
     {
      "list": "liu",
      "section": "Paper list / Factual Memory / Parametric"
+    },
+    {
+     "list": "teleai",
+     "section": "Papers - Parametric Memory"
     }
    ],
    "facets": {
@@ -12922,6 +12924,9 @@
     ],
     "liu_form": [
      "Parametric"
+    ],
+    "teleai_section": [
+     "Parametric Memory"
     ]
    },
    "venue": null
@@ -13027,28 +13032,6 @@
    "venue": null
   },
   {
-   "id": "2405.14768",
-   "title": "WISE: Rethinking the Knowledge Memory for Lifelong Model Editing of Large Language Models",
-   "url": "https://arxiv.org/abs/2405.14768",
-   "arxiv": "2405.14768",
-   "code": "https://github.com/zjunlp/EasyEdit",
-   "date": "2024-05",
-   "kind": "method",
-   "description": null,
-   "sources": [
-    {
-     "list": "teleai",
-     "section": "Papers - Parametric Memory"
-    }
-   ],
-   "facets": {
-    "teleai_section": [
-     "Parametric Memory"
-    ]
-   },
-   "venue": null
-  },
-  {
    "id": "2404.16130",
    "title": "From Local to Global: A Graph RAG Approach to Query-Focused Summarization",
    "url": "https://arxiv.org/abs/2404.16130",
@@ -13129,6 +13112,10 @@
     {
      "list": "yyy",
      "section": "Surveys"
+    },
+    {
+     "list": "deep",
+     "section": "Related Survey Papers"
     }
    ],
    "facets": {
@@ -13137,9 +13124,16 @@
     ],
     "yyy_tags": [
      "Survey"
+    ],
+    "deep_data": [
+     "Related Survey Papers"
     ]
    },
-   "venue": null
+   "venue": {
+    "venue": "TOIS",
+    "year": 2025,
+    "track": "journal"
+   }
   },
   {
    "id": "2404.17176",
@@ -14223,10 +14217,10 @@
    "venue": null
   },
   {
-   "id": "expelllmagentsareexperientiallearners",
+   "id": "2308.10144",
    "title": "ExpeL: LLM Agents Are Experiential Learners",
-   "url": "https://doi.org/10.1609/aaai.v38i17.29936",
-   "arxiv": null,
+   "url": "https://arxiv.org/abs/2308.10144",
+   "arxiv": "2308.10144",
    "code": null,
    "date": "2023-08",
    "kind": "method",
@@ -14235,6 +14229,10 @@
     {
      "list": "liu",
      "section": "Paper list / Experiential Memory / Token-level"
+    },
+    {
+     "list": "deep",
+     "section": "Taxonomy / Memory Evolution / External Self-Exploration"
     }
    ],
    "facets": {
@@ -14243,9 +14241,19 @@
     ],
     "liu_form": [
      "Token-level"
+    ],
+    "deep_stage": [
+     "Evolution"
+    ],
+    "deep_data": [
+     "External Self-Exploration"
     ]
    },
-   "venue": null
+   "venue": {
+    "venue": "AAAI",
+    "year": 2024,
+    "track": "main"
+   }
   },
   {
    "id": "2308.02151",
@@ -14296,35 +14304,6 @@
     ]
    },
    "venue": null
-  },
-  {
-   "id": "2308.10144",
-   "title": "Expel: Llm agents are experiential learners",
-   "url": "https://arxiv.org/abs/2308.10144",
-   "arxiv": "2308.10144",
-   "code": null,
-   "date": "2023-08",
-   "kind": "method",
-   "description": null,
-   "sources": [
-    {
-     "list": "deep",
-     "section": "Taxonomy / Memory Evolution / External Self-Exploration"
-    }
-   ],
-   "facets": {
-    "deep_stage": [
-     "Evolution"
-    ],
-    "deep_data": [
-     "External Self-Exploration"
-    ]
-   },
-   "venue": {
-    "venue": "AAAI",
-    "year": 2024,
-    "track": "main"
-   }
   },
   {
    "id": "2308.03688",
@@ -14553,28 +14532,6 @@
     ],
     "liu_form": [
      "Latent"
-    ]
-   },
-   "venue": null
-  },
-  {
-   "id": "2306.07174",
-   "title": "Augmenting Language Models with Long-Term Memory",
-   "url": "https://arxiv.org/abs/2306.07174",
-   "arxiv": "2306.07174",
-   "code": "https://github.com/Victorwz/LongMem",
-   "date": "2023-06",
-   "kind": "method",
-   "description": null,
-   "sources": [
-    {
-     "list": "teleai",
-     "section": "Papers - Parametric Memory"
-    }
-   ],
-   "facets": {
-    "teleai_section": [
-     "Parametric Memory"
     ]
    },
    "venue": null
@@ -14953,6 +14910,14 @@
     {
      "list": "liu",
      "section": "Paper list / Experiential Memory / Token-level"
+    },
+    {
+     "list": "deep",
+     "section": "Taxonomy / Memory Extraction / Sequential Data"
+    },
+    {
+     "list": "deep",
+     "section": "Taxonomy / Memory Evolution / Internal Self-Evolving"
     }
    ],
    "facets": {
@@ -14961,9 +14926,21 @@
     ],
     "liu_form": [
      "Token-level"
+    ],
+    "deep_stage": [
+     "Extraction",
+     "Evolution"
+    ],
+    "deep_data": [
+     "Sequential Data",
+     "Internal Self-Evolving"
     ]
    },
-   "venue": null
+   "venue": {
+    "venue": "NeurIPS",
+    "year": 2023,
+    "track": "main"
+   }
   },
   {
    "id": "2302.04761",
@@ -18167,58 +18144,6 @@
    "venue": null
   },
   {
-   "id": "asurveyonthememorymechanismoflargelanguagemodelbasedagents",
-   "title": "A Survey on the Memory Mechanism of Large Language Model-based Agents",
-   "url": "https://dl.acm.org/doi/full/10.1145/3748302",
-   "arxiv": null,
-   "code": null,
-   "date": null,
-   "kind": "survey",
-   "description": null,
-   "sources": [
-    {
-     "list": "deep",
-     "section": "Related Survey Papers"
-    }
-   ],
-   "facets": {
-    "deep_data": [
-     "Related Survey Papers"
-    ]
-   },
-   "venue": {
-    "venue": "TOIS",
-    "year": 2025,
-    "track": "journal"
-   }
-  },
-  {
-   "id": "theaihippocampushowfararewefromhumanmemory",
-   "title": "The AI Hippocampus: How Far are We From Human Memory?",
-   "url": "https://openreview.net/forum?id=Sk7pwmLuAY",
-   "arxiv": null,
-   "code": null,
-   "date": null,
-   "kind": "survey",
-   "description": null,
-   "sources": [
-    {
-     "list": "deep",
-     "section": "Related Survey Papers"
-    }
-   ],
-   "facets": {
-    "deep_data": [
-     "Related Survey Papers"
-    ]
-   },
-   "venue": {
-    "venue": "TMLR",
-    "year": 2025,
-    "track": "journal"
-   }
-  },
-  {
    "id": "memoryinllmbasedmultiagentsystemsmechanismschallengesandcoll",
    "title": "Memory in LLM-based Multi-agent Systems: Mechanisms, Challenges, and Collective Intelligence",
    "url": "https://www.techrxiv.org/doi/full/10.36227/techrxiv.176539617.79044553",
@@ -18242,76 +18167,6 @@
     "venue": "arXiv",
     "year": 2025,
     "track": "preprint"
-   }
-  },
-  {
-   "id": "reflexionlanguageagentswithverbalreinforcementlearning",
-   "title": "Reflexion: Language agents with verbal reinforcement learning",
-   "url": "https://proceedings.neurips.cc/paper_files/paper/2023/file/1b44b878bb782e6954cd888628510e90-Paper-Conference.pdf",
-   "arxiv": null,
-   "code": null,
-   "date": null,
-   "kind": "method",
-   "description": null,
-   "sources": [
-    {
-     "list": "deep",
-     "section": "Taxonomy / Memory Extraction / Sequential Data"
-    },
-    {
-     "list": "deep",
-     "section": "Taxonomy / Memory Evolution / Internal Self-Evolving"
-    }
-   ],
-   "facets": {
-    "deep_stage": [
-     "Extraction",
-     "Evolution"
-    ],
-    "deep_data": [
-     "Sequential Data",
-     "Internal Self-Evolving"
-    ]
-   },
-   "venue": {
-    "venue": "NeurIPS",
-    "year": 2023,
-    "track": "main"
-   }
-  },
-  {
-   "id": "optimus1hybridmultimodalmemoryempoweredagentsexcelinlonghori",
-   "title": "Optimus-1: Hybrid multimodal memory empowered agents excel in long-horizon tasks",
-   "url": "https://proceedings.neurips.cc/paper_files/paper/2024/hash/5949a8750a110ce1f0631b1776c500a2-Abstract-Conference.html",
-   "arxiv": null,
-   "code": null,
-   "date": null,
-   "kind": "method",
-   "description": null,
-   "sources": [
-    {
-     "list": "deep",
-     "section": "Taxonomy / Memory Extraction / Multimodal Data"
-    },
-    {
-     "list": "deep",
-     "section": "Taxonomy / Memory Retrieval / Retrieval Techniques"
-    }
-   ],
-   "facets": {
-    "deep_stage": [
-     "Extraction",
-     "Retrieval"
-    ],
-    "deep_data": [
-     "Multimodal Data",
-     "Retrieval Techniques"
-    ]
-   },
-   "venue": {
-    "venue": "NeurIPS",
-    "year": 2024,
-    "track": "main"
    }
   },
   {
@@ -18456,64 +18311,6 @@
    "venue": {
     "venue": "ICLR",
     "year": 2024,
-    "track": "main"
-   }
-  },
-  {
-   "id": "memoryosofaiagent",
-   "title": "Memory OS of AI Agent",
-   "url": "https://aclanthology.org/2025.emnlp-main.1318.pdf",
-   "arxiv": null,
-   "code": null,
-   "date": null,
-   "kind": "method",
-   "description": null,
-   "sources": [
-    {
-     "list": "deep",
-     "section": "Taxonomy / Memory Evolution / Internal Self-Evolving"
-    }
-   ],
-   "facets": {
-    "deep_stage": [
-     "Evolution"
-    ],
-    "deep_data": [
-     "Internal Self-Evolving"
-    ]
-   },
-   "venue": {
-    "venue": "EMNLP",
-    "year": 2025,
-    "track": "main"
-   }
-  },
-  {
-   "id": "fromragtomemorynonparametriccontinuallearningforlargelanguag",
-   "title": "From RAG to Memory: Non-Parametric Continual Learning for Large Language Models",
-   "url": "https://openreview.net/forum?id=LWH8yn4HS2",
-   "arxiv": null,
-   "code": null,
-   "date": null,
-   "kind": "method",
-   "description": null,
-   "sources": [
-    {
-     "list": "deep",
-     "section": "Taxonomy / Memory Evolution / Internal Self-Evolving"
-    }
-   ],
-   "facets": {
-    "deep_stage": [
-     "Evolution"
-    ],
-    "deep_data": [
-     "Internal Self-Evolving"
-    ]
-   },
-   "venue": {
-    "venue": "ICML",
-    "year": 2025,
     "track": "main"
    }
   },

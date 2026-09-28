@@ -1,3 +1,4 @@
 pdfs/
 *.pdf
 __pycache__/
+.cache/

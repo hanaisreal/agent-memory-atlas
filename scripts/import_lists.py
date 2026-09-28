@@ -270,36 +270,62 @@ def parse_source(key, text):
         }
 
 
-def merge(records):
-    by_key = {}
-    order = []
-    for r in records:
-        k = ("arxiv", r["arxiv"]) if r["arxiv"] else ("title", norm_title(r["title"]))
-        if k not in by_key:
-            by_key[k] = {
-                "id": r["arxiv"] or norm_title(r["title"])[:60],
-                "title": r["title"], "url": r["url"], "arxiv": r["arxiv"],
-                "code": r["code"], "date": r["date"], "kind": r["kind"],
-                "description": r["description"], "sources": [], "facets": {}, "venue": None,
-            }
-            order.append(k)
-        m = by_key[k]
-        for field in ("url", "code", "date", "description", "venue"):
-            if not m[field] and r[field]:
-                m[field] = r[field]
-        # products and benchmarks outrank "method" when lists disagree
-        if m["kind"] == "method" and r["kind"] != "method":
-            m["kind"] = r["kind"]
-        src = {"list": r["source"], "section": r["section"]}
+def _entry(r):
+    """One raw list record as a merged paper."""
+    return {
+        "id": r["arxiv"] or norm_title(r["title"])[:60],
+        "title": r["title"], "url": r["url"], "arxiv": r["arxiv"],
+        "code": r["code"], "date": r["date"], "kind": r["kind"],
+        "description": r["description"],
+        "sources": [{"list": r["source"], "section": r["section"]}],
+        "facets": {fk: list(fv) if isinstance(fv, list) else [fv] for fk, fv in r["facets"].items()},
+        "venue": r["venue"],
+    }
+
+
+def _absorb(m, o):
+    """Fold merged paper o into m."""
+    if o["arxiv"] and not m["arxiv"]:
+        # the arXiv entry names the paper; keep its id and link
+        m["arxiv"], m["id"], m["url"] = o["arxiv"], o["id"], o["url"] or m["url"]
+    for field in ("url", "code", "date", "description", "venue"):
+        if not m[field] and o[field]:
+            m[field] = o[field]
+    # products and benchmarks outrank "method" when lists disagree
+    if m["kind"] == "method" and o["kind"] != "method":
+        m["kind"] = o["kind"]
+    for src in o["sources"]:
         if src not in m["sources"]:
             m["sources"].append(src)
-        for fk, fv in r["facets"].items():
-            vals = fv if isinstance(fv, list) else [fv]
-            cur = m["facets"].setdefault(fk, [])
-            for v in vals:
-                if v not in cur:
-                    cur.append(v)
-    return [by_key[k] for k in order]
+    for fk, vals in o["facets"].items():
+        cur = m["facets"].setdefault(fk, [])
+        for v in vals:
+            if v not in cur:
+                cur.append(v)
+
+
+def merge(records):
+    # pass 1: the same arXiv id, or the same title when there is no arXiv id
+    by_key, out = {}, []
+    for r in records:
+        k = ("arxiv", r["arxiv"]) if r["arxiv"] else ("title", norm_title(r["title"]))
+        if k in by_key:
+            _absorb(by_key[k], _entry(r))
+        else:
+            by_key[k] = _entry(r)
+            out.append(by_key[k])
+    # pass 2: one list links the paper on arXiv and another does not, so pass 1 kept two entries.
+    # Join them by title, unless both carry different arXiv ids; titles under 12 letters are too generic to trust.
+    by_title, merged = {}, []
+    for m in out:
+        t = norm_title(m["title"])
+        h = by_title.get(t)
+        if h and len(t) >= 12 and not (h["arxiv"] and m["arxiv"] and h["arxiv"] != m["arxiv"]):
+            _absorb(h, m)
+        else:
+            by_title.setdefault(t, m)
+            merged.append(m)
+    return merged
 
 
 def main():

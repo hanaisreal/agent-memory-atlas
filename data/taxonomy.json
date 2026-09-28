@@ -1,0 +1,1733 @@
+{
+  "about": "The atlas's own taxonomy of the paper index. Every paper gets exactly one family (its main contribution); other families it touches go in 'also'. Families are grouped by where the memory lives (form) for methods, and by paper kind otherwise. Edit definitions here; the classification of each paper is in data/paper_families.json.",
+  "groups": [
+    {
+      "id": "surveys",
+      "name": "Surveys",
+      "def": "Reviews, taxonomies and position papers on agent memory. Read these first.",
+      "families": [
+        {
+          "id": "survey",
+          "name": "Surveys and position papers",
+          "def": "Reviews, taxonomies and position papers on agent memory.",
+          "test": "Does it organize other work rather than propose a method?",
+          "examples": [],
+          "axes": [
+            {
+              "id": "taxonomy-basis",
+              "name": "Taxonomy Basis",
+              "def": "The organizing principle the survey uses to structure agent memory research.",
+              "values": [
+                {
+                  "id": "architecture-based",
+                  "name": "Architecture-Based",
+                  "def": "Organizes memory by system or representational structure (forms, storage, modules, substrates)."
+                },
+                {
+                  "id": "process-based",
+                  "name": "Process/Stage-Based",
+                  "def": "Organizes memory by operations or evolutionary stages over time (write-manage-read, storage-reflection-experience, six operations)."
+                },
+                {
+                  "id": "cognitive-based",
+                  "name": "Cognitive/Neuroscience-Based",
+                  "def": "Organizes memory by analogy to human or biological memory categories and brain function."
+                },
+                {
+                  "id": "system-layer-based",
+                  "name": "Broader System Layer",
+                  "def": "Treats memory as one layer within a larger system (harness, multi-agent, tools, vision, video) rather than the sole focus."
+                }
+              ]
+            },
+            {
+              "id": "evidence-base",
+              "name": "Evidence Base",
+              "def": "What kind of support the paper offers for its claims.",
+              "values": [
+                {
+                  "id": "conceptual-only",
+                  "name": "Conceptual Only",
+                  "def": "Presents a taxonomy or argument without new benchmarks or experiments."
+                },
+                {
+                  "id": "benchmark-survey",
+                  "name": "Benchmark Survey",
+                  "def": "Reviews and analyzes existing benchmarks or evaluation practices without running new experiments."
+                },
+                {
+                  "id": "empirical-analysis",
+                  "name": "Empirical Analysis",
+                  "def": "Runs its own experiments or comparisons across methods or benchmarks."
+                },
+                {
+                  "id": "position-argument",
+                  "name": "Position/Argument",
+                  "def": "Makes a normative or risk-based argument rather than presenting a neutral taxonomy."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "token",
+      "name": "Token-level memory",
+      "def": "Memory is text or records outside the model that are read back into its context.",
+      "families": [
+        {
+          "id": "context",
+          "name": "Working-context management",
+          "def": "Shrinks, folds, branches or prunes the running context inside one long task. No store that outlives the task.",
+          "test": "Does the memory disappear when the task ends, and is the point to fit a long trajectory into the window?",
+          "examples": [
+            "MemAgent",
+            "MEM1",
+            "ReSum",
+            "Context Folding",
+            "HiAgent"
+          ],
+          "axes": [
+            {
+              "id": "context-shape",
+              "name": "Context representation",
+              "def": "The form the retained working context takes.",
+              "values": [
+                {
+                  "id": "single-summary",
+                  "name": "Single evolving summary",
+                  "def": "One flowing text state, memo, or report that is overwritten or extended over time."
+                },
+                {
+                  "id": "structured-fields",
+                  "name": "Structured multi-field",
+                  "def": "Several explicit named memory fields or types held alongside each other (e.g. folded history plus UI state, or episodic/working/tool)."
+                },
+                {
+                  "id": "graph-tree-structure",
+                  "name": "Tree/graph structure",
+                  "def": "An explicit tree, graph, or plan data structure with nodes and edges."
+                },
+                {
+                  "id": "raw-context-edit",
+                  "name": "Direct raw-context edit",
+                  "def": "No separate memory object; operates directly on the token sequence via insertion, deletion, eviction, or search over raw content."
+                },
+                {
+                  "id": "not-stated",
+                  "name": "Not stated",
+                  "def": "No representation is given in the available text."
+                }
+              ]
+            },
+            {
+              "id": "management-scope",
+              "name": "Management scope",
+              "def": "What kind of content the context operation targets.",
+              "values": [
+                {
+                  "id": "agent-trajectory",
+                  "name": "Agent's own trajectory",
+                  "def": "The agent's own action-observation/interaction history accumulated across steps."
+                },
+                {
+                  "id": "tool-context",
+                  "name": "Tool/environment context",
+                  "def": "External tool, API, MCP-server definitions, or workspace artefacts shared across roles."
+                },
+                {
+                  "id": "search-reasoning-state",
+                  "name": "Search/reasoning state",
+                  "def": "Intermediate search, planning, or belief state built during multi-step reasoning."
+                },
+                {
+                  "id": "long-document",
+                  "name": "Long input document",
+                  "def": "A single long given text/narrative/conversation being read, not the agent's own generated trajectory."
+                },
+                {
+                  "id": "not-stated",
+                  "name": "Not stated",
+                  "def": "No scope is given in the available text."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "flat",
+          "name": "Flat retrieval store",
+          "def": "Persistent records (turns, chunks, facts, summaries) retrieved by similarity or keywords; items are not linked to each other.",
+          "test": "Is there a store of records whose items have no edges or levels between them?",
+          "examples": [
+            "MemoryBank",
+            "Mem0 (base)",
+            "SeCom",
+            "LightMem"
+          ],
+          "axes": [
+            {
+              "id": "retrieval-strategy",
+              "name": "Retrieval strategy",
+              "def": "How a query finds the right stored items.",
+              "values": [
+                {
+                  "id": "single-pass-similarity",
+                  "name": "Single-pass similarity",
+                  "def": "One-shot dense/keyword top-k lookup against the store."
+                },
+                {
+                  "id": "adaptive-dual-path",
+                  "name": "Adaptive dual-path",
+                  "def": "Switches or combines two or more retrieval routes based on a signal (familiarity, intent, surface vs. latent match)."
+                },
+                {
+                  "id": "structured-non-similarity",
+                  "name": "Structured, non-similarity",
+                  "def": "Bypasses vector/keyword similarity via typed lookup, scoring policy, access control, or explicit structure."
+                },
+                {
+                  "id": "learned-retrieval-policy",
+                  "name": "Learned retrieval policy",
+                  "def": "Retrieval or reranking is itself trained (RL, SFT, or refined from interaction experience)."
+                },
+                {
+                  "id": "not-stated",
+                  "name": "Not stated",
+                  "def": "No retrieval mechanism is given in the available text."
+                }
+              ]
+            },
+            {
+              "id": "memory-unit",
+              "name": "Memory unit type",
+              "def": "The granularity/shape of what is stored per item.",
+              "values": [
+                {
+                  "id": "raw-summarized-turns",
+                  "name": "Raw/summarized turns",
+                  "def": "Whole dialogue turns, memos, or lightly summarized interaction history."
+                },
+                {
+                  "id": "extracted-atomic-facts",
+                  "name": "Extracted atomic facts",
+                  "def": "Discrete distilled facts, beliefs, or relations pulled out of interactions."
+                },
+                {
+                  "id": "typed-multi-category",
+                  "name": "Typed multi-category",
+                  "def": "Multiple explicit memory types or fields held side by side (e.g. episodic/semantic/procedural, dual-brain, paired units)."
+                },
+                {
+                  "id": "exemplar-trajectories",
+                  "name": "Exemplar/trajectory records",
+                  "def": "Whole action or dialogue trajectories/exemplars stored intact for reuse."
+                },
+                {
+                  "id": "not-stated",
+                  "name": "Not stated",
+                  "def": "No memory content/unit is given in the available text."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "graph",
+          "name": "Graph and linked store",
+          "def": "Records connected by edges: knowledge graphs, entity or temporal graphs, linked notes. Retrieval or update uses the links.",
+          "test": "Are items connected, and does the method rely on those connections?",
+          "examples": [
+            "Zep",
+            "A-Mem",
+            "HippoRAG",
+            "AriGraph",
+            "Mem0^g"
+          ],
+          "axes": [
+            {
+              "id": "node-edge-unit",
+              "name": "Node/edge unit",
+              "def": "What the graph's nodes and edges represent.",
+              "values": [
+                {
+                  "id": "entity-relation",
+                  "name": "Entity-relation KG",
+                  "def": "Nodes are entities and edges are relations, as in a classic knowledge graph."
+                },
+                {
+                  "id": "event-proposition",
+                  "name": "Event/proposition",
+                  "def": "Nodes are events, episodes, or extracted propositions rather than bare entities."
+                },
+                {
+                  "id": "hyperedge",
+                  "name": "Hyperedge",
+                  "def": "Edges are hyperedges connecting three or more nodes to capture n-ary or grouped relations."
+                },
+                {
+                  "id": "multi-view",
+                  "name": "Multi-view/heterogeneous",
+                  "def": "Memory is represented across several parallel graph types or node roles at once."
+                },
+                {
+                  "id": "text-unit",
+                  "name": "Text-unit graph",
+                  "def": "Nodes are raw text spans such as sentences, utterances, or notes linked to each other."
+                },
+                {
+                  "id": "not-stated",
+                  "name": "Not stated",
+                  "def": "The text gives no information about what nodes and edges represent."
+                }
+              ]
+            },
+            {
+              "id": "retrieval-read",
+              "name": "Retrieval read mechanism",
+              "def": "How the graph is traversed or queried to answer a request.",
+              "values": [
+                {
+                  "id": "structural-traversal",
+                  "name": "Structural traversal",
+                  "def": "Retrieval walks or scores the graph structure itself, e.g. multi-hop paths, PageRank, or trees."
+                },
+                {
+                  "id": "trained-retriever",
+                  "name": "Trained retriever/policy",
+                  "def": "A learned model or an RL/SFT-trained policy performs or guides retrieval."
+                },
+                {
+                  "id": "agentic-iterative",
+                  "name": "Agentic iterative",
+                  "def": "An LLM agent iteratively decides retrieval actions or tool calls over the graph."
+                },
+                {
+                  "id": "multi-signal-hybrid",
+                  "name": "Multi-signal hybrid",
+                  "def": "Retrieval fuses multiple routes or signals such as similarity, structure, and recency."
+                },
+                {
+                  "id": "similarity-search",
+                  "name": "Similarity search",
+                  "def": "Retrieval is primarily embedding-based nearest-neighbor search, possibly enriched with extra features."
+                },
+                {
+                  "id": "not-stated",
+                  "name": "Not stated",
+                  "def": "The text gives no information about the retrieval mechanism."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "hierarchy",
+          "name": "Hierarchical and tiered store",
+          "def": "Records at several levels of abstraction (tree, clusters, summaries over details) or in tiers that items move between (short-term, long-term, archive).",
+          "test": "Are there levels or tiers, and is moving between them part of the method?",
+          "examples": [
+            "MemGPT",
+            "MemoryOS",
+            "RAPTOR",
+            "MemTree",
+            "EverMemOS"
+          ],
+          "axes": [
+            {
+              "id": "consolidation-trigger",
+              "name": "Consolidation Trigger",
+              "def": "What causes memory to be built, promoted, or reorganized across levels.",
+              "values": [
+                {
+                  "id": "continuous-every-turn",
+                  "name": "Continuous / Every-Turn",
+                  "def": "Memory is processed and reorganized on every interaction, with no separate gating condition."
+                },
+                {
+                  "id": "event-triggered",
+                  "name": "Event-Triggered",
+                  "def": "Consolidation fires only when a specific condition is met, such as recurrence, capacity limits, or task completion."
+                },
+                {
+                  "id": "scheduled-periodic",
+                  "name": "Scheduled / Periodic",
+                  "def": "Consolidation runs on a fixed periodic or offline (sleep-time) schedule decoupled from individual interactions."
+                },
+                {
+                  "id": "learned-policy",
+                  "name": "Learned Policy",
+                  "def": "A trained RL or SFT policy decides when and what to consolidate or retrieve."
+                },
+                {
+                  "id": "not-stated",
+                  "name": "Not Stated",
+                  "def": "The paper gives no information about the consolidation trigger."
+                }
+              ]
+            },
+            {
+              "id": "retrieval-traversal",
+              "name": "Retrieval Traversal",
+              "def": "How the system navigates the hierarchy to answer a query at inference time.",
+              "values": [
+                {
+                  "id": "top-down-routing",
+                  "name": "Top-Down Index Routing",
+                  "def": "Retrieval follows explicit indices or pointers from coarse to fine levels, avoiding exhaustive similarity search."
+                },
+                {
+                  "id": "similarity-plus-aggregation",
+                  "name": "Similarity + Aggregation",
+                  "def": "Vector similarity search is combined with hierarchy-aware scoring or aggregation of related items."
+                },
+                {
+                  "id": "agentic-exploration",
+                  "name": "Agentic Exploration",
+                  "def": "An LLM or trained agent actively and iteratively decides what to fetch, reason over, or explore next."
+                },
+                {
+                  "id": "single-pass-regeneration",
+                  "name": "Single-Pass Regeneration",
+                  "def": "There is no separate retrieval step; memory is directly regenerated or merged into the next response."
+                },
+                {
+                  "id": "not-stated",
+                  "name": "Not Stated",
+                  "def": "The paper gives no information about retrieval traversal."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "experience",
+          "name": "Experience and skill memory",
+          "def": "Distills reusable insights, workflows, strategies, tools or code from past trajectories so the agent acts better on later tasks. Weights stay frozen.",
+          "test": "Is what is stored lessons or procedures learned from doing tasks, rather than facts about the world or the user?",
+          "examples": [
+            "ExpeL",
+            "Agent Workflow Memory",
+            "ReasoningBank",
+            "Dynamic Cheatsheet",
+            "Buffer of Thoughts"
+          ],
+          "axes": [
+            {
+              "id": "memory-content",
+              "name": "Memory Content Type",
+              "def": "What kind of artifact the system stores and reuses as its memory.",
+              "values": [
+                {
+                  "id": "episodic-cases",
+                  "name": "Episodic Cases",
+                  "def": "Raw or lightly processed episodic trajectories or cases from past interactions."
+                },
+                {
+                  "id": "distilled-insight",
+                  "name": "Distilled Insight",
+                  "def": "Distilled natural-language insights, strategies, principles, or beliefs abstracted from experience."
+                },
+                {
+                  "id": "procedural-skill",
+                  "name": "Procedural Skill",
+                  "def": "Reusable executable skills, workflows, tools, APIs, or documentation."
+                },
+                {
+                  "id": "system-architecture",
+                  "name": "System Architecture",
+                  "def": "The memory system or agent architecture/code itself is the evolving artifact."
+                }
+              ]
+            },
+            {
+              "id": "update-mechanism",
+              "name": "Update Mechanism",
+              "def": "How the memory content is decided, accepted, or improved over time.",
+              "values": [
+                {
+                  "id": "gated-by-score",
+                  "name": "Gated by Score",
+                  "def": "An update is accepted only after passing an explicit validation, risk, or utility gate."
+                },
+                {
+                  "id": "rl-optimized",
+                  "name": "RL Optimized",
+                  "def": "Updates or selection are driven by a reinforcement-learning or bandit reward signal."
+                },
+                {
+                  "id": "reflection-free-form",
+                  "name": "Free-form Reflection",
+                  "def": "Updates come from unstructured self-reflection, distillation, or accumulation without formal gating or RL."
+                },
+                {
+                  "id": "search-evolved",
+                  "name": "Search Evolved",
+                  "def": "Updates come from population-based or iterative search/evolution over candidate designs."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "multimodal",
+          "name": "Multimodal and embodied store",
+          "def": "Stores and retrieves non-text observations (video, images, screens, 3D or spatial maps) as the main contribution.",
+          "test": "Is handling a non-text modality the paper's main point?",
+          "examples": [
+            "M3-Agent",
+            "VideoAgent",
+            "Ella",
+            "3DLLM-Mem",
+            "JARVIS-1"
+          ],
+          "axes": [
+            {
+              "id": "memory-content",
+              "name": "What is stored",
+              "def": "The form the memory actually holds in the system.",
+              "values": [
+                {
+                  "id": "raw-visual-frames",
+                  "name": "Raw frames/keyframes",
+                  "def": "Memory keeps literal video frames, keyframes, or imagined images."
+                },
+                {
+                  "id": "learned-latent-tokens",
+                  "name": "Learned latent tokens",
+                  "def": "Memory is a compressed, opaque neural embedding or token bank produced by a trained encoder."
+                },
+                {
+                  "id": "structured-symbolic",
+                  "name": "Structured symbolic memory",
+                  "def": "Memory is human-interpretable structure: graphs, entities, events, text summaries, or maps."
+                },
+                {
+                  "id": "external-retrieval-corpus",
+                  "name": "External retrieval corpus",
+                  "def": "Memory is a separate indexed database of videos/clips queried like a search index."
+                },
+                {
+                  "id": "not-stated",
+                  "name": "Not stated",
+                  "def": "The abstract does not specify the concrete memory representation."
+                }
+              ]
+            },
+            {
+              "id": "access-mechanism",
+              "name": "How memory is used",
+              "def": "The mechanism by which memory is written, selected, or read at inference time.",
+              "values": [
+                {
+                  "id": "learned-fusion",
+                  "name": "Trained fusion/attention",
+                  "def": "Memory read or write is a trained, model-internal step (attention, latent fusion, RL/SFT policy) with no explicit query loop."
+                },
+                {
+                  "id": "agentic-retrieval",
+                  "name": "Agentic iterative retrieval",
+                  "def": "An LLM/VLM agent actively decides what to query, store, verify, or backtrack across memory through reasoning."
+                },
+                {
+                  "id": "similarity-retrieval",
+                  "name": "Relevance-based retrieval",
+                  "def": "Memory items are selected by a relevance criterion (semantic similarity, prompt match, geometric overlap) without agentic iteration or joint training."
+                },
+                {
+                  "id": "rule-based-compression",
+                  "name": "Fixed rule/compression",
+                  "def": "A deterministic, training-free algorithm compresses or extracts memory with no learning, agent, or query step."
+                },
+                {
+                  "id": "not-stated",
+                  "name": "Not stated",
+                  "def": "The abstract does not specify the access mechanism."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "parametric",
+      "name": "Parametric memory",
+      "def": "Memory is written into model weights.",
+      "families": [
+        {
+          "id": "editing",
+          "name": "Knowledge editing",
+          "def": "Targeted weight updates that insert, change or delete specific facts.",
+          "test": "Does it change particular facts in a trained model by editing its weights?",
+          "examples": [
+            "ROME",
+            "MEMIT",
+            "AlphaEdit",
+            "SERAC",
+            "WISE"
+          ],
+          "axes": [
+            {
+              "id": "edit-mechanism",
+              "name": "Edit mechanism",
+              "def": "How the weight update itself is computed and applied.",
+              "values": [
+                {
+                  "id": "null-space-projection",
+                  "name": "Null-space projection",
+                  "def": "Projects edit perturbations onto a null space to avoid disrupting other knowledge."
+                },
+                {
+                  "id": "hypernetwork-prediction",
+                  "name": "Hypernetwork prediction",
+                  "def": "A trained hypernetwork predicts the weight update for a given fact."
+                },
+                {
+                  "id": "lora-adapter-mixture",
+                  "name": "LoRA adapter mixture",
+                  "def": "Edits are stored as a mixture of LoRA adapters."
+                },
+                {
+                  "id": "dual-memory-router",
+                  "name": "Dual-memory router",
+                  "def": "A router selects between a frozen main memory and an edited side memory."
+                },
+                {
+                  "id": "perturbation-analysis",
+                  "name": "Perturbation analysis",
+                  "def": "No new editing mechanism; studies side effects of existing edit methods."
+                }
+              ]
+            },
+            {
+              "id": "primary-concern",
+              "name": "Primary concern",
+              "def": "The main property the paper optimizes or evaluates.",
+              "values": [
+                {
+                  "id": "locality-preservation",
+                  "name": "Locality preservation",
+                  "def": "Focuses on keeping unrelated knowledge intact during editing."
+                },
+                {
+                  "id": "lifelong-stability",
+                  "name": "Lifelong stability",
+                  "def": "Focuses on stability across many sequential edits over time."
+                },
+                {
+                  "id": "scalability",
+                  "name": "Scalability",
+                  "def": "Focuses on making editing fast and scalable to many facts."
+                },
+                {
+                  "id": "generalization",
+                  "name": "Generalization",
+                  "def": "Focuses on edits generalizing consistently to paraphrases of the query."
+                },
+                {
+                  "id": "side-effect-analysis",
+                  "name": "Side-effect analysis",
+                  "def": "Focuses on characterizing unintended perturbations caused by editing."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "internalize",
+          "name": "Internalizing experience",
+          "def": "Fine-tunes or reinforces the agent on trajectories (its own or collected) so that skills or knowledge end up in the weights.",
+          "test": "Is the memory the effect of training the agent model on experience?",
+          "examples": [
+            "Agent-FLAN",
+            "AgentBank",
+            "ETO",
+            "Early Experience",
+            "RAGEN"
+          ],
+          "axes": [
+            {
+              "id": "experience-source",
+              "name": "Experience source",
+              "def": "Where the training data that gets internalized comes from.",
+              "values": [
+                {
+                  "id": "self-generated-rollouts",
+                  "name": "Self-generated rollouts",
+                  "def": "Comes from the agent's own real-time interaction, tool use, or trial-and-error."
+                },
+                {
+                  "id": "synthetic-model-generated",
+                  "name": "Synthetic model-generated",
+                  "def": "Comes from a learned model that synthesizes rollouts or curricula."
+                },
+                {
+                  "id": "expert-corpus-pretraining",
+                  "name": "Expert corpus/pretraining",
+                  "def": "Comes from a fixed expert or persona corpus used for pretraining/fine-tuning."
+                },
+                {
+                  "id": "continual-task-stream",
+                  "name": "Continual task stream",
+                  "def": "Comes from a stream of tasks arriving sequentially over time."
+                }
+              ]
+            },
+            {
+              "id": "internalization-mechanism",
+              "name": "Internalization mechanism",
+              "def": "The mechanism that turns experience into a weight update.",
+              "values": [
+                {
+                  "id": "hindsight-reflection",
+                  "name": "Hindsight reflection",
+                  "def": "Extracts natural-language lessons or skills from trajectories, then trains on them."
+                },
+                {
+                  "id": "dual-pathway-architecture",
+                  "name": "Dual-pathway architecture",
+                  "def": "Splits learning across two explicit fast/slow or fast/meta parameter pathways."
+                },
+                {
+                  "id": "curriculum-synthetic-rollout",
+                  "name": "Curriculum/synthetic rollout",
+                  "def": "Generates synthetic tasks or transitions to expand training rollouts."
+                },
+                {
+                  "id": "selective-parameter-targeting",
+                  "name": "Selective parameter targeting",
+                  "def": "Restricts updates to selected parameters or samples to limit forgetting."
+                },
+                {
+                  "id": "direct-finetune",
+                  "name": "Direct fine-tune",
+                  "def": "Standard SFT or RL fine-tuning on collected data, no extra structure."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "param-module",
+          "name": "Parametric memory module",
+          "def": "A dedicated trainable memory component attached to the model: memory layers, adapters, memory decoders, memory tokens learned as parameters.",
+          "test": "Is there a separate set of parameters whose job is to hold memory?",
+          "examples": [
+            "Memory Decoder",
+            "MLP Memory",
+            "TokMem",
+            "Memory Layers"
+          ],
+          "axes": [
+            {
+              "id": "memory-unit-type",
+              "name": "Memory unit type",
+              "def": "What kind of structure holds the stored information.",
+              "values": [
+                {
+                  "id": "sparse-lookup-slots",
+                  "name": "Sparse lookup slots",
+                  "def": "Fixed addressable slots (N-gram, product-key, or sparse layer) looked up by content."
+                },
+                {
+                  "id": "separate-trainable-submodel",
+                  "name": "Separate trainable submodel",
+                  "def": "A distinct auxiliary network (decoder, MLP, bank) separate from the lookup-table paradigm."
+                },
+                {
+                  "id": "adapter-lora-memory",
+                  "name": "Adapter/LoRA memory",
+                  "def": "LoRA-style adapters serve as the memory-carrying parameters."
+                },
+                {
+                  "id": "token-as-memory-unit",
+                  "name": "Token as memory unit",
+                  "def": "A discrete trainable token indexes and steers one piece of knowledge or a procedure."
+                },
+                {
+                  "id": "not-stated",
+                  "name": "Not stated",
+                  "def": "Memory unit type is not stated."
+                }
+              ]
+            },
+            {
+              "id": "primary-goal",
+              "name": "Primary goal",
+              "def": "What the memory module is mainly built to achieve.",
+              "values": [
+                {
+                  "id": "factual-knowledge-storage",
+                  "name": "Factual knowledge storage",
+                  "def": "Aimed at storing or injecting factual/world knowledge."
+                },
+                {
+                  "id": "procedural-skill-storage",
+                  "name": "Procedural skill storage",
+                  "def": "Aimed at storing reusable task procedures, tools, or execution strategies."
+                },
+                {
+                  "id": "capacity-efficiency-architecture",
+                  "name": "Capacity/efficiency architecture",
+                  "def": "Aimed at scaling model capacity or efficiency as an architecture contribution."
+                },
+                {
+                  "id": "on-device-personalization",
+                  "name": "On-device personalization",
+                  "def": "Aimed at private, on-device personalized memory."
+                },
+                {
+                  "id": "not-stated",
+                  "name": "Not stated",
+                  "def": "Primary goal is not stated."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "latent",
+      "name": "Latent memory",
+      "def": "Memory is hidden states, key-value caches or vectors the model consumes internally, not readable text.",
+      "families": [
+        {
+          "id": "kv",
+          "name": "KV cache compression and reuse",
+          "def": "Selects, evicts, merges, quantizes or reuses attention key-value states to keep long contexts affordable.",
+          "test": "Is the object being managed the KV cache?",
+          "examples": [
+            "SnapKV",
+            "H2O",
+            "PyramidKV",
+            "StreamingLLM",
+            "RazorAttention"
+          ],
+          "axes": [
+            {
+              "id": "decision-driver",
+              "name": "Decision Driver",
+              "def": "What determines which KV entries are kept, evicted, or retrieved.",
+              "values": [
+                {
+                  "id": "trained-selector",
+                  "name": "Trained Selector",
+                  "def": "A component is trained (SFT/RL/pretraining) to decide what KV content to keep or route."
+                },
+                {
+                  "id": "fixed-heuristic",
+                  "name": "Fixed Heuristic",
+                  "def": "A static, hand-designed scoring rule (importance, position, frequency) picks what to keep, no training."
+                },
+                {
+                  "id": "structural-reuse",
+                  "name": "Structural Reuse",
+                  "def": "Training-free reuse of hierarchical or block-structured memory units looked up by relevance."
+                },
+                {
+                  "id": "system-scheduling",
+                  "name": "System Scheduling",
+                  "def": "Memory is pooled, paged, or scheduled across requests/instances with no content-level importance decision."
+                }
+              ]
+            },
+            {
+              "id": "target-scope",
+              "name": "Target Scope",
+              "def": "The setting in which the KV mechanism is applied.",
+              "values": [
+                {
+                  "id": "single-sequence-lm",
+                  "name": "Single-Sequence LM",
+                  "def": "Operates within one model's decoding of a single long text sequence."
+                },
+                {
+                  "id": "rag-context",
+                  "name": "RAG Context",
+                  "def": "Targets the concatenated retrieved-passage context typical of retrieval-augmented generation."
+                },
+                {
+                  "id": "video",
+                  "name": "Video",
+                  "def": "Applied to video generation or streaming video understanding models."
+                },
+                {
+                  "id": "multi-request-serving",
+                  "name": "Multi-Request Serving",
+                  "def": "Manages KV cache across many concurrent requests or serving instances."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "architecture",
+          "name": "Memory-augmented architecture",
+          "def": "Changes the model architecture so it carries a memory state across segments: recurrent memory, external attention memory, test-time-updated memory.",
+          "test": "Is the contribution a new layer or architecture with a built-in memory state?",
+          "examples": [
+            "Titans",
+            "Memorizing Transformers",
+            "Recurrent Memory Transformer",
+            "LM2",
+            "Infini-attention"
+          ],
+          "axes": [
+            {
+              "id": "memory-storage-form",
+              "name": "Memory Storage Form",
+              "def": "The literal form the persistent memory state takes.",
+              "values": [
+                {
+                  "id": "vector-state",
+                  "name": "Vector State",
+                  "def": "A single fixed-size matrix/vector (or model weights) holds compressed past information."
+                },
+                {
+                  "id": "token-slot-memory",
+                  "name": "Token/Slot Memory",
+                  "def": "A discrete set of memory tokens, slots, or modules is attended to via cross-attention."
+                },
+                {
+                  "id": "not-stated",
+                  "name": "Not Stated",
+                  "def": "Title only; storage form not given."
+                }
+              ]
+            },
+            {
+              "id": "update-mechanism",
+              "name": "Update Mechanism",
+              "def": "How the memory content is written or updated over time.",
+              "values": [
+                {
+                  "id": "test-time-optimization",
+                  "name": "Test-Time Optimization",
+                  "def": "Memory is updated online at inference via gradient descent, a delta rule, or a learned local update rule."
+                },
+                {
+                  "id": "gated-forward-write",
+                  "name": "Gated Forward Write",
+                  "def": "Memory is written via a learned gate/router in a single forward pass, no test-time gradients."
+                },
+                {
+                  "id": "fixed-attention-accum",
+                  "name": "Fixed Attention Accumulation",
+                  "def": "Memory content accumulates via standard trained cross-/self-attention, no explicit separate write step."
+                },
+                {
+                  "id": "not-stated",
+                  "name": "Not Stated",
+                  "def": "Title only; update mechanism not given."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "latent-gen",
+          "name": "Latent memory generation",
+          "def": "The model writes compact latent tokens or vectors (gist tokens, soft thoughts, compressed context) that stand in for longer text.",
+          "test": "Does the model produce latent vectors meant to be read back instead of text?",
+          "examples": [
+            "MemGen",
+            "SoftCoT",
+            "Gist tokens",
+            "VisMem",
+            "MemoRAG"
+          ],
+          "axes": [
+            {
+              "id": "production-mechanism",
+              "name": "Production Mechanism",
+              "def": "How the latent representation is generated.",
+              "values": [
+                {
+                  "id": "test-time-optimization",
+                  "name": "Test-Time Optimization",
+                  "def": "A per-sample optimization loop at inference writes the latent, nothing persists across tasks."
+                },
+                {
+                  "id": "trained-encoder",
+                  "name": "Trained Encoder",
+                  "def": "A dedicated encoder/autoencoder network, trained ahead of time, produces the latent from input context."
+                },
+                {
+                  "id": "generative-latent-reasoning",
+                  "name": "Generative Latent Reasoning",
+                  "def": "Latent tokens are produced on-the-fly, interleaved with the model's own reasoning or decoding."
+                },
+                {
+                  "id": "draft-retrieve",
+                  "name": "Draft & Retrieve",
+                  "def": "A light model builds a global latent memory and drafts clues that steer a separate retriever/answerer."
+                },
+                {
+                  "id": "not-stated",
+                  "name": "Not Stated",
+                  "def": "Title only; production mechanism not given."
+                }
+              ]
+            },
+            {
+              "id": "primary-use",
+              "name": "Primary Use",
+              "def": "What the generated latent is ultimately used for.",
+              "values": [
+                {
+                  "id": "context-compression",
+                  "name": "Context Compression",
+                  "def": "Latent stands in for a long text context so it can be conditioned on cheaply."
+                },
+                {
+                  "id": "reasoning-augmentation",
+                  "name": "Reasoning Augmentation",
+                  "def": "Latent stands in for explicit chain-of-thought or visual reasoning steps."
+                },
+                {
+                  "id": "retrieval-support",
+                  "name": "Retrieval Support",
+                  "def": "Latent guides retrieval or judges the reliability of retrieved content in a RAG pipeline."
+                },
+                {
+                  "id": "not-stated",
+                  "name": "Not Stated",
+                  "def": "Title only; use not given."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "latent-pool",
+          "name": "Latent memory pool",
+          "def": "A persistent bank of latent vectors outside the forward pass that is retrieved from and updated over time.",
+          "test": "Is there a long-lived store of hidden-state vectors, written and read across inputs?",
+          "examples": [
+            "MemoryLLM",
+            "M+",
+            "Memory^3"
+          ],
+          "axes": [
+            {
+              "id": "pool-content",
+              "name": "Pool Content",
+              "def": "What kind of information the persistent latent pool stores.",
+              "values": [
+                {
+                  "id": "hidden-state-latent",
+                  "name": "Hidden-State Latent",
+                  "def": "The pool holds compressed hidden-state or embedding vectors representing past knowledge."
+                },
+                {
+                  "id": "encoded-token-frozen",
+                  "name": "Frozen Encoded Tokens",
+                  "def": "The pool caches representations produced by a frozen backbone acting purely as an encoder."
+                },
+                {
+                  "id": "amortized-adaptation-params",
+                  "name": "Amortized Adaptation Params",
+                  "def": "The pool stores learned parameters representing amortized adaptation to past contexts."
+                },
+                {
+                  "id": "episodic-trajectories",
+                  "name": "Episodic Trajectories",
+                  "def": "The pool stores discrete past episodes/experiences for later recall."
+                }
+              ]
+            },
+            {
+              "id": "access-mechanism",
+              "name": "Access Mechanism",
+              "def": "How stored content is retrieved or integrated at use time.",
+              "values": [
+                {
+                  "id": "direct-integration",
+                  "name": "Direct Integration",
+                  "def": "Pool content is fed straight into the backbone's own attention/input layer, no separate retriever module."
+                },
+                {
+                  "id": "co-trained-retriever",
+                  "name": "Co-Trained Retriever",
+                  "def": "A distinct retriever module, trained alongside the pool, dynamically fetches relevant content."
+                },
+                {
+                  "id": "amortization-lookup",
+                  "name": "Amortization Lookup",
+                  "def": "Stored adaptation parameters are applied directly rather than retrieved by similarity."
+                },
+                {
+                  "id": "rl-policy-recall",
+                  "name": "RL Policy Recall",
+                  "def": "A reinforcement-learned policy decides when and what episodic memory to recall."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "benchmark",
+      "name": "Benchmarks",
+      "def": "Papers whose main contribution is an evaluation.",
+      "families": [
+        {
+          "id": "bench-conv",
+          "name": "Conversational long-term memory",
+          "def": "Questions over long multi-session dialogues or user histories: recall, temporal reasoning, knowledge update, personalization.",
+          "test": "Is the input a long conversation or user history and the task answering about it?",
+          "examples": [
+            "LoCoMo",
+            "LongMemEval",
+            "PersonaMem",
+            "MSC"
+          ],
+          "axes": [
+            {
+              "id": "probe-target",
+              "name": "Primary Probe Target",
+              "def": "What the QA pairs are designed to test about the user or conversation.",
+              "values": [
+                {
+                  "id": "factual-recall-event",
+                  "name": "Factual/Event Recall",
+                  "def": "Straightforward extraction of facts or events stated in the dialogue."
+                },
+                {
+                  "id": "implicit-latent-state",
+                  "name": "Implicit Latent State",
+                  "def": "Retention and application of unqueried constraints such as goals, values or subjective states."
+                },
+                {
+                  "id": "evolving-user-profile",
+                  "name": "Evolving User Profile",
+                  "def": "Tracking how a user's traits, preferences or persona change and personalizing accordingly."
+                },
+                {
+                  "id": "memory-architecture-comparison",
+                  "name": "Memory Architecture Comparison",
+                  "def": "Comparing or proposing memory system designs rather than a specific persona or fact type."
+                }
+              ]
+            },
+            {
+              "id": "temporal-emphasis",
+              "name": "Temporal Dynamics Emphasis",
+              "def": "Whether the benchmark centers on information changing/updating over time or on static comprehension.",
+              "values": [
+                {
+                  "id": "temporal-update-focus",
+                  "name": "Temporal/Update Focus",
+                  "def": "Explicitly probes temporal reasoning, knowledge updates or state evolution across sessions."
+                },
+                {
+                  "id": "static-comprehension-focus",
+                  "name": "Static Comprehension Focus",
+                  "def": "Treats the conversation as a fixed record to comprehend, without a dedicated update/temporal test."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "bench-agent",
+          "name": "Agent tasks that need memory",
+          "def": "Interactive or long-horizon tasks (web, GUI, embodied, games, tools) where the agent must remember across steps or episodes.",
+          "test": "Does the agent act in an environment and memory is needed to succeed?",
+          "examples": [
+            "MemoryAgentBench",
+            "WebArena-style long tasks",
+            "ALFWorld"
+          ],
+          "axes": [
+            {
+              "id": "interaction-domain",
+              "name": "Interaction Domain",
+              "def": "The kind of environment the agent acts in.",
+              "values": [
+                {
+                  "id": "web-browsing",
+                  "name": "Web Browsing",
+                  "def": "Tasks performed on websites via a browser interface."
+                },
+                {
+                  "id": "gui-os-computer-use",
+                  "name": "GUI/OS Computer Use",
+                  "def": "Mobile or desktop GUI and operating-system level interaction."
+                },
+                {
+                  "id": "embodied-household",
+                  "name": "Embodied Household",
+                  "def": "Simulated physical or embodied navigation and manipulation tasks."
+                },
+                {
+                  "id": "text-tool-coding",
+                  "name": "Text/Tool/Coding",
+                  "def": "Text-based games, API calls, or code-execution tool environments."
+                },
+                {
+                  "id": "cross-domain-framework",
+                  "name": "Cross-Domain Framework",
+                  "def": "A general platform or gym spanning multiple task domains rather than one fixed environment."
+                }
+              ]
+            },
+            {
+              "id": "memory-demand",
+              "name": "Memory Demand Type",
+              "def": "What kind of memory the benchmark specifically stresses, if any.",
+              "values": [
+                {
+                  "id": "cross-session-experience-reuse",
+                  "name": "Cross-Session Experience Reuse",
+                  "def": "Agent must distill experience in one session/episode and reuse it in later, separate ones."
+                },
+                {
+                  "id": "long-horizon-within-episode-tracking",
+                  "name": "Long-Horizon Within-Episode Tracking",
+                  "def": "A single continuous long trajectory requires tracking state and history throughout."
+                },
+                {
+                  "id": "multi-competency-diagnostic",
+                  "name": "Multi-Competency Diagnostic",
+                  "def": "Explicitly decomposes memory into several named competencies with dedicated metrics."
+                },
+                {
+                  "id": "general-capability-no-explicit-memory-focus",
+                  "name": "General Capability, No Memory Focus",
+                  "def": "A standard agent benchmark not centered on memory, used here as an environment/baseline."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "bench-multimodal",
+          "name": "Multimodal memory evaluation",
+          "def": "Memory over video, images or embodied observations.",
+          "test": "Is the remembered input mainly non-text?",
+          "examples": [
+            "long-video QA",
+            "egocentric memory QA"
+          ],
+          "axes": [
+            {
+              "id": "modality-domain",
+              "name": "Modality Domain",
+              "def": "The kind of multimodal content and setting the memory is evaluated over.",
+              "values": [
+                {
+                  "id": "video-world-model-generation",
+                  "name": "Video World-Model Generation",
+                  "def": "Memory of a generative video world model that must stay internally consistent."
+                },
+                {
+                  "id": "egocentric-streaming-life-log",
+                  "name": "Egocentric Streaming Life-Log",
+                  "def": "Continuous first-person video/audio/text streams of daily life."
+                },
+                {
+                  "id": "robotic-manipulation",
+                  "name": "Robotic Manipulation",
+                  "def": "Physical or simulated robot manipulation trajectories."
+                },
+                {
+                  "id": "personal-multimodal-history",
+                  "name": "Personal Multimodal History",
+                  "def": "A user's accumulated personal images, videos, emails or conversation history."
+                },
+                {
+                  "id": "long-video-qa-general",
+                  "name": "Long Video QA (General)",
+                  "def": "General-domain long videos (movies, web videos) with question answering, not personal or streaming."
+                }
+              ]
+            },
+            {
+              "id": "contribution-type",
+              "name": "Contribution Type",
+              "def": "Whether the paper proposes a new memory module, a new evaluation metric, or just a fixed QA benchmark.",
+              "values": [
+                {
+                  "id": "proposes-memory-module",
+                  "name": "Proposes Memory Module",
+                  "def": "Introduces a new memory-bearing model/policy architecture alongside the benchmark."
+                },
+                {
+                  "id": "novel-metric-framework",
+                  "name": "Novel Metric Framework",
+                  "def": "Introduces new scoring dimensions or metrics without proposing a new memory architecture."
+                },
+                {
+                  "id": "fixed-qa-benchmark",
+                  "name": "Fixed QA Benchmark",
+                  "def": "Standard multiple-choice or QA evaluation with conventional accuracy metrics."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "bench-other",
+          "name": "Other memory evaluation",
+          "def": "Probes of memory abilities that are neither conversations nor agent tasks: long-context retrieval, knowledge editing, memory security.",
+          "test": "Everything else that is mainly an evaluation.",
+          "examples": [
+            "needle-in-a-haystack variants",
+            "editing benchmarks"
+          ],
+          "axes": [
+            {
+              "id": "probe-focus",
+              "name": "Probe Focus",
+              "def": "What memory-related capability or system aspect is being probed.",
+              "values": [
+                {
+                  "id": "long-context-retrieval-reasoning",
+                  "name": "Long-Context Retrieval/Reasoning",
+                  "def": "How well models retrieve or reason over long raw text contexts, independent of an agent framework."
+                },
+                {
+                  "id": "memory-system-architecture-comparison",
+                  "name": "Memory System Architecture Comparison",
+                  "def": "Compares or characterizes specific memory-system implementations (structures, harnesses, providers)."
+                },
+                {
+                  "id": "memory-reliability-learning-dynamics",
+                  "name": "Memory Reliability/Learning Dynamics",
+                  "def": "How memory quality degrades or improves through hallucination, consolidation, or continual feedback."
+                },
+                {
+                  "id": "personalized-multihop-reasoning",
+                  "name": "Personalized Multi-Hop Reasoning",
+                  "def": "Reasoning across multiple pieces of personalized user information to answer a query."
+                }
+              ]
+            },
+            {
+              "id": "evaluation-vehicle",
+              "name": "Evaluation Vehicle",
+              "def": "How the probe is operationalized methodologically.",
+              "values": [
+                {
+                  "id": "needle-variant",
+                  "name": "Needle-in-Haystack Variant",
+                  "def": "A planted-fact retrieval task designed to remove literal-matching shortcuts."
+                },
+                {
+                  "id": "atomic-task-suite",
+                  "name": "Atomic Task Suite",
+                  "def": "Automatically generated elementary memory operations (search, recall, edit, compare) plus composites."
+                },
+                {
+                  "id": "curated-mcq-longdoc",
+                  "name": "Curated MCQ over Long Documents",
+                  "def": "Human-curated multiple-choice questions over long natural documents."
+                },
+                {
+                  "id": "leaderboard-platform",
+                  "name": "Leaderboard Platform",
+                  "def": "An open, ongoing scoring platform where external memory systems are submitted and ranked."
+                },
+                {
+                  "id": "empirical-systems-study",
+                  "name": "Empirical Systems Study",
+                  "def": "Controlled experiments measuring existing memory systems' behavior, cost, or failure modes."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "other",
+      "name": "Other entries",
+      "def": "Entries that are not a method or a benchmark.",
+      "families": [
+        {
+          "id": "security",
+          "name": "Memory security and privacy",
+          "def": "Attacks on memory (poisoning, injection, extraction), defenses, and privacy of what memory keeps about users.",
+          "test": "Is the paper about threats to memory or protecting what it stores?",
+          "examples": [
+            "memory poisoning probes",
+            "MemPrivacy",
+            "Agent Memory Guard"
+          ],
+          "axes": [
+            {
+              "id": "paper-role",
+              "name": "Paper role",
+              "def": "Whether the paper attacks, defends, benchmarks, or probes memory.",
+              "values": [
+                {
+                  "id": "attack-method",
+                  "name": "Attack method",
+                  "def": "Proposes a new attack technique against agent memory."
+                },
+                {
+                  "id": "defense-mechanism",
+                  "name": "Defense mechanism",
+                  "def": "Proposes a mechanism to defend or protect memory."
+                },
+                {
+                  "id": "benchmark-taxonomy",
+                  "name": "Benchmark/taxonomy",
+                  "def": "Builds a benchmark or taxonomy for evaluating memory attacks/integrity."
+                },
+                {
+                  "id": "vulnerability-probe",
+                  "name": "Vulnerability probe",
+                  "def": "Provides runnable probes demonstrating a specific vulnerability."
+                }
+              ]
+            },
+            {
+              "id": "threat-focus",
+              "name": "Threat focus",
+              "def": "Which class of harm to memory the paper centers on.",
+              "values": [
+                {
+                  "id": "privacy-leakage",
+                  "name": "Privacy leakage",
+                  "def": "Centers on exposure of private user/agent information."
+                },
+                {
+                  "id": "poisoning-write-attacks",
+                  "name": "Poisoning/write attacks",
+                  "def": "Centers on adversarial or forged writes corrupting memory."
+                },
+                {
+                  "id": "integrity-benchmarking",
+                  "name": "Integrity benchmarking",
+                  "def": "Centers on general benchmarking of memory integrity, not one threat class."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "product",
+          "name": "Products and frameworks",
+          "def": "Software memory layers, services and frameworks, open or closed source, described by their project rather than a paper.",
+          "test": "Is the entry a product or code project?",
+          "examples": [
+            "Letta",
+            "Zep",
+            "Cognee",
+            "Mem0 platform"
+          ],
+          "axes": [
+            {
+              "id": "primary-mechanism",
+              "name": "Primary mechanism",
+              "def": "The main technical mechanism each product foregrounds as its distinguishing feature.",
+              "values": [
+                {
+                  "id": "retrieval-technique",
+                  "name": "Retrieval technique",
+                  "def": "Distinguished mainly by its search/indexing method (lexical, dense, hybrid, or graph traversal)."
+                },
+                {
+                  "id": "lifecycle-temporal",
+                  "name": "Lifecycle & temporal",
+                  "def": "Distinguished mainly by how memories age, decay, are forgotten, versioned, or superseded over time."
+                },
+                {
+                  "id": "trust-governance",
+                  "name": "Trust & governance",
+                  "def": "Distinguished mainly by provenance, audit trails, permissions, encryption, or human-gated writes."
+                },
+                {
+                  "id": "coordination-sharing",
+                  "name": "Coordination & sharing",
+                  "def": "Distinguished mainly by sharing or coordinating memory across a fleet or team of agents."
+                },
+                {
+                  "id": "not-stated",
+                  "name": "Not stated",
+                  "def": "No distinguishing mechanism is described in the available text."
+                }
+              ]
+            },
+            {
+              "id": "access-mode",
+              "name": "Access & runtime mode",
+              "def": "How the memory system is built and reached at runtime.",
+              "values": [
+                {
+                  "id": "mcp-server",
+                  "name": "MCP server",
+                  "def": "Exposed to agents primarily as a Model Context Protocol server/tool set."
+                },
+                {
+                  "id": "cli-local-binary",
+                  "name": "Local CLI/binary",
+                  "def": "A local-first CLI, binary, or embedded library without MCP as the stated interface."
+                },
+                {
+                  "id": "hosted-api",
+                  "name": "Hosted API/service",
+                  "def": "A hosted, cloud, or managed API/SaaS product."
+                },
+                {
+                  "id": "framework-spec",
+                  "name": "Framework or spec",
+                  "def": "A general lifecycle framework, operating system, or operation-language specification, not one runnable store."
+                },
+                {
+                  "id": "not-stated",
+                  "name": "Not stated",
+                  "def": "No access or runtime mode is described in the available text."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "cogsci",
+          "name": "Cognitive science and neuroscience",
+          "def": "Studies of human or animal memory cited for inspiration.",
+          "test": "Is the subject biological memory?",
+          "examples": [],
+          "axes": [
+            {
+              "id": "memory-process",
+              "name": "Memory process",
+              "def": "Which stage of memory the study addresses.",
+              "values": [
+                {
+                  "id": "encoding-representation",
+                  "name": "Encoding/representation",
+                  "def": "How memories are encoded or represented in neural populations/state spaces."
+                },
+                {
+                  "id": "consolidation",
+                  "name": "Consolidation",
+                  "def": "How memories are consolidated or constructed over time."
+                },
+                {
+                  "id": "retrieval",
+                  "name": "Retrieval",
+                  "def": "How memories are retrieved or recalled."
+                },
+                {
+                  "id": "forgetting-updating",
+                  "name": "Forgetting/updating",
+                  "def": "How memories are forgotten, distorted, or updated."
+                }
+              ]
+            },
+            {
+              "id": "methodology",
+              "name": "Methodology",
+              "def": "The kind of evidence or model used.",
+              "values": [
+                {
+                  "id": "computational-model",
+                  "name": "Computational model",
+                  "def": "Uses a computational or simulation model to explain the phenomenon."
+                },
+                {
+                  "id": "neural-recording-empirical",
+                  "name": "Neural recording/empirical",
+                  "def": "Uses neural recordings or brain-circuit evidence."
+                },
+                {
+                  "id": "behavioral-cognitive",
+                  "name": "Behavioral/cognitive",
+                  "def": "Uses behavioral or cognitive-level evidence."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "misc",
+          "name": "Other",
+          "def": "Tutorials, articles and workshops about memory.",
+          "test": "A memory-related entry that is not a method, benchmark, survey, product or cogsci study.",
+          "examples": [],
+          "axes": [
+            {
+              "id": "content-type",
+              "name": "Content Type",
+              "def": "The delivery format of the item.",
+              "values": [
+                {
+                  "id": "practical-guide",
+                  "name": "Practical Guide",
+                  "def": "A blog post, article or guide explaining a memory-related topic."
+                },
+                {
+                  "id": "structured-tutorial",
+                  "name": "Structured Tutorial",
+                  "def": "A conference tutorial or workshop session with organized teaching content."
+                },
+                {
+                  "id": "conference-venue",
+                  "name": "Conference Venue",
+                  "def": "A listing for a conference or venue, not itself content about memory."
+                }
+              ]
+            },
+            {
+              "id": "topic-focus",
+              "name": "Topic Focus",
+              "def": "What aspect of agent memory the item's title centers on.",
+              "values": [
+                {
+                  "id": "architecture-choice",
+                  "name": "Architecture Choice",
+                  "def": "Focuses on selecting or designing a memory architecture."
+                },
+                {
+                  "id": "optimization-efficiency",
+                  "name": "Optimization/Efficiency",
+                  "def": "Focuses on optimizing memory for cost or performance."
+                },
+                {
+                  "id": "workflow-context",
+                  "name": "Agent Workflow/Context",
+                  "def": "Places memory within the broader agent workflow of tools, actions and context."
+                },
+                {
+                  "id": "general-overview",
+                  "name": "General Overview",
+                  "def": "A general introduction or comprehensive overview of memory topics."
+                },
+                {
+                  "id": "not-stated",
+                  "name": "Not Stated",
+                  "def": "The title gives no indication of a specific memory topic."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "out-of-scope",
+          "name": "Not about memory",
+          "hidden": true,
+          "def": "General agent, tool-use or unrelated papers that the source lists include but that do not study memory. Kept in the data so a re-import does not bring them back, never shown.",
+          "test": "Would the paper still make its point with memory removed?",
+          "examples": [
+            "Toolformer",
+            "MetaGPT",
+            "OASIS"
+          ]
+        },
+        {
+          "id": "theory",
+          "name": "Theory and analysis",
+          "hidden": true,
+          "def": "Analyses, measurements and theoretical results about memory that propose neither a method nor a benchmark. Not shown for now.",
+          "test": "Is the contribution a finding or a proof rather than a system or an evaluation?",
+          "examples": [
+            "How Much Do Language Models Memorize?",
+            "The Price of Meaning"
+          ]
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "id": "factual",
+      "name": "Factual",
+      "def": "facts about the world or the user"
+    },
+    {
+      "id": "experiential",
+      "name": "Experiential",
+      "def": "lessons, skills and procedures from past tasks"
+    },
+    {
+      "id": "working",
+      "name": "Working",
+      "def": "state of the current task"
+    }
+  ],
+  "learning": [
+    {
+      "id": "none",
+      "name": "Does not learn",
+      "def": "Stores new records, but how it writes and reads never changes: fixed rules or a prompted LLM."
+    },
+    {
+      "id": "experience",
+      "name": "Learns from experience, no training",
+      "def": "Gets better from past tasks without weight updates: stored reflections, insights, skills or workflows, or edits to its own prompts, tools or harness."
+    },
+    {
+      "id": "sft",
+      "name": "Supervised training",
+      "def": "A model is fine-tuned on labelled or imitation data to manage memory or to hold it."
+    },
+    {
+      "id": "rl",
+      "name": "Reinforcement learning",
+      "def": "A memory policy or the agent is trained with rewards from task outcomes."
+    },
+    {
+      "id": "model-training",
+      "name": "Trained with the model",
+      "def": "The memory is a component learned during model (pre)training or end-to-end training, not a policy for memory operations, e.g. memory layers, recurrent memory, KV selection learned offline."
+    }
+  ],
+  "cells": {
+    "token|factual": {
+      "text": "Facts about users and the world, kept as text records that are retrieved back into the prompt.",
+      "note": ""
+    },
+    "token|experiential": {
+      "text": "Lessons, skills and workflows from past tasks, kept as text the agent reads before acting.",
+      "note": ""
+    },
+    "token|working": {
+      "text": "The running task context itself, condensed, folded or paged so a long task fits the window.",
+      "note": ""
+    },
+    "parametric|factual": {
+      "text": "Facts written into model weights: targeted edits, memory layers, trained memory modules.",
+      "note": ""
+    },
+    "parametric|experiential": {
+      "text": "Skills learned into the weights by training the agent on trajectories.",
+      "note": ""
+    },
+    "parametric|working": {
+      "text": "Task state held in the weights during a single task.",
+      "note": "No paper in the index. Weight updates are slow and persistent, while task state is short-lived. Test-time memory updates by gradient steps (Titans, GradMem) are placed under Latent · Working, since that state is discarded after the input."
+    },
+    "latent|factual": {
+      "text": "Facts kept as hidden-state vectors or a latent pool the model attends to.",
+      "note": ""
+    },
+    "latent|experiential": {
+      "text": "Experience kept as latent vectors.",
+      "note": "Only two papers in the index."
+    },
+    "latent|working": {
+      "text": "The current context held as KV cache, recurrent state or compressed latent tokens.",
+      "note": ""
+    },
+    "token|unspecified": {
+      "text": "Text-record memory whose purpose the source does not state.",
+      "note": ""
+    },
+    "parametric|unspecified": {
+      "text": "Weight-based memory whose purpose the source does not state.",
+      "note": ""
+    },
+    "latent|unspecified": {
+      "text": "Latent memory whose purpose the source does not state.",
+      "note": ""
+    }
+  }
+}

@@ -50,6 +50,10 @@ CLASSIFY = {
     "candidates": {"read everything", "dense", "lexical", "hybrid", "graph walk", "agent searches", "LLM routing"},
     "decides": {"reads everything", "top-k rule", "reranker", "LLM decides"},
 }
+# Optional "mechanism" block: how the system works, step by step, with sources (see schema/SCHEMA.md).
+KEPT_AS = {"verbatim", "rewritten", "summarized", "extracted", "derived"}
+USED_FOR = {"index", "scene routing", "rerank", "verifier", "answer", "profile", "chat mode only"}
+MECH_PARTS = {"sources", "headline", "units", "write", "read", "answer_context", "compression", "numbers", "paper_vs_code", "open_questions"}
 TRACKS = {"main", "short", "findings", "workshop", "journal", "preprint"}
 IMG_EXT = (".png", ".jpg", ".jpeg", ".webp", ".svg")
 METRICS = {"llm-judge", "f1", "bleu-1", "em", "mc-acc", "rouge-l", "recall@k", "other"}
@@ -111,6 +115,7 @@ def check_system(s, where, rep):
             allowed = DESIGN_VOCAB.get((g, f))
             if allowed and v is not None and v not in allowed:
                 rep.err(where, f"design.{g}.{f}: '{v}' not in {sorted(allowed)}")
+    check_mechanism(s.get("mechanism"), where, rep)
     for k, v in s.get("tags", {}).items():
         if k not in VOCAB:
             rep.err(where, f"unknown tag '{k}'")
@@ -122,6 +127,34 @@ def check_system(s, where, rep):
         if st not in STAGES:
             rep.err(where, f"unknown stage '{st}'")
 
+
+def check_mechanism(m, where, rep):
+    if m is None:
+        return
+    for k in m:
+        if k not in MECH_PARTS:
+            rep.err(where, f"unknown mechanism part '{k}'")
+    for u in m.get("units", []):
+        for f in u.get("fields", []):
+            if f.get("kept_as") not in KEPT_AS:
+                rep.err(where, f"mechanism unit {u.get('name')}.{f.get('name')}: kept_as '{f.get('kept_as')}' not in {sorted(KEPT_AS)}")
+            for x in f.get("used_for", []):
+                if x not in USED_FOR:
+                    rep.err(where, f"mechanism unit {u.get('name')}.{f.get('name')}: used_for '{x}' not in {sorted(USED_FOR)}")
+    for part in ("write", "read"):
+        for i, st in enumerate(m.get(part, []), 1):
+            if not st.get("step") or not st.get("how"):
+                rep.err(where, f"mechanism.{part}[{i}] needs 'step' and 'how'")
+            if not st.get("src"):
+                rep.warn(where, f"mechanism.{part}[{i}] '{st.get('step')}' has no source")
+    for c in m.get("compression", []):
+        kept, of = c.get("kept"), c.get("of")
+        if (kept is None) != (of is None):
+            rep.err(where, f"mechanism.compression '{c.get('what')}': give both kept and of, or neither")
+        elif kept is not None and not (0 < kept <= of):
+            rep.err(where, f"mechanism.compression '{c.get('what')}': kept must be in (0, of]")
+        if not c.get("basis"):
+            rep.err(where, f"mechanism.compression '{c.get('what')}' needs a 'basis' saying where the numbers come from")
 
 def setting_key(r):
     fields = [f for f in SETTING_FIELDS if r.get("metric") == "llm-judge" or f not in JUDGE_ONLY]
@@ -204,13 +237,45 @@ def main():
                         source["table_page"] = shot["page"]
             rows.append({**r, **source, "reporter": rid, "setting_key": key, "unknown_settings": unknown})
 
-    annotated = {s["paper"]["arxiv"]: s for s in systems if s.get("paper") and s["paper"].get("arxiv")}
+    # link index entries to annotated systems by arXiv id, or by title when either side has none
+    norm = lambda t: re.sub(r"[^a-z0-9]", "", (t or "").lower())
+    by_arxiv = {s["paper"]["arxiv"]: s for s in systems if s.get("paper") and s["paper"].get("arxiv")}
+    by_title = {norm(s["paper"].get("title")): s for s in systems if s.get("paper") and s["paper"].get("title")}
     for p in papers_doc["papers"]:
-        s = annotated.get(p.get("arxiv"))
+        s = by_arxiv.get(p.get("arxiv")) or by_title.get(norm(p.get("title")))
         if s:
             p["system"] = s["id"]
             # the annotated record's venue was checked against the paper; it wins over a list's tag
             p["venue"] = {"venue": s["paper"]["venue_short"], "year": s["paper"].get("year"), "track": s["paper"]["track"], "checked": True}
+
+    # taxonomy: every paper in exactly one family (data/taxonomy.json, data/paper_families.json)
+    taxonomy = load(DATA / "taxonomy.json", rep) or {"groups": [], "functions": []}
+    fam_ids = {f["id"] for g in taxonomy["groups"] for f in g["families"]}
+    fn_ids = {f["id"] for f in taxonomy["functions"]}
+    families = load(DATA / "paper_families.json", rep) or {}
+    where = DATA / "paper_families.json"
+    for pid, c in families.items():
+        if c.get("family") not in fam_ids:
+            rep.err(where, f"{pid}: family '{c.get('family')}' not in taxonomy")
+        for x in c.get("also", []):
+            if x not in fam_ids:
+                rep.err(where, f"{pid}: also '{x}' not in taxonomy")
+        learn_ids = {x["id"] for x in taxonomy.get("learning", [])}
+        for x in [c["learning"]] + c.get("learning_also", []) if c.get("learning") else []:
+            if x not in learn_ids:
+                rep.err(where, f"{pid}: learning '{x}' not in {sorted(learn_ids)}")
+        for x in c.get("function", []):
+            if x not in fn_ids:
+                rep.err(where, f"{pid}: function '{x}' not in {sorted(fn_ids)}")
+    unplaced = 0
+    for p in papers_doc["papers"]:
+        c = families.get(p["id"])
+        if c:
+            p["tax"] = c
+        else:
+            unplaced += 1
+    if unplaced:
+        rep.warn(where, f"{unplaced} papers have no family yet")
 
     n_unknown = sum(1 for r in rows if r["unknown_settings"])
     for w in rep.warnings:
@@ -236,6 +301,7 @@ def main():
         "results": rows,
         "sources": papers_doc["sources"],
         "papers": papers_doc["papers"],
+        "taxonomy": taxonomy,
     }
     (ROOT / "site" / "atlas.json").write_text(json.dumps(atlas, ensure_ascii=False, separators=(",", ":")))
 

@@ -14,11 +14,13 @@ and which questions were kept, which most papers report only partly.
 
 | View | What it shows |
 |---|---|
+| **Taxonomy** | The atlas's own families (`data/taxonomy.json`): every memory paper of the index sits in one family, its main contribution, on a grid of where memory lives (token-level, parametric, latent) by what it is for (factual, experiential, working) or by how it learns (does not learn, experience, SFT, RL, trained with the model). Each entry says what it stores and how, written from its abstract. Surveys come first; benchmarks, security and products below. Papers not about memory and theory papers are kept in the data but hidden |
 | **Map** | Pick a pipeline stage; it spans out in two levels (e.g. Retrieval: how candidates are found → who picks the final set). Each level is single-valued, so every system sits in exactly one place per stage; features a system combines are shown by highlighting. Clicking a system opens its details in place, including its path through every stage. Filter by track and order by name, year or venue |
+| **Compare** | One row per system on a chosen benchmark, metric and answer model: the authors' own score, the median over every setting reported, and the range with how many scores and papers it covers. Sort by any column; pick which design columns to show. A row opens only that benchmark's scores, each with its answer model, judge, who ran it and a link to the table |
 | **Systems** | Annotated systems described stage by stage (construction, organization, management, retrieval, use) plus who decides at each stage, filterable by controlled tags; column groups can be hidden |
 | **Pipeline** | The same systems by pipeline stage: ingestion, construction, organization, update, retrieval, answer, learning |
 | **Results** | Every score, one column per evaluation setting; spread of each system across settings; head-to-head comparison restricted to shared settings |
-| **Papers** | 684 entries merged from four community lists, keeping each list's own axis as a filter |
+| **Papers** | 671 entries merged from four community lists (joined by arXiv id, or by title when a list gives no arXiv link), keeping each list's own axis as a filter |
 | **Method** | Comparability rules and the known traps of each benchmark |
 
 Paper index sources (pinned in `scripts/import_lists.py`):
@@ -36,8 +38,13 @@ data/results/<reporter>.json  every score from one paper, with its settings and 
 data/benchmarks.json          benchmark registry with versions and pitfalls
 data/extra_systems.json       baselines that appear in results but are not annotated yet
 data/papers.json              generated paper index (do not edit by hand)
+data/taxonomy.json            the atlas's families, functions and learning types, with definitions
+data/paper_families.json      each paper's family, one-line mechanism and learning type
+                              (from scripts/fetch_abstracts.py + classification; "checked": true keeps hand edits)
 data/table_images.json        which table images exist, and their page numbers (generated)
 schema/SCHEMA.md              field definitions, controlled vocabularies, comparability rule
+docs/DESIGN.md                why the screens look as they do: text levels, bold headings, indentation,
+                              with the reading studies each rule comes from
 scripts/import_lists.py       regenerate data/papers.json from the upstream lists
 scripts/build.py              validate data/ and write site/atlas.json
 scripts/capture_tables.py     crop the cited tables out of paper PDFs into site/tables/

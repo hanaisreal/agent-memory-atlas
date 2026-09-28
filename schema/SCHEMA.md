@@ -115,6 +115,43 @@ Filter tags:
 | `learning` | `training-free`, `sft`, `rl`, `mixed` |
 | `domain` | `conversation`, `long-document`, `web`, `gui`, `embodied`, `code`, `multimodal`, `general` |
 
+### Mechanism (optional) — how the system works, step by step
+
+`design` says *what* a system does in short phrases. `mechanism` says *how*, precisely enough to see
+what text is matched, what the reranker reads, what reaches the answer model and how much is kept.
+Every step names its source: a paper section or table, or a code file and line at a pinned commit.
+Only fill it from the paper and the code, never from memory. Where they disagree, record both in
+`paper_vs_code`. `data/systems/evermemos.json` is the worked example.
+
+```json
+"mechanism": {
+  "sources": { "paper": "arXiv id (PDF read <date>)", "code": "tree URL at a commit", "code_note": "why this commit" },
+  "headline": ["two or three sentences a reader must not miss"],
+  "units": [{                          // what is stored
+    "name": "MemCell", "role": "...", "made_by": "...",
+    "fields": [{ "name": "episode", "what": "...", "kept_as": "rewritten",
+                 "used_for": ["rerank", "answer"], "src": "code file L1-L9", "url": "..." }]
+  }],
+  "write": [{ "step": "Segment", "how": "...", "params": {"τ": "0.70"}, "out": "result, with numbers", "src": "...", "url": "..." }],
+  "read":  [{ "step": "Rerank", "round": 1, "input": "question", "scores": "what text is matched",
+              "how": "...", "params": {"K": "10"}, "out": "...", "src": "...", "url": "..." }],
+  "answer_context": { "sees": "10 rewritten episodes", "format": "exact template", "excludes": ["..."], "src": "...", "url": "..." },
+  "compression": [{ "what": "answer context vs one conversation", "kept": 2.3, "of": 9, "unit": "k tokens",
+                    "basis": "where both numbers come from", "src": "...", "url": "..." }],
+  "numbers": [{ "label": "...", "value": "...", "src": "paper Table 5" }],
+  "paper_vs_code": [{ "topic": "...", "paper": "...", "code": "...", "src": "...", "url": "..." }],
+  "open_questions": ["what the paper's experiments cannot tell apart"]
+}
+```
+
+| Field | Allowed values |
+|---|---|
+| `units[].fields[].kept_as` | `verbatim`, `rewritten` (LLM restated it), `summarized` (LLM shortened it), `extracted` (LLM pulled parts out), `derived` (computed: a cut, an id list, an embedding) |
+| `units[].fields[].used_for` | `index`, `scene routing`, `rerank`, `verifier`, `answer`, `profile`, `chat mode only`; an empty list means stored but never read |
+
+`compression` entries with unknown numbers keep `kept` and `of` as `null` and say in `basis` that the
+paper does not report them. `scripts/build.py` checks the vocabularies and that every number has a basis.
+
 ## 2. Result — `data/results/<reporter-id>.json`
 
 Results are grouped by **the paper (or run) that reported them**, because one table in one paper is
