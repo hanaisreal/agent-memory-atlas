@@ -1,0 +1,476 @@
+{
+ "id": "knowledgeeditor",
+ "name": "KnowledgeEditor",
+ "paper": {
+  "title": "Editing Factual Knowledge in Language Models",
+  "arxiv": "2104.08164",
+  "url": "https://arxiv.org/abs/2104.08164",
+  "venue": "EMNLP 2021",
+  "venue_short": "EMNLP",
+  "track": "main",
+  "year": 2021,
+  "code": "https://github.com/nicola-decao/KnowledgeEditor"
+ },
+ "design": {
+  "construction": {
+   "unit": "one revision (input x, old prediction y, new prediction a) written into the LM's weights",
+   "kept_as": "a weight shift Δθ predicted by a hyper-network; no text is stored",
+   "processing": "a BiLSTM encodes the revision; per weight matrix, small FFNN heads turn that code and the gradient of the loss on a into ΔW",
+   "trigger": "other",
+   "writer": "trained hyper-network (54M parameters for BERT, 67M for BART)"
+  },
+  "organization": {
+   "structure": "none: the fact is spread over the LM's weight matrices",
+   "stores": "the LM's own parameters",
+   "index": null
+  },
+  "management": {
+   "operations": "one additive update θ' = θ + Δθ per edit; the +loop variant re-applies it until the prediction flips",
+   "conflicts": "editor trained under a KL limit so outputs on other inputs stay the same; edits are evaluated one at a time, never stacked",
+   "forgetting": null,
+   "timing": "online"
+  },
+  "retrieval": {
+   "query": "any input to the LM",
+   "candidates": "none: the model reads its parameters",
+   "selection": null,
+   "budget": null
+  },
+  "use": {
+   "context": "the input alone; the revised fact is read from the edited weights",
+   "reasoning": "one forward pass; beam search (5 beams in code) for QA, sign of the logit for fact-checking"
+  },
+  "control": {
+   "construction": "learned-sft",
+   "management": "fixed-rule",
+   "retrieval": "none"
+  }
+ },
+ "classify": {
+  "structure": "none",
+  "index": "none",
+  "management": "update in place",
+  "candidates": "read everything",
+  "decides": "reads everything",
+  "note": "Parametric memory: an edit changes the LM's weights and every later query reads them in one forward pass; there is no store to search."
+ },
+ "tags": {
+  "fidelity": "compressed",
+  "structure": [
+   "parametric"
+  ],
+  "write_time": [
+   "learned"
+  ],
+  "selection": [
+   "model-reads"
+  ],
+  "memory_type": [
+   "semantic"
+  ],
+  "learning": "sft",
+  "domain": [
+   "general"
+  ]
+ },
+ "stages": {
+  "ingestion": "An edit request names an input x, the model's current prediction y and the desired prediction a.",
+  "construction": "A hyper-network encodes the request with a BiLSTM and, for each weight matrix, combines that code with the gradient of the loss on a to predict a weight shift ΔW.",
+  "organization": "",
+  "update": "The shift is added to the weights once (θ' = θ + Δθ); an optional test-time loop re-applies it until the prediction changes.",
+  "retrieval": "",
+  "answer": "Every later query is answered by the edited model directly from its parameters.",
+  "learning": "The hyper-network is trained once per model by constrained optimization: raise the likelihood of a (and optionally of paraphrases of x) while keeping the KL divergence on other inputs below an annealed margin, solved with a Lagrange multiplier."
+ },
+ "summary": "Learned knowledge editor: a hyper-network turns one fact revision and its gradient into a weight update for BERT or BART, trained to change that fact and its paraphrases while keeping all other predictions fixed.",
+ "verified": false,
+ "notes": "VENUE: EMNLP 2021 main (Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing; aclanthology 2021.emnlp-main.522). arXiv comment says 'Accepted at EMNLP2021' but then names the 2020 proceedings; the ACL Anthology page confirms 2021. Text read from arXiv v2 (2021-09-08).\nSCOPE: memory here is the LM's parameters, not an external store. Each edit is evaluated on its own starting from the original model; the paper does not test sequences of edits.\nRESULTS: all four metrics go in category with metric 'other' (they are accuracies except performance deterioration, a relative drop where lower is better). QA equivalence accuracy has two numbers (generated / human paraphrases), kept as two categories.",
+ "mechanism": {
+  "sources": {
+   "paper": "arXiv 2104.08164v2 (PDF read 2026-09-30)",
+   "code": "https://github.com/nicola-decao/KnowledgeEditor/tree/c1c0db35b65d498de6877ef5acf2ffa5321818a3/",
+   "code_note": "Latest commit (2022-01-28, 'Fix #4'); the later commits only touch the README, requirements and a small fix; the model and training code date from 2021 (e.g. commit 668aca6d, 2021-08-25). It is the repository linked in the paper."
+  },
+  "headline": [
+   "The 'memory' being edited is the LM's weights; nothing is stored outside the model and nothing is retrieved.",
+   "One learned network writes each edit as a single weight update; a KL limit during its training is what keeps other predictions unchanged.",
+   "Every edit is scored alone on a fresh copy of the original model, so the results say nothing about many edits in a row."
+  ],
+  "sections": {
+   "Memory architecture": "§4",
+   "Results": "§6, Table 1",
+   "Ablation": "Table 1 (CL2, +loop, +Px rows), App. C",
+   "Discussion": "§6.4, §7, Ethical Considerations",
+   "Details": "§2, §5, App. A-B"
+  },
+  "abstract": {
+   "text": "Language models hold facts in their weights, and some of those facts are wrong or go out of date. KnowledgeEditor fixes a single fact without retraining: a hyper-network, given the fact to change and the model's gradient, predicts a weight update. It is trained with a constraint that keeps the model's output distribution on other inputs unchanged, and optionally with paraphrases so that equivalent questions change too. The authors test it on a BERT fact-checker (FEVER) and a BART closed-book QA model (zsRE) and find the updates concentrate in a few components.",
+   "note": "Summary in our words; the original abstract is on arXiv.",
+   "url": "https://arxiv.org/abs/2104.08164"
+  },
+  "units": [
+   {
+    "name": "Edit",
+    "role": "one fact revision applied to the model",
+    "made_by": "KnowledgeEditor hyper-network",
+    "fields": [
+     {
+      "name": "condition text",
+      "what": "the revision written as 'y >> a || x' (old prediction, new prediction, input) and read by the BiLSTM",
+      "kept_as": "verbatim",
+      "used_for": [],
+      "src": "code seq2seq_augmented_kilt.py L49-L53",
+      "url": "https://github.com/nicola-decao/KnowledgeEditor/blob/c1c0db35b65d498de6877ef5acf2ffa5321818a3/src/data/seq2seq_augmented_kilt.py#L49-L53"
+     },
+     {
+      "name": "gradient",
+      "what": "gradient of the loss of a on x for every weight matrix of the frozen LM",
+      "kept_as": "derived",
+      "used_for": [],
+      "src": "paper §4 Eq. 3; code bart_seq2seq_augmented_kilt.py L148-L202",
+      "url": "https://github.com/nicola-decao/KnowledgeEditor/blob/c1c0db35b65d498de6877ef5acf2ffa5321818a3/src/models/bart_seq2seq_augmented_kilt.py#L148-L202"
+     },
+     {
+      "name": "weight shift Δθ",
+      "what": "σ(η)·(α̂∘∇W + β̂) per matrix, with α̂ and β̂ rank-one outer products; added to every matrix except biases, norms and embeddings",
+      "kept_as": "derived",
+      "used_for": [
+       "answer"
+      ],
+      "src": "paper §4 Eq. 3; code one_shot_learner.py L35-L69, bart_seq2seq_augmented_kilt.py L75-L100",
+      "url": "https://github.com/nicola-decao/KnowledgeEditor/blob/c1c0db35b65d498de6877ef5acf2ffa5321818a3/src/models/one_shot_learner.py#L35-L69"
+     }
+    ]
+   }
+  ],
+  "write": [
+   {
+    "step": "Encode the revision",
+    "how": "BiLSTM (hidden 128 per direction) over 'y >> a || x', then an FFNN to a 1,024-dim vector h",
+    "src": "paper App. B.5; code one_shot_learner.py L72-L105",
+    "url": "https://github.com/nicola-decao/KnowledgeEditor/blob/c1c0db35b65d498de6877ef5acf2ffa5321818a3/src/models/one_shot_learner.py#L72-L105"
+   },
+   {
+    "step": "Take the gradient",
+    "how": "backpropagate the loss of the new prediction a on x through the frozen LM",
+    "src": "paper §4; code bart_seq2seq_augmented_kilt.py L148-L194",
+    "url": "https://github.com/nicola-decao/KnowledgeEditor/blob/c1c0db35b65d498de6877ef5acf2ffa5321818a3/src/models/bart_seq2seq_augmented_kilt.py#L148-L194"
+   },
+   {
+    "step": "Predict ΔW",
+    "how": "per weight matrix, an FFNN on h gives α, β, γ, δ, η; ΔW = σ(η)·(softmax outer product ∘ gradient + bias term)",
+    "src": "paper Eq. 3; code one_shot_learner.py L35-L69",
+    "url": "https://github.com/nicola-decao/KnowledgeEditor/blob/c1c0db35b65d498de6877ef5acf2ffa5321818a3/src/models/one_shot_learner.py#L35-L69"
+   },
+   {
+    "step": "Apply",
+    "how": "θ' = θ + Δθ, once",
+    "out": "success rate 98.80 (FC) / 94.65 (QA) with a single update",
+    "src": "paper §6.1, Table 1; code bart_seq2seq_augmented_kilt.py L204-L220",
+    "url": "https://github.com/nicola-decao/KnowledgeEditor/blob/c1c0db35b65d498de6877ef5acf2ffa5321818a3/src/models/bart_seq2seq_augmented_kilt.py#L204-L220"
+   },
+   {
+    "step": "Train the editor (offline)",
+    "how": "minimize the loss on a (and on paraphrases for +Px) plus α·(KL on the rest of the mini-batch - margin); α is updated by gradient ascent and clipped at 0; margin ×0.8 whenever > 90% of validation edits succeed",
+    "params": {
+     "margin FC": "1e-1 → 1e-3",
+     "margin QA": "1e-3 → 1e-5",
+     "batch": "1,024 FC / 256 QA (paper)"
+    },
+    "src": "paper §4, App. A, B.6; code bart_seq2seq_augmented_kilt.py L245-L283, L411-L436",
+    "url": "https://github.com/nicola-decao/KnowledgeEditor/blob/c1c0db35b65d498de6877ef5acf2ffa5321818a3/src/models/bart_seq2seq_augmented_kilt.py#L245-L283"
+   }
+  ],
+  "read": [
+   {
+    "step": "Answer",
+    "round": 1,
+    "input": "any query",
+    "scores": "nothing is matched; the query runs through the edited weights",
+    "how": "QA: beam search, top-1 (5 beams in code); FC: positive logit means 'true'",
+    "src": "paper §2.1; code bart_seq2seq_augmented_kilt.py L329-L367",
+    "url": "https://github.com/nicola-decao/KnowledgeEditor/blob/c1c0db35b65d498de6877ef5acf2ffa5321818a3/src/models/bart_seq2seq_augmented_kilt.py#L329-L367"
+   },
+   {
+    "step": "Loop (+loop only)",
+    "round": 2,
+    "input": "the edit input",
+    "how": "if the prediction is still not a, add the same Δθ again; test time only",
+    "params": {
+     "rounds": "at most 5 (code)"
+    },
+    "src": "paper §6.1, Table 1 †; code bart_seq2seq_augmented_kilt.py L369-L404, eval_bart_seq2seq.py L255-L265",
+    "url": "https://github.com/nicola-decao/KnowledgeEditor/blob/c1c0db35b65d498de6877ef5acf2ffa5321818a3/src/models/bart_seq2seq_augmented_kilt.py#L369-L404"
+   }
+  ],
+  "answer_context": {
+   "sees": "only the query; the edited fact is in the weights",
+   "format": "plain model input (claim for FC, question for QA)",
+   "includes": [
+    "the query"
+   ],
+   "excludes": [
+    "the edit request",
+    "paraphrases (used only in training and scoring)",
+    "any retrieved evidence (closed-book)"
+   ],
+   "src": "paper §2.1, App. B.1-B.2",
+   "url": "https://arxiv.org/pdf/2104.08164"
+  },
+  "compression": [
+   {
+    "what": "stored edit vs the fact it encodes",
+    "kept": null,
+    "of": null,
+    "unit": null,
+    "basis": "Not applicable in token terms: an edit is a dense shift over all weight matrices of a 110M (BERT) or 139M (BART) model, produced by a 54M / 67M-parameter editor (App. B.5).",
+    "src": "paper App. B.5",
+    "url": "https://arxiv.org/pdf/2104.08164"
+   }
+  ],
+  "numbers": [
+   {
+    "label": "Base model accuracy",
+    "value": "BERT on FEVER 77.1%; BART on zsRE 22.1% exact match",
+    "src": "paper App. B.1-B.2"
+   },
+   {
+    "label": "Editor size",
+    "value": "54M (BERT) / 67M (BART) parameters",
+    "src": "paper App. B.5"
+   },
+   {
+    "label": "Chance full KE beats all baselines",
+    "value": "≈97% FC, ≈88% QA over 1,000 random metric weightings",
+    "src": "paper §6, Fig. 6"
+   },
+   {
+    "label": "Editor without the gradient input",
+    "value": "FC ≈10x slower to converge; QA did not converge",
+    "src": "paper App. C"
+   }
+  ],
+  "paper_vs_code": [
+   {
+    "topic": "Editor optimizer",
+    "paper": "Adam, lr 3e-4 (1e-1 for the multiplier)",
+    "code": "centered RMSprop with the same learning rates",
+    "src": "bart_seq2seq_augmented_kilt.py L438-L451",
+    "url": "https://github.com/nicola-decao/KnowledgeEditor/blob/c1c0db35b65d498de6877ef5acf2ffa5321818a3/src/models/bart_seq2seq_augmented_kilt.py#L438-L451"
+   },
+   {
+    "topic": "Fine-tuning baseline cap",
+    "paper": "stop on success or after at most 100 gradient steps",
+    "code": "eval scripts loop until the prediction flips, with no step limit",
+    "src": "eval_bart_seq2seq.py L148-L159; eval_bert_binary.py L138-L156",
+    "url": "https://github.com/nicola-decao/KnowledgeEditor/blob/c1c0db35b65d498de6877ef5acf2ffa5321818a3/scripts/eval_bart_seq2seq.py#L148-L159"
+   },
+   {
+    "topic": "+loop in the QA eval script",
+    "paper": "updates are applied in a loop until success (up to a maximum), affecting all metrics",
+    "code": "the loop runs only when scoring paraphrases; success and retain use the single update (the looped Δθ is discarded), unlike the FEVER script",
+    "src": "eval_bart_seq2seq.py L255-L277",
+    "url": "https://github.com/nicola-decao/KnowledgeEditor/blob/c1c0db35b65d498de6877ef5acf2ffa5321818a3/scripts/eval_bart_seq2seq.py#L255-L277"
+   },
+   {
+    "topic": "Hyper-network heads",
+    "paper": "five FFNNs [1024, tanh, d] per weight matrix",
+    "code": "one FFNN per matrix (1,024 → 128, tanh → output) whose output is split into the five vectors",
+    "src": "one_shot_learner.py L7-L31",
+    "url": "https://github.com/nicola-decao/KnowledgeEditor/blob/c1c0db35b65d498de6877ef5acf2ffa5321818a3/src/models/one_shot_learner.py#L7-L31"
+   },
+   {
+    "topic": "Training schedule",
+    "paper": "200k updates, batch 1,024 (FC) / 256 (QA)",
+    "code": "FC script: batch 256, 50k steps on 1 GPU; QA script: batch 64 on 4 GPUs, 200k steps",
+    "src": "scripts/train_*_augmented_kilt.sh",
+    "url": "https://github.com/nicola-decao/KnowledgeEditor/blob/c1c0db35b65d498de6877ef5acf2ffa5321818a3/scripts/train_bert_binary_augmented_kilt.sh"
+   }
+  ],
+  "open_questions": [
+   "Edits are never accumulated, so whether retain accuracy holds after tens or thousands of edits is untested.",
+   "Retain accuracy compares against the model's own old predictions, not gold answers, so it rewards stability rather than correctness.",
+   "Alternative QA answers are other beam hypotheses of the same model, which may be easier targets than arbitrary new facts."
+  ],
+  "figures": [
+   {
+    "id": "build",
+    "title": "Memory construction",
+    "viewBox": "0 0 560 228",
+    "body": "<rect class=\"gi-ev\" x=\"6\" y=\"28\" width=\"122\" height=\"60\" rx=\"8\"/><text class=\"fig-t\" x=\"67\" y=\"45\" text-anchor=\"middle\">Edit request</text><text class=\"fig-s\" x=\"67\" y=\"61\" text-anchor=\"middle\">x: Namibia's capital?</text><text class=\"fig-s\" x=\"67\" y=\"75\" text-anchor=\"middle\">y Namibia → a Windhoek</text><path class=\"gi-a\" d=\"M128 46 L157 46\"/><polygon class=\"gi-ah\" points=\"164,46 157,42 157,50\"/><rect class=\"gi-v fig-soft\" x=\"164\" y=\"26\" width=\"98\" height=\"42\" rx=\"8\"/><text class=\"fig-t\" x=\"213\" y=\"44\" text-anchor=\"middle\">BiLSTM</text><text class=\"fig-s\" x=\"213\" y=\"58\" text-anchor=\"middle\">reads y &gt;&gt; a || x</text><path class=\"gi-a\" d=\"M262 46 L273 46\"/><polygon class=\"gi-ah\" points=\"280,46 273,42 273,50\"/><rect class=\"gi-v\" x=\"282\" y=\"41\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"293\" y=\"41\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"304\" y=\"41\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"315\" y=\"41\" width=\"10\" height=\"10\" rx=\"2\"/><text class=\"fig-s\" x=\"303\" y=\"34\" text-anchor=\"middle\">h</text><path class=\"gi-a\" d=\"M326 46 L337 46\"/><polygon class=\"gi-ah\" points=\"344,46 337,42 337,50\"/><rect class=\"gi-f\" x=\"344\" y=\"26\" width=\"84\" height=\"42\" rx=\"8\"/><text class=\"fig-t\" x=\"386\" y=\"44\" text-anchor=\"middle\">5 heads</text><text class=\"fig-s\" x=\"386\" y=\"58\" text-anchor=\"middle\">α β γ δ η</text><path class=\"gi-a\" d=\"M428 46 L490 46 L490 67\"/><polygon class=\"gi-ah\" points=\"490,74 486,67 494,67\"/><path class=\"gi-a\" d=\"M67 88 L67 132 L157 132\"/><polygon class=\"gi-ah\" points=\"164,132 157,128 157,136\"/><text class=\"fig-s\" x=\"74\" y=\"124\" text-anchor=\"start\">loss on a</text><rect class=\"gi-f\" x=\"164\" y=\"110\" width=\"98\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"213\" y=\"128\" text-anchor=\"middle\">Frozen LM</text><text class=\"fig-s\" x=\"213\" y=\"142\" text-anchor=\"middle\">BERT or BART</text><path class=\"gi-a\" d=\"M262 132 L273 132\"/><polygon class=\"gi-ah\" points=\"280,132 273,128 273,136\"/><rect class=\"gi-w\" x=\"282\" y=\"115\" width=\"11\" height=\"11\" rx=\"2\"/><rect class=\"gi-w\" x=\"294\" y=\"115\" width=\"11\" height=\"11\" rx=\"2\"/><rect class=\"gi-w\" x=\"306\" y=\"115\" width=\"11\" height=\"11\" rx=\"2\"/><rect class=\"gi-w\" x=\"282\" y=\"127\" width=\"11\" height=\"11\" rx=\"2\"/><rect class=\"gi-w\" x=\"294\" y=\"127\" width=\"11\" height=\"11\" rx=\"2\"/><rect class=\"gi-w\" x=\"306\" y=\"127\" width=\"11\" height=\"11\" rx=\"2\"/><rect class=\"gi-w\" x=\"282\" y=\"139\" width=\"11\" height=\"11\" rx=\"2\"/><rect class=\"gi-w\" x=\"294\" y=\"139\" width=\"11\" height=\"11\" rx=\"2\"/><rect class=\"gi-w\" x=\"306\" y=\"139\" width=\"11\" height=\"11\" rx=\"2\"/><text class=\"fig-s\" x=\"300\" y=\"166\" text-anchor=\"middle\">∇W L(x, a)</text><path class=\"gi-a\" d=\"M320 132 L466 132 L466 127\"/><polygon class=\"gi-ah\" points=\"466,120 462,127 470,127\"/><rect class=\"gi-hi\" x=\"436\" y=\"74\" width=\"118\" height=\"46\" rx=\"8\"/><text class=\"fig-t\" x=\"495\" y=\"92\" text-anchor=\"middle\">ΔW per matrix</text><text class=\"fig-s\" x=\"495\" y=\"108\" text-anchor=\"middle\">σ(η)·(α̂∘∇W + β̂)</text><path class=\"gi-a\" d=\"M520 120 L520 169\"/><polygon class=\"gi-ah\" points=\"520,176 516,169 524,169\"/><rect class=\"gi-ev\" x=\"436\" y=\"176\" width=\"118\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"495\" y=\"194\" text-anchor=\"middle\">θ′ = θ + Δθ</text><text class=\"fig-s\" x=\"495\" y=\"208\" text-anchor=\"middle\">one update per edit</text><text class=\"fig-s\" x=\"6\" y=\"190\" text-anchor=\"start\">Editor trained once, offline: loss on a (and paraphrases)</text><text class=\"fig-s\" x=\"6\" y=\"204\" text-anchor=\"start\">under a KL limit on other inputs; margin annealed</text><text class=\"fig-s\" x=\"6\" y=\"218\" text-anchor=\"start\">Biases, norms and embeddings are never edited</text>",
+    "text": [
+     "An edit request is encoded by a BiLSTM, and the frozen model's gradient of the loss on the new answer is computed.",
+     "Small heads turn both into one weight shift per matrix, added to the model once."
+    ],
+    "src": "paper §4 Eq. 3, App. B.5; code one_shot_learner.py L7-L157, seq2seq_augmented_kilt.py L49-L53",
+    "url": "https://github.com/nicola-decao/KnowledgeEditor/blob/c1c0db35b65d498de6877ef5acf2ffa5321818a3/src/models/one_shot_learner.py#L7-L157"
+   },
+   {
+    "id": "read",
+    "title": "Memory retrieval",
+    "viewBox": "0 0 560 236",
+    "body": "<rect class=\"gi-ev\" x=\"6\" y=\"30\" width=\"104\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"58\" y=\"48\" text-anchor=\"middle\">Query</text><text class=\"fig-s\" x=\"58\" y=\"62\" text-anchor=\"middle\">any input</text><path class=\"gi-a\" d=\"M110 52 L130 52\"/><polygon class=\"gi-ah\" points=\"137,52 130,48 130,56\"/><rect class=\"gi-hi\" x=\"137\" y=\"30\" width=\"110\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"192\" y=\"48\" text-anchor=\"middle\">Edited LM</text><text class=\"fig-s\" x=\"192\" y=\"62\" text-anchor=\"middle\">θ + Δθ</text><path class=\"gi-a\" d=\"M247 52 L267 52\"/><polygon class=\"gi-ah\" points=\"274,52 267,48 267,56\"/><rect class=\"gi-f\" x=\"274\" y=\"26\" width=\"120\" height=\"52\" rx=\"8\"/><text class=\"fig-t\" x=\"334\" y=\"43\" text-anchor=\"middle\">Decode</text><text class=\"fig-s\" x=\"334\" y=\"57\" text-anchor=\"middle\">QA: beam 5, top-1</text><text class=\"fig-s\" x=\"334\" y=\"70\" text-anchor=\"middle\">FC: logit &gt; 0</text><path class=\"gi-a\" d=\"M394 52 L414 52\"/><polygon class=\"gi-ah\" points=\"421,52 414,48 414,56\"/><rect class=\"gi-ev\" x=\"421\" y=\"30\" width=\"133\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"487\" y=\"48\" text-anchor=\"middle\">Prediction</text><text class=\"fig-s\" x=\"487\" y=\"62\" text-anchor=\"middle\">no memory lookup</text><path class=\"gi-a\" d=\"M334 78 L334 97\"/><polygon class=\"gi-ah\" points=\"334,104 330,97 338,97\"/><text class=\"fig-s\" x=\"340\" y=\"94\" text-anchor=\"start\">+loop only</text><polygon class=\"gi-f\" points=\"334,104 384,130 334,156 284,130\"/><text class=\"fig-t\" x=\"334\" y=\"134\" text-anchor=\"middle\">= a ?</text><path class=\"gi-a\" d=\"M384 130 L487 130 L487 81\"/><polygon class=\"gi-ah\" points=\"487,74 483,81 491,81\"/><text class=\"fig-yes\" x=\"394\" y=\"124\" text-anchor=\"start\">Yes: stop</text><path class=\"gi-a\" d=\"M284 130 L254 130\"/><polygon class=\"gi-ah\" points=\"247,130 254,126 254,134\"/><text class=\"fig-no\" x=\"268\" y=\"122\" text-anchor=\"middle\">No</text><rect class=\"gi-f\" x=\"137\" y=\"110\" width=\"110\" height=\"42\" rx=\"8\"/><text class=\"fig-t\" x=\"192\" y=\"128\" text-anchor=\"middle\">Add Δθ again</text><text class=\"fig-s\" x=\"192\" y=\"142\" text-anchor=\"middle\">same Δθ, ≤ 5 rounds</text><path class=\"gi-a\" d=\"M192 110 L192 81\"/><polygon class=\"gi-ah\" points=\"192,74 188,81 196,81\"/><text class=\"fig-s\" x=\"6\" y=\"180\" text-anchor=\"start\">Scored one edit at a time, each from the original model:</text><rect class=\"gi-ev\" x=\"6\" y=\"188\" width=\"176\" height=\"42\" rx=\"8\"/><text class=\"fig-t\" x=\"94\" y=\"205\" text-anchor=\"middle\">Success</text><text class=\"fig-s\" x=\"94\" y=\"220\" text-anchor=\"middle\">the edit input x gives a</text><rect class=\"gi-ev\" x=\"190\" y=\"188\" width=\"176\" height=\"42\" rx=\"8\"/><text class=\"fig-t\" x=\"278\" y=\"205\" text-anchor=\"middle\">Equivalence</text><text class=\"fig-s\" x=\"278\" y=\"220\" text-anchor=\"middle\">paraphrases of x give a</text><rect class=\"gi-ev\" x=\"374\" y=\"188\" width=\"176\" height=\"42\" rx=\"8\"/><text class=\"fig-t\" x=\"462\" y=\"205\" text-anchor=\"middle\">Retain</text><text class=\"fig-s\" x=\"462\" y=\"220\" text-anchor=\"middle\">other inputs keep old output</text>",
+    "text": [
+     "There is no lookup: any query goes straight through the edited weights.",
+     "The +loop variant re-adds the same shift until the edit input gives the new answer (at most 5 rounds in code)."
+    ],
+    "src": "paper §2.2, §6.1; code bart_seq2seq_augmented_kilt.py L329-L409, eval_bart_seq2seq.py L255-L265",
+    "url": "https://github.com/nicola-decao/KnowledgeEditor/blob/c1c0db35b65d498de6877ef5acf2ffa5321818a3/src/models/bart_seq2seq_augmented_kilt.py#L329-L409"
+   }
+  ],
+  "key_numbers": [
+   {
+    "label": "Updates per edit",
+    "value": "1 (up to 5 with +loop, code)",
+    "src": "paper §6.1; code eval_bart_seq2seq.py L264",
+    "section": "construction"
+   },
+   {
+    "label": "Editor size",
+    "value": "54M (BERT) · 67M (BART) parameters",
+    "src": "paper App. B.5",
+    "section": "construction"
+   },
+   {
+    "label": "KL margin",
+    "value": "1e-1 → 1e-3 FC · 1e-3 → 1e-5 QA, ×0.8 when > 90% succeed",
+    "src": "paper §4, App. B.6",
+    "section": "method"
+   },
+   {
+    "label": "Paraphrases for training",
+    "value": "25 back-translations per input (beam 5), kept only if the prediction matches",
+    "src": "paper App. B.4",
+    "section": "method"
+   },
+   {
+    "label": "Models edited",
+    "value": "BERT-base 110M (FC) · BART-base 139M (QA)",
+    "src": "paper App. B.5",
+    "section": "method"
+   },
+   {
+    "label": "Editor training time",
+    "value": "≈1 day FC, ≈3 days QA on 4 Titan X",
+    "src": "paper App. B.6 fn. 13",
+    "section": "results"
+   }
+  ],
+  "components": [
+   {
+    "role": "Model being edited",
+    "model": "BERT-base (FEVER) or BART-base (zsRE), fine-tuned",
+    "kind": "llm",
+    "src": "paper §5.2, App. B"
+   },
+   {
+    "role": "Encodes the revision",
+    "model": "1-layer BiLSTM, hidden 128, + FFNN to 1,024",
+    "kind": "llm",
+    "src": "paper App. B.5; code one_shot_learner.py L72-L105",
+    "url": "https://github.com/nicola-decao/KnowledgeEditor/blob/c1c0db35b65d498de6877ef5acf2ffa5321818a3/src/models/one_shot_learner.py#L72-L105"
+   },
+   {
+    "role": "Predicts ΔW per matrix",
+    "model": "FFNN heads [1024, tanh, d] using the gradient",
+    "kind": "llm",
+    "src": "paper Eq. 3; code one_shot_learner.py L7-L69",
+    "url": "https://github.com/nicola-decao/KnowledgeEditor/blob/c1c0db35b65d498de6877ef5acf2ffa5321818a3/src/models/one_shot_learner.py#L7-L69"
+   }
+  ],
+  "ablation": {
+   "cols": [
+    "FC success",
+    "FC retain",
+    "FC equiv.",
+    "QA success",
+    "QA retain",
+    "QA equiv. (gen / human)"
+   ],
+   "rows": [
+    [
+     "KnowledgeEditor",
+     "98.80",
+     "98.14",
+     "82.69",
+     "94.65",
+     "98.73",
+     "86.50 / 92.06"
+    ],
+    [
+     "+ loop",
+     "100.0",
+     "97.78",
+     "81.57",
+     "99.23",
+     "97.79",
+     "89.51 / 96.81"
+    ],
+    [
+     "+ paraphrases in training",
+     "98.50",
+     "98.55",
+     "95.25",
+     "94.12",
+     "98.56",
+     "91.20 / 94.53"
+    ],
+    [
+     "+ paraphrases + loop",
+     "100.0",
+     "98.46",
+     "94.65",
+     "99.55",
+     "97.68",
+     "93.46 / 97.10"
+    ],
+    [
+     "L2 constraint instead of KL",
+     "99.10",
+     "45.10",
+     "99.01",
+     "99.10",
+     "46.66",
+     "97.16 / 99.24"
+    ]
+   ],
+   "src": "paper Table 1"
+  },
+  "discussion": {
+   "takeaway": "A small learned editor can rewrite one fact in a fine-tuned LM with a single weight update, keeping about 98% of other predictions, whereas fine-tuning or norm-constrained fine-tuning trades success, stability and paraphrase consistency against each other.",
+   "claims": [
+    {
+     "claim": "KnowledgeEditor meets all three desiderata at once, unlike the baselines.",
+     "evidence": "FC 98.80 success / 98.14 retain / 82.69 equiv.; QA 94.65 / 98.73 / 86.50; probability of beating all baselines ≈97% (FC) and ≈88% (QA). Table 1, Fig. 6"
+    },
+    {
+     "claim": "A constraint in function space (KL) is needed; one in parameter space is not enough.",
+     "evidence": "With an L2 constraint retain accuracy falls to 45.10 (FC) and 46.66 (QA). Table 1, §6.2"
+    },
+    {
+     "claim": "Training with paraphrases improves consistency without hurting success or retain.",
+     "evidence": "FC equivalence 82.69 → 95.25, QA 86.50 → 91.20 (generated). Table 1, §6.3"
+    },
+    {
+     "claim": "Fine-tuning either forgets or does not generalize.",
+     "evidence": "All layers: retain 86.95 FC / 67.55 QA; 1st layer on FC: equivalence 42.24. Table 1, §6.1"
+    },
+    {
+     "claim": "Edits concentrate in a few components, unlike gradients or fine-tuning.",
+     "evidence": "Update magnitudes, Fig. 4, §6.4; low cosine similarity with fine-tuning updates, App. C Table 2"
+    }
+   ],
+   "limits": [
+    "The editor is trained for a single update; applying several in sequence is left to future work.",
+    "The same tool could be used to insert false facts into a model."
+   ],
+   "limits_src": "paper §6.1 fn. 8, Ethical Considerations (no separate limitations section)",
+   "reading": [
+    "Every edit starts from the original model and is scored alone, so the setting is one fact at a time, not a growing memory.",
+    "The edited models are small fine-tuned classifiers and QA models (BERT-base, BART-base with 22.1% zsRE accuracy), and the new QA answers are the model's own lower-ranked beam hypotheses.",
+    "Baselines stop only on success (fine-tuning) or after a hyperparameter search that includes retain accuracy (Zhu et al.); KnowledgeEditor without the loop gets one update, so success rates are not measured under equal budgets.",
+    "The paper states Adam and a 100-step cap for fine-tuning; the released code uses RMSprop for the editor and has no step cap, and its QA eval applies +loop only to paraphrases."
+   ]
+  }
+ }
+}

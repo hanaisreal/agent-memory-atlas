@@ -1,0 +1,650 @@
+{
+  "id": "hypergraphrag",
+  "name": "HyperGraphRAG",
+  "paper": {
+    "title": "HyperGraphRAG: Retrieval-Augmented Generation via Hypergraph-Structured Knowledge Representation",
+    "arxiv": "2503.21322",
+    "url": "https://arxiv.org/abs/2503.21322",
+    "venue": "NeurIPS 2025",
+    "venue_short": "NeurIPS",
+    "track": "main",
+    "year": 2025,
+    "code": "https://github.com/LHRLAB/HyperGraphRAG"
+  },
+  "design": {
+    "construction": {
+      "unit": "n-ary fact: one hyperedge sentence plus the entities it connects",
+      "kept_as": "chunks verbatim; LLM-extracted hyperedge sentences and entity descriptions",
+      "processing": "documents cut into 1,200-token chunks (100 overlap); one LLM prompt splits each chunk into knowledge segments (hyperedges, completeness score 0-10) and lists each segment's entities (name, type, description, importance 0-100); up to 2 extra gleaning passes",
+      "trigger": "offline-batch",
+      "writer": "GPT-4o-mini"
+    },
+    "organization": {
+      "structure": "knowledge hypergraph stored as a bipartite graph: entity nodes and hyperedge nodes, an edge for each membership",
+      "stores": "NetworkX graph + three NanoVectorDB stores (entities, hyperedges, chunks) + chunk text store",
+      "index": "text-embedding-3-small over entity name + description and over hyperedge sentences; chunk vectors are built but not queried"
+    },
+    "management": {
+      "operations": "new documents are chunked and extracted into the same graph; entities with the same (upper-cased) name are merged, their descriptions joined and LLM-summarised past 500 tokens; identical hyperedge sentences merge with summed scores",
+      "conflicts": null,
+      "forgetting": null,
+      "timing": "offline"
+    },
+    "retrieval": {
+      "query": "the construction prompt is run on the question: its entity names form the entity query and its extracted sentences form the hyperedge query (code)",
+      "candidates": "top 60 entities and top 60 hyperedges by cosine similarity (> 0.2)",
+      "selection": "one-hop expansion in the bipartite graph (entities to their hyperedges, hyperedges to their entities) plus the source chunks of both; each list cut at 4,000 tokens",
+      "budget": "about 9.2k retrieved tokens at k = 60 (Medicine, Fig. 6a)"
+    },
+    "use": {
+      "context": "three CSV tables (entities, hyperedges, source chunks) merged from both routes, inside a unified prompt",
+      "reasoning": "single GPT-4o-mini call: reasoning in <think>, answer in <answer>"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "fixed-rule",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "graph",
+    "index": "vector",
+    "management": "consolidate",
+    "candidates": "dense",
+    "decides": "top-k rule",
+    "note": "The hypergraph is stored as an ordinary bipartite graph. Candidates come from dense search; the graph only adds one-hop neighbours. Management is 'consolidate' because same-name entities are merged and long descriptions LLM-summarised (inherited LightRAG code); nothing is deleted or edited otherwise."
+  },
+  "tags": {
+    "fidelity": "verbatim+derived",
+    "structure": [
+      "graph"
+    ],
+    "write_time": [
+      "segment",
+      "extract",
+      "link"
+    ],
+    "selection": [
+      "dense",
+      "graph-expansion"
+    ],
+    "memory_type": [
+      "semantic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "long-document"
+    ]
+  },
+  "stages": {
+    "ingestion": "Domain documents (for example the 2024 ESC hypertension guideline, 179k tokens) are cut into 1,200-token chunks with 100 tokens of overlap.",
+    "construction": "An LLM rewrites each chunk as a list of knowledge segments, each one sentence with a completeness score, and names the entities in each segment with type, description and importance score.",
+    "organization": "Each segment becomes a hyperedge node linked to its entities in a bipartite graph; entities and hyperedges are embedded in separate vector stores.",
+    "update": "New documents are added to the same graph; entities with the same name are merged and their descriptions summarised when long.",
+    "retrieval": "Entities and hyperedges are matched to the question by vector similarity (top 60 each); retrieved entities pull in their hyperedges, retrieved hyperedges pull in their entities, and both pull in the chunks they came from.",
+    "answer": "The generator reads entity, hyperedge and chunk tables and answers after a reasoning block.",
+    "learning": ""
+  },
+  "summary": "Replaces the binary triples of graph RAG with n-ary facts: each LLM-extracted sentence becomes a hyperedge over all its entities, and entities and hyperedges are retrieved by vector search and expanded to their neighbours and source chunks.",
+  "verified": false,
+  "notes": "Venue: NeurIPS 2025 main track, from the arXiv v3 PDF footer ('39th Conference on Neural Information Processing Systems (NeurIPS 2025)', no Datasets and Benchmarks track line) and the repository README; poster/spotlight status not checked. Text from arXiv v3 (2025-10-21). Code: official LHRLAB/HyperGraphRAG (footnote 1) at a804827 (2025-09-23). The package is a fork of LightRAG; the experiments import the copy under evaluation/hypergraphrag, which differs from the root package only in falling back to the raw question when extraction returns no entities or sentences and in a hard-coded API proxy URL.\nDESIGN: §4, §5.1, App. C, G; code operate.py extract_entities / kg_query / _build_query_context. control.retrieval = fixed-rule because the LLM only rewrites the query; similarity top-k and fixed expansion decide what is read.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2503.21322 v3 (PDF read 2026-09-30)",
+      "code": "https://github.com/LHRLAB/HyperGraphRAG/tree/a8048274936b08e55d09a85f032681e679df8943/",
+      "code_note": "Official repository named in the paper (footnote 1). Commit a804827 (2025-09-23) is the latest before arXiv v3. Defaults: GPT-4o-mini, text-embedding-3-small, top_k 60, 4,000-token caps per context list, cosine threshold 0.2. The evaluation scripts (evaluation/) show how Table 2 was produced, including how the StandardRAG baseline context is built. Datasets and contexts are on Terabox, not in the repo, so question sampling code could not be checked."
+    },
+    "headline": [
+      "A memory item is an LLM-written sentence (hyperedge) tied to every entity it mentions, not a (subject, relation, object) triple; the source chunk stays attached.",
+      "Retrieval is plain vector search over entities and over hyperedges (top 60 each), then one hop in the bipartite graph; there is no graph walk or reranker.",
+      "In the code the question is run through the same extraction prompt as the corpus, and the paper's score weighting, thresholds and separate chunk search are not implemented."
+    ],
+    "units": [
+      {
+        "name": "Hyperedge",
+        "role": "one knowledge segment of a chunk; the n-ary fact",
+        "made_by": "LLM n-ary extraction prompt (App. A.1)",
+        "fields": [
+          {
+            "name": "segment sentence",
+            "what": "one sentence stating the fact; the node's name, embedded for hyperedge search and shown in the context table",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper §4.1; code operate.py L115-L131, L457-L469",
+            "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/operate.py#L457-L469"
+          },
+          {
+            "name": "completeness score",
+            "what": "0-10 from the LLM, summed when the same sentence recurs; only a tie-break when sorting hyperedges of equal similarity",
+            "kept_as": "extracted",
+            "used_for": [
+              "rerank"
+            ],
+            "src": "code operate.py L124-L126, L957-L959",
+            "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/operate.py#L957-L959"
+          },
+          {
+            "name": "source chunk ids",
+            "what": "chunks the sentence came from; used to pull chunks into the context",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code operate.py L1058-L1105",
+            "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/operate.py#L1058-L1105"
+          }
+        ]
+      },
+      {
+        "name": "Entity",
+        "role": "a participant in one or more hyperedges",
+        "made_by": "same LLM call, listed under each segment",
+        "fields": [
+          {
+            "name": "name",
+            "what": "upper-cased; same-name entities are merged across chunks",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "code operate.py L87-L112, L167-L213",
+            "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/operate.py#L167-L213"
+          },
+          {
+            "name": "type",
+            "what": "free-form type chosen by the LLM; majority type kept on merge",
+            "kept_as": "extracted",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code operate.py L185-L192",
+            "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/operate.py#L185-L192"
+          },
+          {
+            "name": "description",
+            "what": "embedded together with the name; joined across merges and LLM-summarised past 500 tokens",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "code operate.py L56-L84, L470-L479",
+            "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/operate.py#L470-L479"
+          },
+          {
+            "name": "importance score",
+            "what": "0-100 from the LLM; stored as the entity-hyperedge edge weight, a tie-break when ordering hyperedges reached from entities",
+            "kept_as": "extracted",
+            "used_for": [
+              "rerank"
+            ],
+            "src": "code operate.py L215-L259, L910-L912",
+            "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/operate.py#L910-L912"
+          }
+        ]
+      },
+      {
+        "name": "Chunk",
+        "role": "the source text of the facts",
+        "made_by": "token chunking, 1,200 tokens with 100 overlap",
+        "fields": [
+          {
+            "name": "chunk text",
+            "what": "kept whole and added to the context when a retrieved entity or hyperedge came from it",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code hypergraphrag.py L129-L130, L296-L320",
+            "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/hypergraphrag.py#L296-L320"
+          },
+          {
+            "name": "chunk embedding",
+            "what": "written to the chunks vector store but never queried by kg_query",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "code hypergraphrag.py L236-L240, L320; operate.py L484-L636",
+            "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/hypergraphrag.py#L320"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Chunk",
+        "how": "documents split by tokens",
+        "params": {
+          "size": "1,200 tokens",
+          "overlap": "100"
+        },
+        "src": "code hypergraphrag.py L129-L130, L296-L306",
+        "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/hypergraphrag.py#L296-L306"
+      },
+      {
+        "step": "Extract",
+        "how": "one prompt splits the chunk into segments (sentence + completeness 0-10) and lists each segment's entities (name, type, description, importance 0-100); then up to 2 'continue' gleaning passes",
+        "params": {
+          "gleaning": "2"
+        },
+        "src": "paper §4.1, App. A.1; code operate.py L314-L340",
+        "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/operate.py#L314-L340"
+      },
+      {
+        "step": "Link",
+        "how": "each hyperedge becomes a node; an edge joins it to each of its entities (bipartite storage)",
+        "out": "Medicine: 7,675 entities, 4,818 hyperedges; CS: 19,913 and 26,902",
+        "src": "paper §4.1, Fig. 5f; code operate.py L215-L259",
+        "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/operate.py#L215-L259"
+      },
+      {
+        "step": "Merge",
+        "how": "same-name entities merged (descriptions joined, summarised past 500 tokens); identical hyperedge sentences merged with summed scores",
+        "src": "code operate.py L134-L213",
+        "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/operate.py#L134-L213"
+      },
+      {
+        "step": "Embed",
+        "how": "hyperedge sentences, entity name + description, and chunks embedded with text-embedding-3-small",
+        "src": "paper §4.1, §5.1; code operate.py L457-L479",
+        "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/operate.py#L457-L479"
+      }
+    ],
+    "read": [
+      {
+        "step": "Rewrite question",
+        "round": 1,
+        "input": "question",
+        "how": "the n-ary extraction prompt is applied to the question; entity names become the entity query, extracted sentences the hyperedge query (the paper describes a separate entity-extraction prompt and the raw question for hyperedges)",
+        "src": "paper §4.2, App. A.2; code operate.py L537-L585",
+        "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/operate.py#L537-L585"
+      },
+      {
+        "step": "Match entities",
+        "round": 1,
+        "input": "joined entity names",
+        "scores": "entity name + description vectors",
+        "how": "cosine similarity, kept if > 0.2",
+        "params": {
+          "top": "60"
+        },
+        "src": "paper §5.1; code operate.py L735-L743, storage.py L68, L122-L133",
+        "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/operate.py#L735-L743"
+      },
+      {
+        "step": "Match hyperedges",
+        "round": 1,
+        "input": "joined extracted sentences",
+        "scores": "hyperedge sentence vectors",
+        "how": "cosine similarity, kept if > 0.2; sorted by similarity, completeness score as tie-break",
+        "params": {
+          "top": "60"
+        },
+        "src": "paper §5.1; code operate.py L931-L964",
+        "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/operate.py#L931-L964"
+      },
+      {
+        "step": "Expand",
+        "round": 1,
+        "how": "retrieved entities bring their hyperedges and source chunks; retrieved hyperedges bring their entities and source chunks",
+        "src": "paper §4.3 Eq. 10-11; code operate.py L807-L928, L1018-L1105",
+        "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/operate.py#L807-L928"
+      },
+      {
+        "step": "Cut and merge",
+        "round": 1,
+        "how": "each list (entities, hyperedges, chunks) truncated at 4,000 tokens per route; the two routes' tables are merged and de-duplicated",
+        "params": {
+          "cap": "4,000 tokens per list"
+        },
+        "src": "code base.py L24-L32; operate.py L700-L733, L1108-L1123",
+        "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/operate.py#L1108-L1123"
+      }
+    ],
+    "answer_context": {
+      "sees": "entities, hyperedge sentences and source chunks from both retrieval routes",
+      "format": "'-----Entities-----' CSV (id, entity, type, description), '-----Relationships-----' CSV (id, hyperedge, related_entities), '-----Sources-----' CSV (id, content), placed under '---Knowledge---' in the unified prompt; the model reasons in <think> and answers in <answer>",
+      "excludes": [
+        "similarity scores",
+        "completeness and importance scores"
+      ],
+      "includes": [
+        "entity names, types, descriptions",
+        "hyperedge sentences with their entity lists",
+        "source chunks"
+      ],
+      "note": "The experiments call the retriever with only_need_context and then generate with the unified prompt of App. E (evaluation/get_generation.py), GPT-4o-mini, temperature 1.0 (App. G).",
+      "src": "code operate.py L718-L733; evaluation/script_hypergraphrag.py L19, get_generation.py L17-L50",
+      "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/evaluation/get_generation.py#L17-L50"
+    },
+    "compression": [
+      {
+        "what": "retrieved knowledge vs Medicine corpus",
+        "kept": 9156,
+        "of": 179000,
+        "unit": "tokens",
+        "basis": "#R-Token at k = 60 in Fig. 6a vs the 179k-token Medicine knowledge in Fig. 5f",
+        "src": "paper Fig. 5f, Fig. 6a",
+        "url": "https://arxiv.org/pdf/2503.21322"
+      },
+      {
+        "what": "chunks read",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported; chunk count depends on how many source chunks the retrieved items point to, capped at 4,000 tokens per route in code.",
+        "src": "code base.py L28",
+        "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/base.py#L28"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Overall F1, Medicine / Agriculture / CS / Legal / Mix",
+        "value": "35.35 / 33.89 / 31.30 / 43.81 / 48.71 (StandardRAG 27.90 / 27.43 / 28.93 / 37.34 / 43.20)",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "Best binary-graph baseline, overall F1 Medicine",
+        "value": "HippoRAG2 21.34, below StandardRAG 27.90",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "Construction time and cost",
+        "value": "3.084 s and $0.0063 per 1k tokens (HippoRAG2 2.758 s / $0.0056, GraphRAG 9.272 s / $0.0058)",
+        "src": "paper Table 3"
+      },
+      {
+        "label": "Generation time and cost",
+        "value": "0.256 s per query, $3.184 per 1k queries (StandardRAG 0.147 s / $1.016)",
+        "src": "paper Table 3"
+      },
+      {
+        "label": "Retrieved tokens vs top-k (Medicine)",
+        "value": "6,057 at k = 20, 9,156 at k = 60, 10,848 at k = 100",
+        "src": "paper Fig. 6a"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Query entities",
+        "paper": "separate entity-extraction prompt returning JSON (App. A.2); hyperedges matched with the embedding of the question itself (Eq. 9)",
+        "code": "the n-ary construction prompt is run on the question; entity names are the entity query and the extracted sentences are the hyperedge query",
+        "src": "operate.py L537-L585",
+        "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/operate.py#L537-L585"
+      },
+      {
+        "topic": "Score weighting and thresholds",
+        "paper": "similarity multiplied by the entity or hyperedge score, thresholds tau_V = 50 and tau_H = 5",
+        "code": "cosine similarity only, threshold 0.2; the scores are used only as tie-breaks",
+        "src": "storage.py L68, L122-L133; operate.py L957-L959",
+        "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/storage.py#L122-L133"
+      },
+      {
+        "topic": "Chunk retrieval",
+        "paper": "chunks retrieved by dense similarity, k_C = 5, tau_C = 0.5",
+        "code": "no chunk vector search; chunks are the sources of retrieved entities and hyperedges, capped at 4,000 tokens",
+        "src": "operate.py L807-L878, L1058-L1105",
+        "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/operate.py#L1058-L1105"
+      },
+      {
+        "topic": "StandardRAG baseline",
+        "paper": "top-5 chunks by dense similarity (App. F, G, Table 4)",
+        "code": "the 'Sources' section of HyperGraphRAG's own retrieved context",
+        "src": "evaluation/script_standardrag.py L13-L17",
+        "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/evaluation/script_standardrag.py#L13-L17"
+      }
+    ],
+    "open_questions": [
+      "The question sets are built by the authors from 1-3 hop samples of 'knowledge fragments'; the paper does not say which graph the hops were taken over, and the datasets are only on Terabox.",
+      "No run compares hyperedges with binary triples inside the same pipeline, so the n-ary representation and the rest of the pipeline (LLM query rewriting, 4,000-token tables, chunk attachment) are not separated.",
+      "Results are single runs at temperature 1.0 with no variance reported."
+    ],
+    "glance": [
+      {
+        "q": "What is one memory item?",
+        "a": "A hyperedge: one LLM-written sentence stating a fact, linked to every entity it mentions (name, type, description), plus the chunk it came from.",
+        "src": "paper §4.1",
+        "url": "https://arxiv.org/pdf/2503.21322"
+      },
+      {
+        "q": "Is the text summarised?",
+        "a": "The chunk is kept verbatim; hyperedges and entity descriptions are LLM rewrites, and long merged descriptions are summarised.",
+        "src": "code operate.py L56-L84, L167-L213",
+        "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/operate.py#L167-L213"
+      },
+      {
+        "q": "How is memory organised?",
+        "a": "A bipartite graph of entity nodes and hyperedge nodes, with separate vector stores for entities and hyperedges.",
+        "src": "paper §4.1",
+        "url": "https://arxiv.org/pdf/2503.21322"
+      },
+      {
+        "q": "Is there reranking?",
+        "a": "No. Items are ordered by cosine similarity (scores only break ties) and cut at 4,000 tokens per list.",
+        "src": "code operate.py L931-L964",
+        "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/operate.py#L931-L964"
+      },
+      {
+        "q": "Is memory reconstructed at question time?",
+        "a": "Only by one-hop expansion: entities bring their hyperedges, hyperedges bring their entities, and both bring source chunks.",
+        "src": "paper §4.3",
+        "url": "https://arxiv.org/pdf/2503.21322"
+      },
+      {
+        "q": "What does the answer model read?",
+        "a": "Three CSV tables (entities, hyperedges, chunks) inside a fixed prompt asking for reasoning and then an answer; about 9.2k tokens at k = 60 on Medicine.",
+        "src": "paper App. E, Fig. 6a; code operate.py L718-L733",
+        "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/operate.py#L718-L733"
+      }
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 244",
+        "body": "<text class=\"fig-t\" x=\"58\" y=\"16\" text-anchor=\"middle\">Documents</text><rect class=\"gi-ev\" x=\"14\" y=\"26\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"22\" y1=\"35.0\" x2=\"70\" y2=\"35.0\"/><rect class=\"gi-ev\" x=\"34\" y=\"50\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"42\" y1=\"59.0\" x2=\"90\" y2=\"59.0\"/><rect class=\"gi-ev\" x=\"14\" y=\"74\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"22\" y1=\"83.0\" x2=\"70\" y2=\"83.0\"/><rect class=\"gi-ev\" x=\"34\" y=\"98\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"42\" y1=\"107.0\" x2=\"90\" y2=\"107.0\"/><rect class=\"gi-ev\" x=\"14\" y=\"122\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"22\" y1=\"131.0\" x2=\"70\" y2=\"131.0\"/><text class=\"fig-s\" x=\"60\" y=\"160\" text-anchor=\"middle\">1,200-token chunks,</text><text class=\"fig-s\" x=\"60\" y=\"173\" text-anchor=\"middle\">100 overlap</text><path class=\"gi-a\" d=\"M112 76 L151 76\"/><polygon class=\"gi-ah\" points=\"158,76 151,72 151,80\"/><rect class=\"gi-llm\" x=\"117\" y=\"58\" width=\"36\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"135\" y=\"68\" text-anchor=\"middle\">LLM</text><text class=\"fig-s\" x=\"135\" y=\"94\" text-anchor=\"middle\">n-ary</text><text class=\"fig-s\" x=\"135\" y=\"106\" text-anchor=\"middle\">extraction</text><rect class=\"gi-ev\" x=\"162\" y=\"20\" width=\"170\" height=\"130\" rx=\"10\"/><text class=\"fig-t\" x=\"247\" y=\"36\" text-anchor=\"middle\">n-ary fact</text><rect class=\"gi-hi\" x=\"172\" y=\"44\" width=\"150\" height=\"40\" rx=\"6\"/><text class=\"fig-t\" x=\"180\" y=\"59\" text-anchor=\"start\">hyperedge</text><text class=\"fig-s\" x=\"180\" y=\"76\" text-anchor=\"start\">one sentence, score 0-10</text><rect class=\"gi-f\" x=\"172\" y=\"90\" width=\"150\" height=\"52\" rx=\"6\"/><text class=\"fig-t\" x=\"180\" y=\"105\" text-anchor=\"start\">entities (n ≥ 2)</text><text class=\"fig-s\" x=\"180\" y=\"120\" text-anchor=\"start\">name, type, description</text><text class=\"fig-s\" x=\"180\" y=\"133\" text-anchor=\"start\">score 0-100</text><path class=\"gi-a\" d=\"M336 76 L361 76\"/><polygon class=\"gi-ah\" points=\"368,76 361,72 361,80\"/><text class=\"fig-t\" x=\"460\" y=\"14\" text-anchor=\"middle\">Knowledge hypergraph</text><path class=\"gi-h\" d=\"M378 52 C 374 24, 450 18, 470 40 C 486 58, 462 86, 430 88 C 398 90, 380 74, 378 52 Z\"/><path class=\"gi-h\" d=\"M448 64 C 452 40, 540 36, 548 64 C 554 92, 520 108, 488 104 C 460 100, 446 84, 448 64 Z\"/><path class=\"gi-h\" d=\"M430 110 C 428 94, 480 88, 500 100 C 516 112, 496 138, 468 138 C 440 138, 430 126, 430 110 Z\"/><circle class=\"gi-n\" cx=\"398\" cy=\"50\" r=\"5\"/><circle class=\"gi-n\" cx=\"428\" cy=\"36\" r=\"5\"/><circle class=\"gi-n\" cx=\"412\" cy=\"72\" r=\"5\"/><circle class=\"gi-n\" cx=\"462\" cy=\"66\" r=\"5\"/><circle class=\"gi-n\" cx=\"500\" cy=\"52\" r=\"5\"/><circle class=\"gi-n\" cx=\"526\" cy=\"80\" r=\"5\"/><circle class=\"gi-n\" cx=\"488\" cy=\"92\" r=\"5\"/><circle class=\"gi-n\" cx=\"452\" cy=\"120\" r=\"5\"/><circle class=\"gi-n\" cx=\"484\" cy=\"124\" r=\"5\"/><text class=\"fig-s\" x=\"466\" y=\"150\" text-anchor=\"middle\">hyperedges share entities;</text><text class=\"fig-s\" x=\"466\" y=\"162\" text-anchor=\"middle\">stored as a bipartite graph</text><rect class=\"gi-v fig-soft\" x=\"162\" y=\"170\" width=\"122\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"223.0\" y=\"188.0\" text-anchor=\"middle\">entity vectors</text><text class=\"fig-s\" x=\"223.0\" y=\"201.0\" text-anchor=\"middle\">name + description</text><rect class=\"gi-v fig-soft\" x=\"296\" y=\"170\" width=\"122\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"357.0\" y=\"188.0\" text-anchor=\"middle\">hyperedge vectors</text><text class=\"fig-s\" x=\"357.0\" y=\"201.0\" text-anchor=\"middle\">sentence text</text><rect class=\"gi-ev d\" x=\"430\" y=\"170\" width=\"122\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"491.0\" y=\"188.0\" text-anchor=\"middle\">chunk vectors</text><text class=\"fig-s\" x=\"491.0\" y=\"201.0\" text-anchor=\"middle\">built, never queried</text><text class=\"fig-s\" x=\"357\" y=\"232\" text-anchor=\"middle\">all embedded with text-embedding-3-small; chunks are also kept as text</text>",
+        "text": [
+          "Each 1,200-token chunk is rewritten by an LLM into one-sentence facts (hyperedges), each listing all the entities it involves.",
+          "Hyperedges and entities are stored as the two sides of a bipartite graph and embedded separately; chunk vectors are built but not searched."
+        ],
+        "src": "paper §4.1, App. A.1; code operate.py L261-L479, hypergraphrag.py L296-L330",
+        "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/operate.py#L261-L479"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 246",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"96\" width=\"60\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"34.0\" y=\"122.0\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M64 118 L71 118\"/><polygon class=\"gi-ah\" points=\"78,118 71,114 71,122\"/><rect class=\"gi-llm\" x=\"78\" y=\"96\" width=\"84\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"120.0\" y=\"116.0\" text-anchor=\"middle\">Extract</text><text class=\"fig-s\" x=\"120.0\" y=\"129.0\" text-anchor=\"middle\">same prompt</text><path class=\"gi-a\" d=\"M162 118 L172 118 L172 52 L177 52\"/><polygon class=\"gi-ah\" points=\"184,52 177,48 177,56\"/><path class=\"gi-a\" d=\"M172 118 L172 184 L177 184\"/><polygon class=\"gi-ah\" points=\"184,184 177,180 177,188\"/><rect class=\"gi-v fig-soft\" x=\"184\" y=\"30\" width=\"100\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"234.0\" y=\"50.0\" text-anchor=\"middle\">Match entities</text><text class=\"fig-s\" x=\"234.0\" y=\"63.0\" text-anchor=\"middle\">names, top 60</text><rect class=\"gi-v fig-soft\" x=\"184\" y=\"162\" width=\"100\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"234.0\" y=\"182.0\" text-anchor=\"middle\">Match hyperedges</text><text class=\"fig-s\" x=\"234.0\" y=\"195.0\" text-anchor=\"middle\">sentences, top 60</text><path class=\"gi-a\" d=\"M284 52 L293 52\"/><polygon class=\"gi-ah\" points=\"300,52 293,48 293,56\"/><path class=\"gi-a\" d=\"M284 184 L293 184\"/><polygon class=\"gi-ah\" points=\"300,184 293,180 293,188\"/><rect class=\"gi-f\" x=\"300\" y=\"30\" width=\"104\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"352.0\" y=\"50.0\" text-anchor=\"middle\">+ their hyperedges</text><text class=\"fig-s\" x=\"352.0\" y=\"63.0\" text-anchor=\"middle\">+ source chunks</text><rect class=\"gi-f\" x=\"300\" y=\"162\" width=\"104\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"352.0\" y=\"182.0\" text-anchor=\"middle\">+ their entities</text><text class=\"fig-s\" x=\"352.0\" y=\"195.0\" text-anchor=\"middle\">+ source chunks</text><path class=\"gi-a\" d=\"M404 52 L424 52 L424 108 L433 108\"/><polygon class=\"gi-ah\" points=\"440,108 433,104 433,112\"/><path class=\"gi-a\" d=\"M404 184 L424 184 L424 128 L433 128\"/><polygon class=\"gi-ah\" points=\"440,128 433,124 433,132\"/><rect class=\"gi-hi\" x=\"440\" y=\"90\" width=\"114\" height=\"56\" rx=\"8\"/><text class=\"fig-t\" x=\"497.0\" y=\"116.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"497.0\" y=\"129.0\" text-anchor=\"middle\">3 tables, merged</text><text class=\"fig-s\" x=\"497\" y=\"160\" text-anchor=\"middle\">entities, hyperedges,</text><text class=\"fig-s\" x=\"497\" y=\"172\" text-anchor=\"middle\">chunks; each list</text><text class=\"fig-s\" x=\"497\" y=\"184\" text-anchor=\"middle\">cut at 4,000 tokens</text><text class=\"fig-s\" x=\"92\" y=\"88\" text-anchor=\"middle\">entity names and</text><text class=\"fig-s\" x=\"92\" y=\"76\" text-anchor=\"middle\">question → its own</text><text class=\"fig-s\" x=\"92\" y=\"158\" text-anchor=\"middle\">sentences become</text><text class=\"fig-s\" x=\"92\" y=\"170\" text-anchor=\"middle\">the two queries</text><text class=\"fig-s\" x=\"280\" y=\"234\" text-anchor=\"middle\">no separate chunk search; similarity only (cosine > 0.2), no score weighting</text>",
+        "text": [
+          "The question goes through the same extraction prompt; its entity names search the entity store and its sentences search the hyperedge store (top 60 each).",
+          "Each hit brings its graph neighbours and source chunks, and the merged entity, hyperedge and chunk tables go to the generator."
+        ],
+        "src": "paper §4.2-4.3; code operate.py L484-L1123",
+        "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/operate.py#L484-L733"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Chunk size",
+        "value": "1,200 tokens, 100 overlap",
+        "src": "code hypergraphrag.py L129-L130",
+        "section": "construction"
+      },
+      {
+        "label": "Hypergraph, Medicine (179k tokens)",
+        "value": "7,675 entities, 4,818 hyperedges",
+        "src": "paper Fig. 5f",
+        "section": "construction"
+      },
+      {
+        "label": "Construction cost",
+        "value": "3.084 s, $0.0063 per 1k tokens",
+        "src": "paper Table 3",
+        "section": "construction"
+      },
+      {
+        "label": "Entities / hyperedges retrieved",
+        "value": "top 60 each",
+        "src": "paper §5.1, App. G",
+        "section": "method"
+      },
+      {
+        "label": "Similarity cut-off",
+        "value": "cosine > 0.2 (code)",
+        "src": "code storage.py L68",
+        "section": "method"
+      },
+      {
+        "label": "Context cap",
+        "value": "4,000 tokens per list (code)",
+        "src": "code base.py L28-L32",
+        "section": "method"
+      },
+      {
+        "label": "Retrieved tokens at k = 60",
+        "value": "about 9.2k (Medicine)",
+        "src": "paper Fig. 6a",
+        "section": "results"
+      },
+      {
+        "label": "Time per query",
+        "value": "0.256 s (StandardRAG 0.147 s)",
+        "src": "paper Table 3",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "F1",
+        "R-S",
+        "G-E"
+      ],
+      "rows": [
+        [
+          "HyperGraphRAG",
+          "35.4",
+          "70.2",
+          "59.4"
+        ],
+        [
+          "without entity retrieval",
+          "29.8",
+          "57.9",
+          "55.3"
+        ],
+        [
+          "without hyperedge retrieval",
+          "26.4",
+          "53.1",
+          "52.2"
+        ],
+        [
+          "without entity and hyperedge retrieval",
+          "27.9",
+          "62.6",
+          "55.7"
+        ],
+        [
+          "without chunks",
+          "29.2",
+          "53.6",
+          "53.4"
+        ],
+        [
+          "without all three (no retrieval)",
+          "12.9",
+          "0.0",
+          "43.3"
+        ]
+      ],
+      "src": "paper Fig. 4 (Medicine, overall)"
+    },
+    "components": [
+      {
+        "role": "N-ary extraction (corpus and question)",
+        "model": "GPT-4o-mini",
+        "kind": "llm",
+        "src": "paper §5.1; code operate.py L314-L340, L537-L565",
+        "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/operate.py#L537-L565"
+      },
+      {
+        "role": "Embeds entities, hyperedges, chunks and queries",
+        "model": "text-embedding-3-small",
+        "kind": "retriever",
+        "src": "paper §5.1; code llm.py L771-L773",
+        "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/llm.py#L771-L773"
+      },
+      {
+        "role": "Bipartite expansion and 4,000-token truncation",
+        "model": "rules over a NetworkX graph",
+        "kind": "rule",
+        "src": "code operate.py L807-L1123",
+        "url": "https://github.com/LHRLAB/HyperGraphRAG/blob/a8048274936b08e55d09a85f032681e679df8943/hypergraphrag/operate.py#L807-L1123"
+      },
+      {
+        "role": "Answer",
+        "model": "GPT-4o-mini, temperature 1.0",
+        "kind": "llm",
+        "src": "paper §5.1, App. G"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Storing facts as sentences linked to all their entities, rather than as binary triples, and retrieving them together with their source chunks gives the best F1 on the authors' five domain QA sets, where binary graph RAG methods mostly fall below chunk RAG.",
+      "claims": [
+        {
+          "claim": "HyperGraphRAG beats every baseline in every domain.",
+          "evidence": "Overall F1 35.35 / 33.89 / 31.30 / 43.81 / 48.71 vs StandardRAG 27.90 / 27.43 / 28.93 / 37.34 / 43.20 (Medicine / Agriculture / CS / Legal / Mix); R-S and G-E also highest. Table 2, §5.2"
+        },
+        {
+          "claim": "Binary-relation graph RAG methods often do worse than chunk RAG.",
+          "evidence": "Medicine overall F1: GraphRAG 17.60, LightRAG 12.79, PathRAG 14.94, HippoRAG2 21.34 vs StandardRAG 27.90. Table 2"
+        },
+        {
+          "claim": "Entity retrieval, hyperedge retrieval and chunks each help.",
+          "evidence": "Medicine F1 35.4 full; 29.8 without entities, 26.4 without hyperedges, 29.2 without chunks, 12.9 with none. Fig. 4, §5.3"
+        },
+        {
+          "claim": "The hypergraph captures more knowledge than binary graphs.",
+          "evidence": "CS: 26,902 hyperedges vs 930 GraphRAG communities and 5,632 LightRAG relations. Fig. 5f, §5.4"
+        },
+        {
+          "claim": "Cost stays close to other graph RAG methods.",
+          "evidence": "3.084 s and $0.0063 per 1k construction tokens (HippoRAG2 2.758 s / $0.0056); 0.256 s and $3.184 per 1k queries (LightRAG 0.359 s / $3.359). Table 3, §5.7"
+        }
+      ],
+      "limits": [
+        "Text only; images, tables and structured records are left for a multimodal version.",
+        "Retrieval uses fixed similarity metrics that may not match downstream usefulness; learning retrieval with RL is future work.",
+        "Assumes the knowledge can be centralised; a federated, privacy-preserving version is future work.",
+        "A hypergraph is built per task or domain; a pretrained hypergraph retrieval model is future work.",
+        "Not yet tested on harder tasks such as multi-hop QA or broader domains."
+      ],
+      "limits_src": "paper App. I (Limitations and Future Work)",
+      "reading": [
+        "The headline gains over StandardRAG (+7.45 F1, +7.62 R-S, +3.69 G-E) are exactly the Medicine differences in Table 2; averaged over the five domains the gaps are +5.65 F1, +13.1 R-S and +2.67 G-E. The N-ary claim (+5.3 F1) matches the five-domain average, but the Binary claim (+8.6) matches neither (average +5.99, Medicine +9.58).",
+        "In the released evaluation code the StandardRAG context is the 'Sources' part of HyperGraphRAG's own retrieval (chunks reached through retrieved entities and hyperedges), not an independent top-5 dense search as App. G states. Its Medicine row (27.90 / 62.57 / 55.66) equals the ablation 'w/o ER & HR' (27.9 / 62.6 / 55.7), consistent with that.",
+        "So the StandardRAG gap measures adding the entity and hyperedge tables on top of the same chunks, and the ablation 'without chunks' keeps entity and hyperedge tables whose selection still depends on the graph.",
+        "The paper's score weighting (similarity x score with thresholds 50 and 5) and chunk retrieval (k = 5, tau = 0.5) are not in the code; the code uses cosine > 0.2, top 60 and 4,000-token caps per list.",
+        "At query time the question is run through the corpus extraction prompt, so hyperedge search matches LLM-written sentences about the question rather than the question itself.",
+        "The evaluation sets are built by the authors (GPT-written questions from sampled knowledge fragments, human-checked; 512 per domain); no public QA benchmark is used, although App. I lists multi-hop QA as future work.",
+        "G-E averages the judge's seven 0-10 scores with the answer's F1 (App. E Eq. 45), so it is not independent of F1; R-S compares retrieved text with the gold fragments via SimCSE and is 0 for any method that retrieves nothing.",
+        "HippoRAG2 is run with 'top-60' units (Table 4) and scores far lower here than in its own paper's setting (for example R-S 18.58 on Agriculture); how its passages were limited to the shared token budget is not described."
+      ]
+    },
+    "abstract": {
+      "text": "HyperGraphRAG argues that graph-based RAG is held back by binary edges, which split facts involving several entities into disconnected triples. It instead has an LLM rewrite documents into short fact sentences, each a hyperedge joining all the entities it involves, stores them as a bipartite graph with vector indexes for entities and hyperedges, and retrieves both before expanding to neighbours and source chunks. On question sets the authors built over medicine, agriculture, computer science, law and a mixed corpus, it reports higher answer F1, retrieval similarity and judged generation quality than chunk RAG and four binary graph RAG methods, at similar cost.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2503.21322"
+    },
+    "sections": {
+      "Memory architecture": "§4",
+      "Results": "§5.2",
+      "Ablation": "§5.3",
+      "Discussion": "§5.4-5.7, App. I",
+      "Details": "§5.1, App. A, C, D, E, G"
+    }
+  }
+}

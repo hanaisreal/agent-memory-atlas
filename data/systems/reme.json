@@ -1,0 +1,556 @@
+{
+  "id": "reme",
+  "name": "ReMe",
+  "paper": {
+    "title": "Remember Me, Refine Me: A Dynamic Procedural Memory Framework for Experience-Driven Agent Evolution",
+    "arxiv": "2512.10696",
+    "url": "https://arxiv.org/abs/2512.10696",
+    "venue": "ACL 2026 Findings",
+    "venue_short": "ACL",
+    "track": "findings",
+    "year": 2026,
+    "code": "https://github.com/agentscope-ai/ReMe"
+  },
+  "design": {
+    "construction": {
+      "unit": "experience: when-to-use scenario, content, keywords, confidence, tools used (+ freq and utility counters)",
+      "kept_as": "LLM-written keypoint-level advice extracted from trajectories",
+      "processing": "from 8 sampled runs per task keep the best and worst; the LLM extracts 1-3 experiences from successes, from failures and from comparing the two; an LLM judge validates (score >= 0.5); near-duplicates dropped",
+      "trigger": "other",
+      "writer": "summarizer LLM = the executing Qwen3 model in the paper (qwen-max in the code quickstart)"
+    },
+    "organization": {
+      "structure": "flat experience pool",
+      "stores": "one vector store per workspace (Elasticsearch in the paper)",
+      "index": "dense embedding of the when-to-use field only (text-embedding-v4, 1024-d)"
+    },
+    "management": {
+      "operations": "dynamic setting: add experiences only from solved tasks; on failure, reflect and retry with the lessons; count recalls (freq) and successful recalls (utility)",
+      "conflicts": "new experiences with cosine > 0.5 to a stored one are discarded (code)",
+      "forgetting": "delete when recalled at least 5 times and utility/freq < 0.5 (checked every 5 tasks in the code)",
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "the task's first user message",
+      "candidates": "cosine similarity against when-to-use embeddings",
+      "selection": "top-5; an LLM reranks them and an LLM rewrites them into one guidance text",
+      "budget": "K = 5 experiences, rewritten into one paragraph"
+    },
+    "use": {
+      "context": "the rewritten guidance appended under the task text ('Some Related Experience to help you to complete the task')",
+      "reasoning": "tool-calling agent loop, up to 30 iterations; retrieval only once, at the start"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "feedback-optimized",
+      "retrieval": "prompted-llm"
+    }
+  },
+  "classify": {
+    "structure": "flat",
+    "index": "vector",
+    "management": "evict",
+    "candidates": "dense",
+    "decides": "top-k rule",
+    "note": "In the released pipeline recall and rerank both use k = 5, so the LLM reranker only reorders the set a top-5 rule already fixed; the rewrite then merges all five."
+  },
+  "tags": {
+    "fidelity": "extracted",
+    "structure": [
+      "flat"
+    ],
+    "write_time": [
+      "extract",
+      "filter"
+    ],
+    "selection": [
+      "dense",
+      "rerank"
+    ],
+    "memory_type": [
+      "procedural"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "code",
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "The agent is run N=8 times per training task (temperature 0.9); per task the highest- and lowest-reward trajectories are kept for summarization.",
+    "construction": "An LLM extracts keypoint-level experiences from successful runs, from failed runs and by comparing the higher- and lower-scoring run; each has a when-to-use scenario, content, keywords, confidence and tools used, and an LLM judge keeps those scoring at least 0.5.",
+    "organization": "Experiences sit in one flat vector store, keyed by the embedding of the when-to-use text.",
+    "update": "Near-duplicates (cosine > 0.5 in the code) are dropped. In the dynamic setting experiences are added only from solved tasks, a failed task triggers a retry with lessons from the failure, recall and success counters are updated, and experiences recalled at least 5 times with utility/freq below 0.5 are deleted.",
+    "retrieval": "At the start of a task its query is embedded and matched against when-to-use embeddings; the top 5 are reranked by an LLM and rewritten by an LLM into one task-specific guidance.",
+    "answer": "The guidance is appended to the task text and the agent solves the task with tool calls.",
+    "learning": ""
+  },
+  "summary": "Procedural memory of LLM-extracted keypoint experiences keyed by a written usage scenario, reused through retrieve-rerank-rewrite and kept small by success-only addition and deletion of often-recalled but rarely helpful entries.",
+  "verified": false,
+  "notes": "VENUE: Findings of ACL 2026, pages 16803-16822 (aclanthology 2026.findings-acl.829); arXiv comment 'ACL'26-Findings'. Paper read: arXiv v2 (15 Apr 2026). CODE: agentscope-ai/ReMe has been heavily reworked since (1,051 commits, package renamed); the pinned commit is the last one before arXiv v1 (2025-12-11), where the task-memory flows and the BFCL/AppWorld cookbooks live under reme_ai/ and cookbook/. RESULTS: metric 'other' with category avg@4 / pass@4 (success rates in %, mean of 3 runs); No Memory, A-Mem and LangMem are the authors' reruns (App. B.2).",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2512.10696v2 (PDF read 2026-09-30)",
+      "code": "https://github.com/agentscope-ai/ReMe/tree/2ab7dc026778c61e9d5c8c93c077879ebdfe98ce/",
+      "code_note": "Last commit before arXiv v1 (2025-12-11, version 0.2.0.4). It holds the task-memory flow definitions (reme_ai/config/default.yaml) and the BFCL and AppWorld experiment drivers; the paper's exact run configurations (models, num_trials) are not published, so the cookbook defaults are read as the reference implementation."
+    },
+    "headline": [
+      "Only the LLM-written 'when to use' sentence is embedded; the question is matched against it, not against the advice itself.",
+      "The agent never sees stored experiences as such: an LLM rewrites the 5 retrieved ones into a single guidance paragraph under the task.",
+      "Most of the gain comes from updating the pool during evaluation: on AppWorld with Qwen3-8B the frozen pool gives 17.06 Avg@4 and the dynamic one 24.70 (Table 1)."
+    ],
+    "units": [
+      {
+        "name": "Experience",
+        "role": "one reusable how-to insight about a kind of task step",
+        "made_by": "summarizer LLM (success, failure or comparison prompt), then an LLM judge",
+        "fields": [
+          {
+            "name": "when to use",
+            "what": "the scenario in which the advice applies; the only embedded text",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "rerank",
+              "answer"
+            ],
+            "src": "paper §3.2; code schema/memory.py L106-L126",
+            "url": "https://github.com/agentscope-ai/ReMe/blob/2ab7dc026778c61e9d5c8c93c077879ebdfe98ce/reme_ai/schema/memory.py#L106-L126"
+          },
+          {
+            "name": "content",
+            "what": "the advice: key steps and why they worked or failed",
+            "kept_as": "extracted",
+            "used_for": [
+              "rerank",
+              "answer"
+            ],
+            "src": "paper §3.2, Table 10; code rewrite_memory_op.py L127-L145",
+            "url": "https://github.com/agentscope-ai/ReMe/blob/2ab7dc026778c61e9d5c8c93c077879ebdfe98ce/reme_ai/retrieve/task/rewrite_memory_op.py#L127-L145"
+          },
+          {
+            "name": "keywords, task query, generalized query",
+            "what": "tags and the (generalized) source task; alternative retrieval keys in the ablation",
+            "kept_as": "extracted",
+            "used_for": [],
+            "src": "paper Tables 9-10, App. D.3"
+          },
+          {
+            "name": "confidence, tools used",
+            "what": "LLM confidence and tool names",
+            "kept_as": "extracted",
+            "used_for": [],
+            "src": "paper §3.2, Table 10"
+          },
+          {
+            "name": "validation score",
+            "what": "LLM-judge score, must be >= 0.5 to be stored",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "code memory_validation_op.py L97-L100",
+            "url": "https://github.com/agentscope-ai/ReMe/blob/2ab7dc026778c61e9d5c8c93c077879ebdfe98ce/reme_ai/summary/task/memory_validation_op.py#L97-L100"
+          },
+          {
+            "name": "freq, utility",
+            "what": "times recalled; times a recall ended in a solved task",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "paper Eq. 1; code update_memory_freq_op.py L53, update_memory_utility_op.py L56",
+            "url": "https://github.com/agentscope-ai/ReMe/blob/2ab7dc026778c61e9d5c8c93c077879ebdfe98ce/reme_ai/vector_store/update_memory_utility_op.py#L56"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Sample",
+        "how": "run the agent 8 times per training task; keep the lowest- and highest-reward runs",
+        "params": {
+          "N": "8",
+          "temperature": "0.9"
+        },
+        "out": "pool built from 50 BFCL-V3 tasks / 90 AppWorld tasks",
+        "src": "paper §4.1, App. B.4.1; code init_exp_pool.py L66-L80",
+        "url": "https://github.com/agentscope-ai/ReMe/blob/2ab7dc026778c61e9d5c8c93c077879ebdfe98ce/cookbook/bfcl/init_exp_pool.py#L66-L80"
+      },
+      {
+        "step": "Extract",
+        "how": "LLM writes 1-3 experiences from each successful run (reward >= 1.0) and each failed run, and 1-2 by comparing the higher- and lower-scoring run",
+        "src": "paper §3.2, Tables 10-12; code default.yaml L26, comparative_extraction_op.py L43-L45",
+        "url": "https://github.com/agentscope-ai/ReMe/blob/2ab7dc026778c61e9d5c8c93c077879ebdfe98ce/reme_ai/config/default.yaml#L25-L26"
+      },
+      {
+        "step": "Validate",
+        "how": "LLM judge scores actionability, accuracy, relevance, clarity, novelty; keep if valid and score >= 0.5",
+        "params": {
+          "threshold": "0.5 (prompt text says invalid below 0.3)"
+        },
+        "src": "paper §3.2, Table 13; code memory_validation_op.py L97-L100",
+        "url": "https://github.com/agentscope-ai/ReMe/blob/2ab7dc026778c61e9d5c8c93c077879ebdfe98ce/reme_ai/summary/task/memory_validation_op.py#L97-L100"
+      },
+      {
+        "step": "Dedup",
+        "how": "embed when-to-use + content and drop it if cosine to any stored experience or batch-mate exceeds the threshold",
+        "params": {
+          "cosine": "> 0.5 (code; paper gives no value)"
+        },
+        "src": "paper §3.2; code memory_deduplication_op.py L54-L119",
+        "url": "https://github.com/agentscope-ai/ReMe/blob/2ab7dc026778c61e9d5c8c93c077879ebdfe98ce/reme_ai/summary/task/memory_deduplication_op.py#L54-L119"
+      },
+      {
+        "step": "Add while evaluating",
+        "how": "dynamic setting: after each task, summarize its trajectory; keep the new experiences only if the task was solved",
+        "src": "paper §3.4; code bfcl_agent.py L647-L653",
+        "url": "https://github.com/agentscope-ai/ReMe/blob/2ab7dc026778c61e9d5c8c93c077879ebdfe98ce/cookbook/bfcl/bfcl_agent.py#L647-L653"
+      },
+      {
+        "step": "Reflect on failure",
+        "how": "experiences from the failed run are passed to a new trial but not stored; paper allows at most 3 self-reflections",
+        "params": {
+          "retries": "3 (paper); num_trials 2 in the cookbook main"
+        },
+        "src": "paper §3.4; code bfcl_agent.py L596-L602, L647-L672",
+        "url": "https://github.com/agentscope-ai/ReMe/blob/2ab7dc026778c61e9d5c8c93c077879ebdfe98ce/cookbook/bfcl/bfcl_agent.py#L596-L672"
+      },
+      {
+        "step": "Delete",
+        "how": "remove experiences recalled at least α times whose utility/freq is below β",
+        "params": {
+          "α": "5",
+          "β": "0.5",
+          "checked": "every 5 tasks (code)"
+        },
+        "src": "paper Eq. 1, §4.1; code delete_memory_op.py L45-L57, run_bfcl.py L117-L119",
+        "url": "https://github.com/agentscope-ai/ReMe/blob/2ab7dc026778c61e9d5c8c93c077879ebdfe98ce/reme_ai/vector_store/delete_memory_op.py#L45-L57"
+      }
+    ],
+    "read": [
+      {
+        "step": "Match",
+        "round": 1,
+        "input": "the task's first user message",
+        "scores": "when-to-use text only",
+        "how": "text-embedding-v4 (1024-d) cosine",
+        "params": {
+          "k": "5"
+        },
+        "src": "paper §3.3, App. B.4.2; code bfcl_agent.py L166-L173, recall_vector_store_op.py L43-L69",
+        "url": "https://github.com/agentscope-ai/ReMe/blob/2ab7dc026778c61e9d5c8c93c077879ebdfe98ce/reme_ai/vector_store/recall_vector_store_op.py#L43-L69"
+      },
+      {
+        "step": "Rerank",
+        "round": 1,
+        "input": "query",
+        "scores": "'Condition' (when-to-use) + 'Experience' (content) of each candidate",
+        "how": "one LLM call returns the ranked indices; the top 5 are kept",
+        "params": {
+          "K": "5"
+        },
+        "out": "same 5 experiences, reordered",
+        "src": "paper §3.3, Table 14; code rerank_memory_op.py L44-L65, L146-L167",
+        "url": "https://github.com/agentscope-ai/ReMe/blob/2ab7dc026778c61e9d5c8c93c077879ebdfe98ce/reme_ai/retrieve/task/rerank_memory_op.py#L44-L65"
+      },
+      {
+        "step": "Rewrite",
+        "round": 1,
+        "how": "LLM turns the numbered experiences into one task-specific guidance paragraph (falls back to the list if parsing fails)",
+        "src": "paper §3.3, Table 15; code rewrite_memory_op.py L86-L124",
+        "url": "https://github.com/agentscope-ai/ReMe/blob/2ab7dc026778c61e9d5c8c93c077879ebdfe98ce/reme_ai/retrieve/task/rewrite_memory_op.py#L86-L124"
+      },
+      {
+        "step": "Update counters",
+        "round": 0,
+        "how": "after the task, freq +1 for each of the 5 recalled experiences; utility +1 if the task was solved",
+        "src": "paper §3.4; code bfcl_agent.py L656-L657",
+        "url": "https://github.com/agentscope-ai/ReMe/blob/2ab7dc026778c61e9d5c8c93c077879ebdfe98ce/cookbook/bfcl/bfcl_agent.py#L656-L657"
+      }
+    ],
+    "answer_context": {
+      "sees": "the task text followed by one LLM-rewritten guidance paragraph built from 5 experiences",
+      "format": "\"Task:\\n{query}\\n\\nSome Related Experience to help you to complete the task:\\n{rewritten guidance}\"",
+      "excludes": [
+        "the stored experiences verbatim (unless rewriting fails)",
+        "keywords, confidence, tools used",
+        "counters and scores",
+        "source trajectories"
+      ],
+      "includes": [
+        "an LLM rewrite of 5 experiences' when-to-use and content"
+      ],
+      "note": "On a retry after failure, the context instead lists the experiences extracted from the failed run as 'Experience i: When to use ... Content ...'.",
+      "src": "code bfcl_agent.py L121-L143",
+      "url": "https://github.com/agentscope-ai/ReMe/blob/2ab7dc026778c61e9d5c8c93c077879ebdfe98ce/cookbook/bfcl/bfcl_agent.py#L121-L143"
+    },
+    "compression": [
+      {
+        "what": "experience vs its source trajectory",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported. The extraction prompts ask for 1-3 step-level insights per trajectory (paper Tables 10-11).",
+        "src": "paper Tables 10-12",
+        "url": "https://arxiv.org/pdf/2512.10696"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Released memory library (reme.library)",
+        "value": "474 BFCL-V3 and 193 AppWorld experiences",
+        "src": "code docs/library/*.jsonl (line counts); not stated in the paper"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Reranking",
+        "paper": "top-K recalled, then an LLM reranker refines the selection",
+        "code": "recall top_k = 5 and rerank keeps top_k = 5, so reranking only reorders; the rewrite then merges all five",
+        "src": "bfcl_agent.py L172; rerank_memory_op.py L44-L65",
+        "url": "https://github.com/agentscope-ai/ReMe/blob/2ab7dc026778c61e9d5c8c93c077879ebdfe98ce/reme_ai/retrieve/task/rerank_memory_op.py#L44-L65"
+      },
+      {
+        "topic": "Embedding and store",
+        "paper": "text-embedding-v4 (§4.1); Qwen3-Embedding and Elasticsearch (App. B.4.2)",
+        "code": "text-embedding-v4, 1024-d; in-memory or local vector store in the defaults and quickstart",
+        "src": "default.yaml L361-L371",
+        "url": "https://github.com/agentscope-ai/ReMe/blob/2ab7dc026778c61e9d5c8c93c077879ebdfe98ce/reme_ai/config/default.yaml#L361-L371"
+      },
+      {
+        "topic": "Summarizer model",
+        "paper": "LLMsumm = LLMexecute (the evaluated Qwen3 model)",
+        "code": "quickstart launches the ReMe service with qwen-max-2025-01-25 for summarizing, reranking and rewriting",
+        "src": "docs/cookbook/bfcl/quickstart.md L57-L62",
+        "url": "https://github.com/agentscope-ai/ReMe/blob/2ab7dc026778c61e9d5c8c93c077879ebdfe98ce/docs/cookbook/bfcl/quickstart.md#L57-L62"
+      },
+      {
+        "topic": "Deletion rule",
+        "paper": "utility/freq <= β",
+        "code": "utility/freq < β",
+        "src": "delete_memory_op.py L53-L55",
+        "url": "https://github.com/agentscope-ai/ReMe/blob/2ab7dc026778c61e9d5c8c93c077879ebdfe98ce/reme_ai/vector_store/delete_memory_op.py#L53-L55"
+      },
+      {
+        "topic": "Failure-aware reflection",
+        "paper": "lessons from a failure are stored if the retry succeeds; at most 3 reflections",
+        "code": "lessons from the failed run are deleted from the pool and only shown to the next trial; if that trial succeeds, experiences summarized from the successful run are stored; the cookbook main runs 2 trials",
+        "src": "bfcl_agent.py L647-L672; run_bfcl.py L93",
+        "url": "https://github.com/agentscope-ai/ReMe/blob/2ab7dc026778c61e9d5c8c93c077879ebdfe98ce/cookbook/bfcl/bfcl_agent.py#L647-L672"
+      }
+    ],
+    "open_questions": [
+      "Does retrying failed tasks with reflections count toward Avg@4 and Pass@4? The dynamic setting both adds memory and allows retries, and the paper does not say how trials and retries relate.",
+      "The fixed-vs-dynamic gap mixes three things (adding memories from test tasks, retries, deletion); Table 3 separates them only on BFCL-V3 with Qwen3-8B, where the whole gap is small (44.50 to 45.17 Avg@4).",
+      "With an LLM rewrite in between, the ablations cannot tell whether gains come from the stored experiences or from the rewriting LLM adapting them."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 270",
+        "body": "<text class=\"fig-s\" x=\"40\" y=\"16\" text-anchor=\"middle\">per training task</text><rect class=\"gi-ev\" x=\"8\" y=\"28\" width=\"58\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"15\" y1=\"36\" x2=\"56\" y2=\"36\"/><rect class=\"gi-ev\" x=\"14\" y=\"46\" width=\"58\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"21\" y1=\"54\" x2=\"62\" y2=\"54\"/><rect class=\"gi-ev\" x=\"20\" y=\"64\" width=\"58\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"27\" y1=\"72\" x2=\"68\" y2=\"72\"/><text class=\"fig-s\" x=\"42\" y=\"98\" text-anchor=\"middle\">8 runs; keep</text><text class=\"fig-s\" x=\"42\" y=\"110\" text-anchor=\"middle\">best + worst</text><path class=\"gi-a\" d=\"M80 62 L85 62\"/><polygon class=\"gi-ah\" points=\"92,62 85,58 85,66\"/><text class=\"fig-s\" x=\"137\" y=\"16\" text-anchor=\"middle\">LLM extracts</text><rect class=\"gi-llm\" x=\"92\" y=\"24\" width=\"90\" height=\"26\" rx=\"6\"/><text class=\"fig-t\" x=\"137.0\" y=\"41.0\" text-anchor=\"middle\">from success</text><rect class=\"gi-llm\" x=\"92\" y=\"56\" width=\"90\" height=\"26\" rx=\"6\"/><text class=\"fig-t\" x=\"137.0\" y=\"73.0\" text-anchor=\"middle\">from failure</text><rect class=\"gi-llm\" x=\"92\" y=\"88\" width=\"90\" height=\"26\" rx=\"6\"/><text class=\"fig-t\" x=\"137.0\" y=\"105.0\" text-anchor=\"middle\">by comparing</text><path class=\"gi-e\" d=\"M182 37 L190 62\"/><path class=\"gi-e\" d=\"M182 69 L190 62\"/><path class=\"gi-e\" d=\"M182 101 L190 62\"/><path class=\"gi-a\" d=\"M190 62 L191 62\"/><polygon class=\"gi-ah\" points=\"198,62 191,58 191,66\"/><rect class=\"gi-llm\" x=\"198\" y=\"40\" width=\"82\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"239.0\" y=\"59.0\" text-anchor=\"middle\">Validate</text><text class=\"fig-s\" x=\"239.0\" y=\"72.0\" text-anchor=\"middle\">LLM score ≥ 0.5</text><path class=\"gi-a\" d=\"M280 62 L285 62\"/><polygon class=\"gi-ah\" points=\"292,62 285,58 285,66\"/><rect class=\"gi-f\" x=\"292\" y=\"40\" width=\"78\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"331.0\" y=\"59.0\" text-anchor=\"middle\">Dedup</text><text class=\"fig-s\" x=\"331.0\" y=\"72.0\" text-anchor=\"middle\">cos &gt; 0.5: drop</text><path class=\"gi-a\" d=\"M370 62 L375 62\"/><polygon class=\"gi-ah\" points=\"382,62 375,58 375,66\"/><rect class=\"gi-ev\" x=\"382\" y=\"10\" width=\"174\" height=\"112\" rx=\"10\"/><text class=\"fig-t\" x=\"469\" y=\"26\" text-anchor=\"middle\">Experience</text><rect class=\"gi-hi\" x=\"390\" y=\"34\" width=\"158\" height=\"28\" rx=\"6\"/><text class=\"fig-t\" x=\"398\" y=\"46\" text-anchor=\"start\">when to use</text><text class=\"fig-s\" x=\"398\" y=\"57\" text-anchor=\"start\">the only embedded key</text><rect class=\"gi-f\" x=\"390\" y=\"66\" width=\"158\" height=\"28\" rx=\"6\"/><text class=\"fig-t\" x=\"398\" y=\"78\" text-anchor=\"start\">content</text><text class=\"fig-s\" x=\"398\" y=\"89\" text-anchor=\"start\">the advice the agent reads</text><text class=\"fig-s\" x=\"398\" y=\"106\" text-anchor=\"start\">+ keywords, tools, confidence</text><text class=\"fig-s\" x=\"398\" y=\"117\" text-anchor=\"start\">+ freq, utility counters</text><text class=\"fig-s\" x=\"4\" y=\"146\" text-anchor=\"start\">while solving new tasks (dynamic setting)</text><rect class=\"gi-f\" x=\"4\" y=\"160\" width=\"78\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"43.0\" y=\"179.0\" text-anchor=\"middle\">Task done</text><text class=\"fig-s\" x=\"43.0\" y=\"192.0\" text-anchor=\"middle\">agent ran</text><path class=\"gi-a\" d=\"M82 182 L97 182\"/><polygon class=\"gi-ah\" points=\"104,182 97,178 97,186\"/><polygon class=\"gi-llm\" points=\"150,154 196,182 150,210 104,182\"/><text class=\"fig-t\" x=\"150\" y=\"186\" text-anchor=\"middle\">Solved?</text><path class=\"gi-a\" d=\"M196 182 L217 182\"/><polygon class=\"gi-ah\" points=\"224,182 217,178 217,186\"/><text class=\"fig-yes\" x=\"210\" y=\"176\" text-anchor=\"middle\">Yes</text><rect class=\"gi-f\" x=\"224\" y=\"160\" width=\"116\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"282.0\" y=\"179.0\" text-anchor=\"middle\">Summarize it</text><text class=\"fig-s\" x=\"282.0\" y=\"192.0\" text-anchor=\"middle\">add to the pool</text><path class=\"gi-a\" d=\"M282 160 L282 140 L430 140 L430 129\"/><polygon class=\"gi-ah\" points=\"430,122 426,129 434,129\"/><path class=\"gi-a\" d=\"M150 210 L150 238 L217 238\"/><polygon class=\"gi-ah\" points=\"224,238 217,234 217,242\"/><text class=\"fig-no\" x=\"158\" y=\"226\" text-anchor=\"start\">No</text><rect class=\"gi-f\" x=\"224\" y=\"214\" width=\"116\" height=\"50\" rx=\"8\"/><text class=\"fig-t\" x=\"282\" y=\"231\" text-anchor=\"middle\">Retry</text><text class=\"fig-s\" x=\"282\" y=\"245\" text-anchor=\"middle\">with lessons from</text><text class=\"fig-s\" x=\"282\" y=\"257\" text-anchor=\"middle\">the failed run</text><rect class=\"gi-f\" x=\"356\" y=\"160\" width=\"200\" height=\"100\" rx=\"8\"/><text class=\"fig-t\" x=\"366\" y=\"177\" text-anchor=\"start\">Delete (checked every 5 tasks)</text><text class=\"fig-s\" x=\"366\" y=\"193\" text-anchor=\"start\">if recalled ≥ 5 times and</text><text class=\"fig-s\" x=\"366\" y=\"206\" text-anchor=\"start\">utility / freq &lt; 0.5</text><text class=\"fig-s\" x=\"366\" y=\"224\" text-anchor=\"start\">freq +1 per recall;</text><text class=\"fig-s\" x=\"366\" y=\"237\" text-anchor=\"start\">utility +1 when the task</text><text class=\"fig-s\" x=\"366\" y=\"250\" text-anchor=\"start\">it was recalled for succeeds</text><path class=\"gi-a d\" d=\"M500 160 L500 129\"/><polygon class=\"gi-ah\" points=\"500,122 496,129 504,129\"/>",
+        "text": [
+          "From the best and worst of 8 runs per task, an LLM extracts short experiences from successes, failures and their comparison; an LLM judge and a similarity check filter them.",
+          "While solving new tasks, only solved tasks add experiences, failures trigger a retry, and experiences recalled often but rarely helpful are deleted."
+        ],
+        "src": "paper §3.2, §3.4, App. B.4.1; code default.yaml L25-L26, bfcl_agent.py L596-L672, delete_memory_op.py L45-L57",
+        "url": "https://github.com/agentscope-ai/ReMe/blob/2ab7dc026778c61e9d5c8c93c077879ebdfe98ce/cookbook/bfcl/bfcl_agent.py#L596-L672"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 190",
+        "body": "<text class=\"fig-s\" x=\"280\" y=\"14\" text-anchor=\"middle\">once, before the agent's first step</text><rect class=\"gi-f\" x=\"4\" y=\"30\" width=\"66\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"37.0\" y=\"51.0\" text-anchor=\"middle\">Task</text><text class=\"fig-s\" x=\"37.0\" y=\"64.0\" text-anchor=\"middle\">first message</text><path class=\"gi-a\" d=\"M70 54 L75 54\"/><polygon class=\"gi-ah\" points=\"82,54 75,50 75,58\"/><rect class=\"gi-v fig-soft\" x=\"82\" y=\"30\" width=\"96\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"130.0\" y=\"51.0\" text-anchor=\"middle\">Cosine search</text><text class=\"fig-s\" x=\"130.0\" y=\"64.0\" text-anchor=\"middle\">vs when-to-use</text><text class=\"fig-s\" x=\"130\" y=\"92\" text-anchor=\"middle\">text-embedding-v4</text><path class=\"gi-a\" d=\"M178 54 L183 54\"/><polygon class=\"gi-ah\" points=\"190,54 183,50 183,58\"/><rect class=\"gi-f\" x=\"190\" y=\"30\" width=\"58\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"219.0\" y=\"58.0\" text-anchor=\"middle\">Top 5</text><path class=\"gi-a\" d=\"M248 54 L251 54\"/><polygon class=\"gi-ah\" points=\"258,54 251,50 251,58\"/><rect class=\"gi-llm\" x=\"258\" y=\"30\" width=\"90\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"303.0\" y=\"51.0\" text-anchor=\"middle\">LLM rerank</text><text class=\"fig-s\" x=\"303.0\" y=\"64.0\" text-anchor=\"middle\">keeps all 5</text><path class=\"gi-a\" d=\"M348 54 L351 54\"/><polygon class=\"gi-ah\" points=\"358,54 351,50 351,58\"/><rect class=\"gi-llm\" x=\"358\" y=\"30\" width=\"90\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"403.0\" y=\"51.0\" text-anchor=\"middle\">LLM rewrite</text><text class=\"fig-s\" x=\"403.0\" y=\"64.0\" text-anchor=\"middle\">one guidance</text><path class=\"gi-a\" d=\"M448 54 L453 54\"/><polygon class=\"gi-ah\" points=\"460,54 453,50 453,58\"/><rect class=\"gi-hi\" x=\"460\" y=\"30\" width=\"96\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"508.0\" y=\"51.0\" text-anchor=\"middle\">Agent</text><text class=\"fig-s\" x=\"508.0\" y=\"64.0\" text-anchor=\"middle\">task + guidance</text><text class=\"fig-s\" x=\"508\" y=\"92\" text-anchor=\"middle\">≤ 30 steps</text><path class=\"gi-a\" d=\"M508 98 L508 123\"/><polygon class=\"gi-ah\" points=\"508,130 504,123 512,123\"/><rect class=\"gi-f\" x=\"330\" y=\"130\" width=\"226\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"443.0\" y=\"151.0\" text-anchor=\"middle\">After the task</text><text class=\"fig-s\" x=\"443.0\" y=\"164.0\" text-anchor=\"middle\">5 recalled: freq +1; utility +1 if solved</text><text class=\"fig-s\" x=\"4\" y=\"124\" text-anchor=\"start\">Rerank sees each candidate's</text><text class=\"fig-s\" x=\"4\" y=\"137\" text-anchor=\"start\">when-to-use + content; rewrite</text><text class=\"fig-s\" x=\"4\" y=\"150\" text-anchor=\"start\">merges the 5 into one paragraph</text><text class=\"fig-s\" x=\"4\" y=\"163\" text-anchor=\"start\">placed under the task text</text>",
+        "text": [
+          "The task text is matched against each experience's when-to-use sentence; the top 5 are reordered by an LLM and rewritten into one guidance paragraph.",
+          "That paragraph is placed under the task before the first step; afterwards the 5 recalled experiences get their counters updated."
+        ],
+        "src": "paper §3.3, App. B.4.2; code default.yaml L16-L17, rerank_memory_op.py, rewrite_memory_op.py, bfcl_agent.py L121-L173",
+        "url": "https://github.com/agentscope-ai/ReMe/blob/2ab7dc026778c61e9d5c8c93c077879ebdfe98ce/reme_ai/config/default.yaml#L16-L17"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Runs sampled per training task",
+        "value": "8 (best and worst kept)",
+        "src": "paper §4.1, App. B.4.1",
+        "section": "construction"
+      },
+      {
+        "label": "Pool built from",
+        "value": "50 BFCL-V3 tasks · 90 AppWorld tasks",
+        "src": "paper §4.1",
+        "section": "construction"
+      },
+      {
+        "label": "Kept if LLM judge scores",
+        "value": "≥ 0.5 (code)",
+        "src": "code memory_validation_op.py L97-L100",
+        "section": "construction"
+      },
+      {
+        "label": "Deleted when",
+        "value": "recalled ≥ 5 times and utility/freq < 0.5",
+        "src": "paper §4.1, Eq. 1",
+        "section": "construction"
+      },
+      {
+        "label": "Experiences per task",
+        "value": "top 5, retrieved once at the start",
+        "src": "paper §4.1",
+        "section": "method"
+      },
+      {
+        "label": "Self-reflections",
+        "value": "at most 3",
+        "src": "paper §3.4",
+        "section": "method"
+      },
+      {
+        "label": "Added latency per AppWorld task",
+        "value": "+2.54 s (21.42 → 23.96 s, Qwen3-8B)",
+        "src": "paper Table 6",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "Avg@4",
+        "Pass@4"
+      ],
+      "rows": [
+        [
+          "No memory (thinking on)",
+          "40.33",
+          "59.55"
+        ],
+        [
+          "Trajectory-level experiences (fixed)",
+          "43.00",
+          "60.00"
+        ],
+        [
+          "Keypoint-level experiences (fixed)",
+          "44.50",
+          "65.77"
+        ],
+        [
+          "Dynamic, full addition",
+          "40.83",
+          "62.00"
+        ],
+        [
+          "Dynamic, selective addition",
+          "44.33",
+          "64.66"
+        ],
+        [
+          "+ failure-aware reflection",
+          "45.00",
+          "64.66"
+        ],
+        [
+          "+ utility-based deletion (full ReMe)",
+          "45.17",
+          "68.00"
+        ],
+        [
+          "No memory (thinking off)",
+          "24.41",
+          "28.50"
+        ],
+        [
+          "Fixed, no rerank, no rewrite (thinking off)",
+          "27.17",
+          "34.66"
+        ],
+        [
+          "+ rerank + rewrite (thinking off)",
+          "29.00",
+          "40.67"
+        ]
+      ],
+      "src": "paper Tables 1-4 (BFCL-V3, Qwen3-8B)"
+    },
+    "components": [
+      {
+        "role": "Extracts, validates, reranks and rewrites",
+        "model": "the executing Qwen3 model (paper); qwen-max in the code quickstart",
+        "kind": "llm",
+        "src": "paper §4.1; code quickstart.md L60"
+      },
+      {
+        "role": "Experience search",
+        "model": "text-embedding-v4, 1024-d, cosine",
+        "kind": "retriever",
+        "src": "paper §4.1; code default.yaml L361-L366",
+        "url": "https://github.com/agentscope-ai/ReMe/blob/2ab7dc026778c61e9d5c8c93c077879ebdfe98ce/reme_ai/config/default.yaml#L361-L366"
+      },
+      {
+        "role": "Deletion",
+        "model": "rule: freq ≥ 5 and utility/freq < 0.5",
+        "kind": "rule",
+        "src": "paper Eq. 1, §4.1"
+      },
+      {
+        "role": "Agent",
+        "model": "Qwen3-8B/14B/32B (also GPT-4.1, o4-mini, Qwen3-Max, Kimi-K2, DeepSeek-V3.2, GLM-4.7)",
+        "kind": "llm",
+        "src": "paper §4.1, App. B.3"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Procedural memory helps tool-using agents most when it is fine-grained and kept up to date while working: success-only addition, retries after failure and deletion of unhelpful entries lift Qwen3-8B above a memoryless Qwen3-14B.",
+      "claims": [
+        {
+          "claim": "ReMe beats No Memory, A-Mem and LangMem at every model size.",
+          "evidence": "Qwen3-8B average 34.94 Avg@4 / 55.03 Pass@4 vs 27.65 / 46.20 without memory; A-Mem and LangMem fall below no memory on AppWorld Avg@4 for Qwen3-8B and 14B. Table 1, §4.2"
+        },
+        {
+          "claim": "Memory can stand in for model scale.",
+          "evidence": "Qwen3-8B + ReMe (dynamic) Pass@4 55.03 vs Qwen3-14B without memory 54.65; Qwen3-14B + ReMe 44.66/63.71 vs Qwen3-32B without memory 40.89/61.52. Table 1"
+        },
+        {
+          "claim": "Keypoint-level experiences beat whole-trajectory workflows.",
+          "evidence": "Qwen3-8B BFCL-V3: 44.50/65.77 vs 43.00/60.00. Table 2"
+        },
+        {
+          "claim": "Selective addition, reflection and deletion each help.",
+          "evidence": "40.83 → 44.33 → 45.00 → 45.17 Avg@4; Pass@4 68.00 with deletion. Table 3"
+        },
+        {
+          "claim": "The LLM-written usage scenario is the best retrieval key.",
+          "evidence": "44.50 vs 44.00 (task query) on Qwen3-8B; the ranking varies by model. Table 9, Fig. 4"
+        },
+        {
+          "claim": "A stronger summarizer helps.",
+          "evidence": "Qwen3-8B agent with Qwen3-32B summarizer: 47.83 vs 44.50 Avg@4. Table 5"
+        }
+      ],
+      "limits": [
+        "Experiences are retrieved once, at the start of each task; retrieval during the task is left for future work.",
+        "Validation relies on an LLM judge, which may miss finer aspects of experience quality.",
+        "Gains depend on the summarizer; better summarization with small models is open."
+      ],
+      "limits_src": "paper, Limitations",
+      "reading": [
+        "Only the when-to-use sentence is embedded, so retrieval quality depends on how the LLM phrased that scenario, not on the advice text.",
+        "In the released pipeline recall and rerank both use k = 5; the LLM reranker reorders five items that are then all rewritten into one paragraph, so its effect on content is limited to emphasis (Table 4 still reports +1.7 Avg@4 for rerank alone).",
+        "Most of the benefit on AppWorld comes from the dynamic setting (Qwen3-8B 17.06 fixed vs 24.70 dynamic Avg@4), which learns from the test tasks themselves while evaluating and also allows retries.",
+        "Table 4 is run with thinking off (No Memory 24.41) while Table 1 uses thinking on for BFCL-V3 (No Memory 40.33), so its numbers are not comparable with the main table.",
+        "The paper names two embedders (text-embedding-v4 in §4.1, Qwen3-Embedding in App. B.4.2); the code defaults to text-embedding-v4.",
+        "A-Mem and LangMem were adapted to procedural memory with prompt changes by the authors; both fall below no memory on AppWorld Avg@4 for Qwen3-8B and Qwen3-14B."
+      ]
+    },
+    "abstract": {
+      "text": "ReMe is a procedural memory for tool-using LLM agents that treats the memory as something to refine, not only to accumulate. From past runs, an LLM distils short experiences about key steps: what made successes work, what triggered failures, and what separated better from worse attempts. For a new task, experiences whose usage scenario matches are retrieved, reranked and rewritten into guidance tailored to the task. While the agent works, only successful runs add experiences, failures prompt a reflective retry, and experiences that are often recalled but rarely help are deleted. On BFCL-V3 and AppWorld with Qwen3 models the authors report the best results among the memory systems they compare, with Qwen3-8B plus ReMe beating a memoryless Qwen3-14B.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2512.10696"
+    },
+    "sections": {
+      "Memory architecture": "§3",
+      "Results": "§4.2, App. D.1-D.2",
+      "Ablation": "§4.3, App. D.3",
+      "Discussion": "§4.4, §5, Limitations",
+      "Details": "§4.1, App. B"
+    }
+  }
+}

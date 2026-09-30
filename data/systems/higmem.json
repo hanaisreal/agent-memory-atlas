@@ -1,0 +1,659 @@
+{
+  "id": "higmem",
+  "name": "HiGMem",
+  "paper": {
+    "title": "HiGMem: A Hierarchical and LLM-Guided Memory System for Long-Term Conversational Agents",
+    "arxiv": "2604.18349",
+    "url": "https://arxiv.org/abs/2604.18349",
+    "venue": "ACL 2026 Findings",
+    "venue_short": "ACL",
+    "track": "findings",
+    "year": 2026,
+    "code": "https://github.com/ZeroLoss-Lab/HiGMem"
+  },
+  "design": {
+    "construction": {
+      "unit": "Turn node (raw turn + LLM metadata), grouped under Event nodes",
+      "kept_as": "verbatim turn text + LLM context sentence, keywords, tags; event summary written by the LLM",
+      "processing": "LLM annotates each turn; LLM assigns it to one or more of the 10 most similar events or opens a new event; small events get their summary rewritten",
+      "trigger": "every-turn",
+      "writer": "GPT-4o-mini"
+    },
+    "organization": {
+      "structure": "two levels: events over turns (a turn may join several events)",
+      "stores": "turn store + event store (character profiles exist in code but are off in the paper setting)",
+      "index": "all-MiniLM-L6-v2 dense over turn text (with speaker, date) and over event keywords + tags + summary"
+    },
+    "management": {
+      "operations": "join existing events or NEW_EVENT; refresh event summary, keywords, tags and facts while the event has < 10 turns, then keywords/tags only",
+      "conflicts": null,
+      "forgetting": null,
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "LLM keyword rewrite of the question for both searches; the original question for the LLM steps",
+      "candidates": "top-10 turns + top-10 events by cosine similarity",
+      "selection": "one LLM call per event picks its turns; the union is filtered by an LLM in chunks of 10",
+      "budget": "no fixed cap; 8.09 turns per question on average (LoCoMo10)"
+    },
+    "use": {
+      "context": "selected turns with date, speaker, text and the LLM context sentence, sorted by date string",
+      "reasoning": "single answer call with a LoCoMo-category-specific prompt"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "prompted-llm",
+      "retrieval": "prompted-llm"
+    }
+  },
+  "classify": {
+    "structure": "hierarchy",
+    "index": "vector",
+    "management": "consolidate",
+    "candidates": "dense",
+    "decides": "LLM decides",
+    "note": "Dense search only proposes candidates; LLM calls pick turns inside events and filter the union, so the LLM fixes the final set."
+  },
+  "tags": {
+    "fidelity": "verbatim+derived",
+    "structure": [
+      "tree"
+    ],
+    "write_time": [
+      "extract",
+      "summarize",
+      "consolidate"
+    ],
+    "selection": [
+      "dense",
+      "model-reads"
+    ],
+    "memory_type": [
+      "episodic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "conversation"
+    ]
+  },
+  "stages": {
+    "ingestion": "Each LoCoMo turn is added in order, with its speaker and session date.",
+    "construction": "An LLM writes keywords, tags and a one-sentence context for the turn; the raw text is kept as the Turn node's content.",
+    "organization": "The turn is embedded, the 10 most similar events are shown to an LLM (by title), and the LLM joins the turn to one or more of them or opens a new event.",
+    "update": "While an event has fewer than 10 turns the LLM rewrites its 2-3 sentence summary, keywords and tags and appends facts; after that only keywords and tags can change.",
+    "retrieval": "An LLM rewrites the question as keywords; dense search returns 10 turns and 10 events; an LLM reads each event's summary and turns and picks the useful turns; an LLM filter keeps the relevant ones from the union.",
+    "answer": "The kept turns (8.09 on average) are given to GPT-4o-mini with date, speaker, text and context sentence, under a category-specific short-answer prompt.",
+    "learning": ""
+  },
+  "summary": "Two-level event-turn memory where event summaries act as anchors: an LLM reads each retrieved event and picks which of its raw turns to pass on, giving a much smaller evidence set than vector top-k.",
+  "verified": false,
+  "notes": "Venue: Findings of ACL 2026 per CITATION.bib in the official repo (arXiv v2, 22 Apr 2026). Paper setting in code = --ablation-no-profile --ablation-event-metadata-only --ablation-no-link --k_event 10 (README). Internal code name 'fphm'. Baseline ReadAgent and MemoryBank numbers in Table 1 equal A-Mem's Table 1 (GPT-4o-mini) rounded; the paper does not say they were copied.\nDESIGN: §3.1-3.3, §4.1, App. C; code fphm_core.py, run_fphm_evaluation.py at the pinned commit.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2604.18349v2 (PDF read 2026-09-30)",
+      "code": "https://github.com/ZeroLoss-Lab/HiGMem/tree/f275072f25323a01a8bff3680edbb34ed97d33be/",
+      "code_note": "Commit f275072f (2026-04-22, 'Prepare public HiGMem release'), the same day as arXiv v2; the README gives the exact flags for the paper setting. Result logs are not in the repo, so the run behind Table 1 cannot be checked."
+    },
+    "headline": [
+      "The answer model reads raw turns, not summaries: event summaries only steer which turns are picked.",
+      "In the paper setting the event fact sheet is written but never read, and turn keywords/tags are never indexed.",
+      "Evidence size is set by LLM judgement, not a top-k: 8.09 turns on average versus 99.84 for A-Mem."
+    ],
+    "units": [
+      {
+        "name": "Turn node",
+        "role": "one dialogue turn; the evidence unit",
+        "made_by": "raw turn + GPT-4o-mini annotation (isolated prompt in the paper setting)",
+        "fields": [
+          {
+            "name": "content, speaker, timestamp",
+            "what": "raw turn text with speaker and session date",
+            "kept_as": "verbatim",
+            "used_for": [
+              "index",
+              "rerank",
+              "answer"
+            ],
+            "src": "code fphm_core.py L773-L774, L1116-L1141",
+            "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L773-L774"
+          },
+          {
+            "name": "context",
+            "what": "one-sentence LLM summary of the turn",
+            "kept_as": "summarized",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code prompts.py L364-L384; fphm_core.py L1137",
+            "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/prompts.py#L364-L384"
+          },
+          {
+            "name": "keywords, tags",
+            "what": "LLM keywords and broad themes",
+            "kept_as": "extracted",
+            "used_for": [],
+            "src": "stored by fphm_core.py L387-L390; the turn index text is speaker/time/content only (L773, L865)",
+            "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L384-L390"
+          },
+          {
+            "name": "direct links",
+            "what": "turn-to-turn links from a 5-turn window",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "off in the paper setting (--ablation-no-link); README L118-L125",
+            "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L1094-L1105"
+          }
+        ]
+      },
+      {
+        "name": "Event node",
+        "role": "group of related turns; the routing unit",
+        "made_by": "GPT-4o-mini affiliation and update prompts",
+        "fields": [
+          {
+            "name": "title (summary)",
+            "what": "2-3 sentence LLM summary, stored in the title field; frozen once the event has 10 turns",
+            "kept_as": "summarized",
+            "used_for": [
+              "index",
+              "scene routing"
+            ],
+            "src": "code fphm_core.py L599-L626, L1058",
+            "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L599-L626"
+          },
+          {
+            "name": "keywords, tags",
+            "what": "LLM keywords and tags, merged as turns join",
+            "kept_as": "extracted",
+            "used_for": [
+              "index"
+            ],
+            "src": "code fphm_core.py L627-L646",
+            "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L627-L646"
+          },
+          {
+            "name": "fact sheet",
+            "what": "timeline of facts with evidence turn ids, appended only while the event has < 10 turns",
+            "kept_as": "extracted",
+            "used_for": [],
+            "src": "written L625-L626; not in the event index (L873) or any retrieval prompt",
+            "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L863-L878"
+          },
+          {
+            "name": "turn ids",
+            "what": "links to member Turn nodes",
+            "kept_as": "derived",
+            "used_for": [
+              "scene routing"
+            ],
+            "src": "code fphm_core.py L680, L1059-L1061",
+            "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L1059-L1061"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Annotate turn",
+        "how": "LLM reads the single turn (speaker, date, text) and returns keywords, a context sentence and tags",
+        "note": "the paper describes a 5-turn sliding window; the paper-setting code uses the isolated prompt",
+        "src": "paper §3.2; code fphm_core.py L307-L336",
+        "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L307-L336"
+      },
+      {
+        "step": "Index turn",
+        "how": "embed 'Speaker. Time. Content' with all-MiniLM-L6-v2",
+        "src": "code fphm_core.py L773-L774",
+        "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L773-L774"
+      },
+      {
+        "step": "Find candidate events",
+        "how": "cosine search of the raw turn text over event documents (keywords + tags + summary)",
+        "params": {
+          "k": "10 (k_event)"
+        },
+        "src": "paper Eq. 3; code fphm_core.py L412-L420, run_fphm_evaluation.py L126",
+        "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L412-L420"
+      },
+      {
+        "step": "Affiliate",
+        "how": "LLM sees the candidates' ids and titles plus the last updated event's title and returns event ids or NEW_EVENT; an empty answer also opens a new event",
+        "src": "paper Eq. 4; code prompts.py L129-L153, fphm_core.py L484-L519",
+        "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L484-L519"
+      },
+      {
+        "step": "Update event",
+        "how": "if the event has < 10 turns, LLM rewrites summary, keywords, tags and adds facts (with the 5 most recent turns as context); otherwise LLM checks relevance and may edit keywords and tags",
+        "params": {
+          "τ": "10",
+          "window": "5"
+        },
+        "src": "paper §3.2; code fphm_core.py L599-L647",
+        "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L599-L647"
+      },
+      {
+        "step": "Link",
+        "how": "append the turn id to every joined event",
+        "src": "paper Eq. 5; code fphm_core.py L680",
+        "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L680"
+      }
+    ],
+    "read": [
+      {
+        "step": "Rewrite question",
+        "round": 1,
+        "input": "question",
+        "how": "LLM returns a space-separated keyword query (plus profile keys, unused)",
+        "src": "paper §3.3; code run_fphm_evaluation.py L68-L96",
+        "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/run_fphm_evaluation.py#L68-L96"
+      },
+      {
+        "step": "Search turns",
+        "round": 1,
+        "input": "keyword query",
+        "scores": "'Speaker. Time. Content' of each turn",
+        "how": "all-MiniLM-L6-v2 cosine",
+        "params": {
+          "k_turn": "10"
+        },
+        "src": "code fphm_core.py L986-L988",
+        "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L986-L988"
+      },
+      {
+        "step": "Search events",
+        "round": 1,
+        "input": "keyword query",
+        "scores": "event keywords + tags + summary",
+        "how": "all-MiniLM-L6-v2 cosine",
+        "params": {
+          "k_event": "10"
+        },
+        "src": "code fphm_core.py L987-L989, L873",
+        "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L986-L989"
+      },
+      {
+        "step": "Pick turns per event",
+        "round": 1,
+        "input": "original question",
+        "scores": "event summary + every member turn's text (no speaker, no date)",
+        "how": "one GPT-4o-mini call per event returns the turn ids likely to hold the answer",
+        "src": "paper Eq. 6; code fphm_core.py L1053-L1091",
+        "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L1053-L1091"
+      },
+      {
+        "step": "Filter",
+        "round": 1,
+        "input": "original question",
+        "scores": "turn text only",
+        "how": "union of search and picked turns, judged by an 'inclusive' relevance prompt, 10 candidates per call",
+        "params": {
+          "chunk": "10"
+        },
+        "out": "8.09 turns per question on average",
+        "src": "paper Eqs. 7-8, Table 2; code fphm_core.py L1116-L1123, prompts.py L155-L174",
+        "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L1116-L1123"
+      }
+    ],
+    "answer_context": {
+      "sees": "the filtered turns (8.09 on average)",
+      "format": "\"--- Turn Start --- Timestamp / Speaker / Content / Context Summary --- Turn End ---\" per turn, sorted by the session date string, inside a category-specific short-answer prompt",
+      "includes": [
+        "raw turn text",
+        "speaker",
+        "session date",
+        "one-sentence LLM context"
+      ],
+      "excludes": [
+        "event summaries",
+        "fact sheets",
+        "keywords and tags"
+      ],
+      "note": "Adversarial questions get a two-way choice between the distractor and 'Not mentioned in the conversation'.",
+      "src": "code fphm_core.py L1124-L1141; run_fphm_evaluation.py L32-L65",
+      "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L1124-L1141"
+    },
+    "compression": [
+      {
+        "what": "answer context vs one LoCoMo10 conversation",
+        "kept": 8.09,
+        "of": 587,
+        "unit": "turns",
+        "basis": "Table 2 Avg K (8.09 turns per question) over 587 turns per conversation on average (§4.1)",
+        "src": "paper §4.1, Table 2",
+        "url": "https://arxiv.org/pdf/2604.18349"
+      },
+      {
+        "what": "answer-stage tokens per question",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "App. B.3 reports about 0.8K GPT-5 answer tokens per question (12.8K for A-Mem); the token length of a conversation is not reported.",
+        "src": "paper App. B.3",
+        "url": "https://arxiv.org/pdf/2604.18349"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Adversarial F1, LoCoMo10",
+        "value": "0.78 (A-Mem 0.54)",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "Overall F1",
+        "value": "0.49 (A-Mem 0.37)",
+        "src": "paper Table 9"
+      },
+      {
+        "label": "Precision@K / Recall@K",
+        "value": "0.1909 / 0.7241 (A-Mem 0.0101 / 0.7502)",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "Without the event layer",
+        "value": "F1 0.39, Recall@K 0.55",
+        "src": "paper Table 5"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Turn analysis context",
+        "paper": "LLM analyses the turn within a 5-turn sliding window",
+        "code": "paper setting (--ablation-no-link) uses the isolated prompt: the turn alone; the window only feeds the small-event update prompt",
+        "src": "fphm_core.py L307-L336",
+        "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L307-L336"
+      },
+      {
+        "topic": "Event content",
+        "paper": "short summary + structured fact sheet with index links",
+        "code": "metadata mode: summary stored as title, plus keywords and tags; the fact sheet is written for small events but never indexed or shown at retrieval",
+        "src": "fphm_core.py L599-L647, L863-L878",
+        "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L599-L647"
+      },
+      {
+        "topic": "Large events (≥ τ)",
+        "paper": "only append the new entry",
+        "code": "the turn id is appended; an LLM call still checks relevance and may rewrite keywords and tags; no facts are added",
+        "src": "fphm_core.py L627-L643",
+        "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L627-L643"
+      },
+      {
+        "topic": "Filter",
+        "paper": "one filtering step over the candidate set",
+        "code": "candidates split into chunks of 10, one LLM call each, with an 'inclusive' prompt; turns shown without speaker or date",
+        "src": "fphm_core.py L886-L908, L1122-L1123",
+        "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L886-L908"
+      }
+    ],
+    "open_questions": [
+      "Table 5 removes the event layer but does not state its turn budget; App. B.1 uses top-100 flat turns. The two ablations give 0.39 and 0.46 F1, so the size of the hierarchy's gain depends on which flat baseline is used.",
+      "Adversarial F1 (0.78) comes from a two-way choice prompt; the gain over A-Mem there may reflect answer formatting and a smaller context rather than retrieval."
+    ],
+    "glance": [
+      {
+        "q": "What is one memory item?",
+        "a": "A Turn node: the raw dialogue turn with speaker and date, plus an LLM context sentence, keywords and tags.",
+        "src": "paper §3.1; code fphm_structures.py L11-L23",
+        "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_structures.py#L11-L23"
+      },
+      {
+        "q": "Is the dialogue summarised?",
+        "a": "The turns are kept verbatim. Events hold a 2-3 sentence LLM summary, which steers retrieval but never reaches the answer model.",
+        "src": "code fphm_core.py L599-L626, L1124-L1141",
+        "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L1124-L1141"
+      },
+      {
+        "q": "How is memory organised?",
+        "a": "Two levels: an LLM joins each new turn to one or more of the 10 most similar events, or opens a new one.",
+        "src": "paper §3.2; code fphm_core.py L412-L519",
+        "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L412-L519"
+      },
+      {
+        "q": "Is there reranking?",
+        "a": "No cross-encoder. GPT-4o-mini picks turns inside each retrieved event and then filters the union, 10 candidates per call.",
+        "src": "code fphm_core.py L1053-L1123",
+        "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L1053-L1123"
+      },
+      {
+        "q": "What does the answer model read?",
+        "a": "About 8 raw turns per question, each with date, speaker and the one-sentence context; no event summaries.",
+        "src": "paper Table 2; code fphm_core.py L1124-L1141",
+        "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L1124-L1141"
+      }
+    ],
+    "funnel": [
+      {
+        "round": 1,
+        "steps": [
+          {
+            "n": "10 + 10",
+            "what": "turns and events from dense search"
+          },
+          {
+            "n": "all their turns",
+            "what": "shown to one LLM call per event"
+          },
+          {
+            "n": "union",
+            "what": "search turns + picked turns"
+          },
+          {
+            "n": "8.09 avg",
+            "what": "turns kept by the LLM filter"
+          }
+        ],
+        "src": "code fphm_core.py L986-L1123; paper Table 2",
+        "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L986-L1123"
+      }
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 258",
+        "body": "<text class=\"fig-t\" x=\"50\" y=\"16\" text-anchor=\"middle\">Dialogue turn</text><rect class=\"gi-ev\" x=\"6\" y=\"26\" width=\"88\" height=\"60\" rx=\"8\"/><text class=\"fig-s\" x=\"50\" y=\"42\" text-anchor=\"middle\">speaker · date</text><line class=\"gi-t\" x1=\"16\" y1=\"56\" x2=\"84\" y2=\"56\"/><line class=\"gi-t\" x1=\"16\" y1=\"66\" x2=\"84\" y2=\"66\"/><line class=\"gi-t\" x1=\"16\" y1=\"76\" x2=\"84\" y2=\"76\"/><path class=\"gi-a\" d=\"M94.0 56.0 L129.0 56.0\"/><polygon class=\"gi-ah\" points=\"136.0,56.0 129.0,60.0 129.0,52.0\"/><rect class=\"gi-llm\" x=\"100\" y=\"38\" width=\"30\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"115\" y=\"48\" text-anchor=\"middle\">LLM</text><rect class=\"gi-ev\" x=\"136\" y=\"10\" width=\"166\" height=\"124\" rx=\"10\"/><text class=\"fig-t\" x=\"219\" y=\"26\" text-anchor=\"middle\">Turn node</text><rect class=\"gi-hi\" x=\"146\" y=\"34\" width=\"146\" height=\"34\" rx=\"6\"/><text class=\"fig-t\" x=\"152\" y=\"48\" text-anchor=\"start\">text, speaker, date</text><text class=\"fig-s\" x=\"152\" y=\"61\" text-anchor=\"start\">verbatim → search, answer</text><rect class=\"gi-f\" x=\"146\" y=\"74\" width=\"146\" height=\"26\" rx=\"6\"/><text class=\"fig-t\" x=\"152\" y=\"85\" text-anchor=\"start\">context</text><text class=\"fig-s\" x=\"152\" y=\"96\" text-anchor=\"start\">one LLM sentence → answer</text><rect class=\"gi-ev d\" x=\"146\" y=\"106\" width=\"146\" height=\"22\" rx=\"6\"/><text class=\"fig-s\" x=\"152\" y=\"121\" text-anchor=\"start\">keywords, tags: never read</text><path class=\"gi-a\" d=\"M302.0 56.0 L335.0 56.0\"/><polygon class=\"gi-ah\" points=\"342.0,56.0 335.0,60.0 335.0,52.0\"/><text class=\"fig-s\" x=\"322\" y=\"48\" text-anchor=\"middle\">embed</text><rect class=\"gi-v fig-soft\" x=\"342\" y=\"34\" width=\"86\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"385.0\" y=\"54.0\" text-anchor=\"middle\">Top 10 events</text><text class=\"fig-s\" x=\"385.0\" y=\"67.0\" text-anchor=\"middle\">keywords, title</text><path class=\"gi-a\" d=\"M428.0 56.0 L434.0 56.0\"/><polygon class=\"gi-ah\" points=\"441.0,56.0 434.0,60.0 434.0,52.0\"/><polygon class=\"gi-llm\" points=\"496,26 551,56 496,86 441,56\"/><text class=\"fig-t\" x=\"496\" y=\"55\" text-anchor=\"middle\">Join which?</text><text class=\"fig-s\" x=\"496\" y=\"68\" text-anchor=\"middle\">LLM</text><path class=\"gi-a\" d=\"M496.0 86.0 L496.0 141.0\"/><polygon class=\"gi-ah\" points=\"496.0,148.0 492.0,141.0 500.0,141.0\"/><text class=\"fig-yes\" x=\"490\" y=\"118\" text-anchor=\"end\">chosen, or NEW_EVENT</text><rect class=\"gi-f\" x=\"6\" y=\"152\" width=\"270\" height=\"96\" rx=\"8\"/><text class=\"fig-t\" x=\"14\" y=\"170\" text-anchor=\"start\">Update each joined event</text><text class=\"fig-yes\" x=\"14\" y=\"189\" text-anchor=\"start\">fewer than 10 turns:</text><text class=\"fig-s\" x=\"14\" y=\"202\" text-anchor=\"start\">LLM rewrites summary, keywords, tags;</text><text class=\"fig-s\" x=\"14\" y=\"214\" text-anchor=\"start\">adds facts from the new turn</text><text class=\"fig-no\" x=\"14\" y=\"231\" text-anchor=\"start\">10 or more:</text><text class=\"fig-s\" x=\"14\" y=\"243\" text-anchor=\"start\">LLM may edit keywords, tags; summary frozen</text><path class=\"gi-a\" d=\"M276.0 200.0 L285.0 200.0\"/><polygon class=\"gi-ah\" points=\"292.0,200.0 285.0,204.0 285.0,196.0\"/><rect class=\"gi-ev\" x=\"292\" y=\"148\" width=\"262\" height=\"104\" rx=\"10\"/><text class=\"fig-t\" x=\"300\" y=\"164\" text-anchor=\"start\">Event node</text><rect class=\"gi-hi\" x=\"300\" y=\"172\" width=\"164\" height=\"30\" rx=\"6\"/><text class=\"fig-t\" x=\"306\" y=\"185\" text-anchor=\"start\">summary, 2-3 sentences</text><text class=\"fig-s\" x=\"306\" y=\"197\" text-anchor=\"start\">→ search, picking turns</text><rect class=\"gi-f\" x=\"300\" y=\"206\" width=\"164\" height=\"18\" rx=\"6\"/><text class=\"fig-s\" x=\"306\" y=\"218\" text-anchor=\"start\">keywords + tags → search</text><rect class=\"gi-ev d\" x=\"300\" y=\"228\" width=\"164\" height=\"18\" rx=\"6\"/><text class=\"fig-s\" x=\"306\" y=\"240\" text-anchor=\"start\">fact sheet: stored, never read</text><circle class=\"gi-n\" cx=\"490\" cy=\"182\" r=\"6\"/><circle class=\"gi-n\" cx=\"510\" cy=\"182\" r=\"6\"/><circle class=\"gi-n\" cx=\"530\" cy=\"182\" r=\"6\"/><circle class=\"gi-n\" cx=\"500\" cy=\"202\" r=\"6\"/><circle class=\"gi-n\" cx=\"520\" cy=\"202\" r=\"6\"/><text class=\"fig-s\" x=\"510\" y=\"228\" text-anchor=\"middle\">linked turns</text>",
+        "text": [
+          "Each turn is kept verbatim with an LLM context sentence, then an LLM joins it to one or more of the 10 most similar events or starts a new event.",
+          "Small events get their summary rewritten on every join; after 10 turns the summary is frozen and only keywords and tags change."
+        ],
+        "src": "paper §3.1-3.2; code fphm_core.py L307-L680",
+        "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L307-L680"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 252",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"98\" width=\"62\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"35.0\" y=\"124.0\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M66.0 120.0 L71.0 120.0\"/><polygon class=\"gi-ah\" points=\"78.0,120.0 71.0,124.0 71.0,116.0\"/><rect class=\"gi-llm\" x=\"78\" y=\"98\" width=\"74\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"115.0\" y=\"118.0\" text-anchor=\"middle\">Keywords</text><text class=\"fig-s\" x=\"115.0\" y=\"131.0\" text-anchor=\"middle\">LLM rewrite</text><path class=\"gi-a\" d=\"M152 120 L160 120 L160 60 L163.0 60.0\"/><polygon class=\"gi-ah\" points=\"170.0,60.0 163.0,64.0 163.0,56.0\"/><path class=\"gi-a\" d=\"M160 120 L160 180 L163.0 180.0\"/><polygon class=\"gi-ah\" points=\"170.0,180.0 163.0,184.0 163.0,176.0\"/><rect class=\"gi-v fig-soft\" x=\"170\" y=\"38\" width=\"104\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"222.0\" y=\"58.0\" text-anchor=\"middle\">Turns → top 10</text><text class=\"fig-s\" x=\"222.0\" y=\"71.0\" text-anchor=\"middle\">cosine, MiniLM</text><rect class=\"gi-v fig-soft\" x=\"170\" y=\"158\" width=\"104\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"222.0\" y=\"178.0\" text-anchor=\"middle\">Events → top 10</text><text class=\"fig-s\" x=\"222.0\" y=\"191.0\" text-anchor=\"middle\">keywords + title</text><path class=\"gi-a\" d=\"M274.0 180.0 L279.0 180.0\"/><polygon class=\"gi-ah\" points=\"286.0,180.0 279.0,184.0 279.0,176.0\"/><rect class=\"gi-llm\" x=\"286\" y=\"158\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"334.0\" y=\"178.0\" text-anchor=\"middle\">Pick turns</text><text class=\"fig-s\" x=\"334.0\" y=\"191.0\" text-anchor=\"middle\">1 LLM call / event</text><text class=\"fig-s\" x=\"334\" y=\"214\" text-anchor=\"middle\">reads title + its turns</text><path class=\"gi-a\" d=\"M274 60 L426 60 L426.0 91.0\"/><polygon class=\"gi-ah\" points=\"426.0,98.0 422.0,91.0 430.0,91.0\"/><path class=\"gi-a\" d=\"M382 180 L426 180 L426.0 149.0\"/><polygon class=\"gi-ah\" points=\"426.0,142.0 430.0,149.0 422.0,149.0\"/><rect class=\"gi-f\" x=\"394\" y=\"98\" width=\"64\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"426.0\" y=\"118.0\" text-anchor=\"middle\">Union</text><text class=\"fig-s\" x=\"426.0\" y=\"131.0\" text-anchor=\"middle\">candidates</text><path class=\"gi-a\" d=\"M458.0 120.0 L461.0 120.0\"/><polygon class=\"gi-ah\" points=\"468.0,120.0 461.0,124.0 461.0,116.0\"/><rect class=\"gi-llm\" x=\"468\" y=\"98\" width=\"86\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"511.0\" y=\"118.0\" text-anchor=\"middle\">Filter</text><text class=\"fig-s\" x=\"511.0\" y=\"131.0\" text-anchor=\"middle\">LLM, 10 per call</text><path class=\"gi-a\" d=\"M511.0 142.0 L511.0 179.0\"/><polygon class=\"gi-ah\" points=\"511.0,186.0 507.0,179.0 515.0,179.0\"/><rect class=\"gi-hi\" x=\"466\" y=\"186\" width=\"90\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"511.0\" y=\"208.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"511.0\" y=\"221.0\" text-anchor=\"middle\">8.09 turns avg</text><text class=\"fig-s\" x=\"6\" y=\"232\" text-anchor=\"start\">LLM steps get the question and turn text only (no speaker, no date).</text><text class=\"fig-s\" x=\"6\" y=\"246\" text-anchor=\"start\">The answer gets date, speaker, text and the context sentence.</text>",
+        "text": [
+          "A keyword query retrieves 10 turns and 10 events; an LLM reads each event's summary and turns and picks likely evidence.",
+          "An LLM filter then trims the union, so the answer model sees about 8 raw turns instead of a fixed top-k."
+        ],
+        "src": "paper §3.3; code fphm_core.py L986-L1141",
+        "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L986-L1141"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Turns per conversation (LoCoMo10)",
+        "value": "587 on average",
+        "src": "paper §4.1",
+        "section": "construction"
+      },
+      {
+        "label": "Event update switch",
+        "value": "τ = 10 turns; window m = 5",
+        "src": "paper §3.2",
+        "section": "construction"
+      },
+      {
+        "label": "Candidate events when joining",
+        "value": "10 (k_event)",
+        "src": "code run_fphm_evaluation.py L126, L371",
+        "section": "construction"
+      },
+      {
+        "label": "Search per question",
+        "value": "10 turns + 10 events",
+        "src": "paper §4.1",
+        "section": "method"
+      },
+      {
+        "label": "Turns to the answer model",
+        "value": "8.09 on average (A-Mem 99.84)",
+        "src": "paper Table 2",
+        "section": "method"
+      },
+      {
+        "label": "Precision@K / Recall@K",
+        "value": "0.19 / 0.72",
+        "src": "paper Table 2",
+        "section": "method"
+      },
+      {
+        "label": "Memory-building tokens, LoCoMo10",
+        "value": "21.2M (A-Mem 9.2M)",
+        "src": "paper Table 9",
+        "section": "construction"
+      },
+      {
+        "label": "Time per ingested turn",
+        "value": "15.59 s (A-Mem 6.38 s)",
+        "src": "paper Table 4",
+        "section": "results"
+      },
+      {
+        "label": "Time per question",
+        "value": "9.42 s (A-Mem 5.91 s)",
+        "src": "paper Table 4",
+        "section": "results"
+      },
+      {
+        "label": "Answer-stage tokens (GPT-5)",
+        "value": "1.62M vs 25.38M; ~0.8K vs 12.8K per question",
+        "src": "paper Table 3, App. B.3",
+        "section": "results"
+      },
+      {
+        "label": "Simulated total cost",
+        "value": "$6.43 vs $17.43 (A-Mem)",
+        "src": "paper Table 3",
+        "section": "results"
+      },
+      {
+        "label": "Extra storage for events",
+        "value": "about 8.5%",
+        "src": "paper App. B.5",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "LoCoMo10 F1",
+        "Recall@K",
+        "Avg K"
+      ],
+      "rows": [
+        [
+          "Full HiGMem",
+          "0.49",
+          "0.72",
+          "8.09"
+        ],
+        [
+          "without event layer (Table 5)",
+          "0.39",
+          "0.55",
+          "not reported"
+        ],
+        [
+          "flat top-100 turns + same LLM filter (App. B.1)",
+          "0.46",
+          "0.703",
+          "22.7"
+        ]
+      ],
+      "src": "paper Table 5, Tables 6-7 (GPT-4o-mini)"
+    },
+    "components": [
+      {
+        "role": "Turn annotation, event joining and updates",
+        "model": "GPT-4o-mini",
+        "kind": "llm",
+        "src": "paper §4.1"
+      },
+      {
+        "role": "Dense search (turns and events)",
+        "model": "all-MiniLM-L6-v2, cosine",
+        "kind": "retriever",
+        "src": "paper §4.1; code memory_layer.py L680-L698",
+        "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/memory_layer.py#L680-L698"
+      },
+      {
+        "role": "Event size switch",
+        "model": "rule: τ = 10 turns",
+        "kind": "rule",
+        "src": "paper §3.2; code fphm_core.py L600",
+        "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L600"
+      },
+      {
+        "role": "Keyword rewrite, turn picking, filter",
+        "model": "GPT-4o-mini",
+        "kind": "llm",
+        "src": "code run_fphm_evaluation.py L68-L96; fphm_core.py L1053-L1123",
+        "url": "https://github.com/ZeroLoss-Lab/HiGMem/blob/f275072f25323a01a8bff3680edbb34ed97d33be/fphm_core.py#L1053-L1123"
+      },
+      {
+        "role": "Answer",
+        "model": "GPT-4o-mini (GPT-5 in the cost simulation)",
+        "kind": "llm",
+        "src": "paper §4.1, Table 3"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Let an LLM use short event summaries to decide which raw turns to read. On LoCoMo10 this keeps recall close to A-Mem while passing about 12 times fewer turns to the answer model.",
+      "claims": [
+        {
+          "claim": "Best F1 on four of five LoCoMo10 categories.",
+          "evidence": "Multi-hop 0.31, open-domain 0.15, single-hop 0.49, adversarial 0.78; temporal 0.34 is below A-Mem's 0.39. Table 1, §4.2"
+        },
+        {
+          "claim": "A compact, precise evidence set rather than a bigger one.",
+          "evidence": "Avg K 8.09 vs 99.84, Precision@K 0.1909 vs 0.0101, Recall@K 0.7241 vs 0.7502. Table 2"
+        },
+        {
+          "claim": "The event layer matters, not only the LLM filter.",
+          "evidence": "Without events F1 0.39 / Recall 0.55 (Table 5); flat top-100 + same filter F1 0.46, Precision 0.065, K 22.7 (Tables 6-7)"
+        },
+        {
+          "claim": "Cheaper when a small model builds memory and a large model answers.",
+          "evidence": "GPT-5 answer tokens 25.38M → 1.62M; total $17.43 → $6.43. Table 3, App. B.3"
+        }
+      ],
+      "limits": [
+        "Extra LLM calls for construction and evidence selection; the benefit depends on using a cheap model for memory and an expensive one for answers.",
+        "Relies on the LLM judging relevance from event summaries and candidate turns.",
+        "On multi-party DialSim it scores lower F1 than A-Mem (0.42 vs 0.49) despite far fewer turns; broader tests on noisy, multi-party conversations are needed."
+      ],
+      "limits_src": "paper, Limitations; App. B.4",
+      "reading": [
+        "The paper setting in code annotates each turn in isolation, keeps event summaries only as routing text, and never reads the event fact sheet or turn keywords/tags, so the answer depends on raw turns plus the one-sentence context.",
+        "Construction costs more than A-Mem (21.2M vs 9.2M tokens, 15.59 vs 6.38 s per turn), and QA-stage tokens are also higher (29.3M vs 25.5M, Table 9); the saving appears only when the answer model is priced far above the memory model.",
+        "Adversarial questions are answered by choosing between the distractor and 'Not mentioned in the conversation', so that category's F1 behaves like a two-way accuracy.",
+        "Turn keywords and tags are generated for every turn but never indexed: the turn index text is speaker, date and raw content only.",
+        "The final context is sorted by the session date string as text, so turn order is not guaranteed to be chronological.",
+        "ReadAgent and MemoryBank rows equal A-Mem's published GPT-4o-mini numbers rounded; Base LLM and A-Mem differ from A-Mem's paper, so they appear to be reruns."
+      ]
+    },
+    "abstract": {
+      "text": "HiGMem targets a trade-off in conversational memory: vector search finds relevant turns but also returns many look-alike turns that inflate the answer context. It stores every dialogue turn with light LLM metadata and groups turns into events that carry a short summary. At question time an LLM reads the retrieved events' summaries and turns, predicts which turns are worth passing on, and filters the result. On LoCoMo10 with GPT-4o-mini it has the best F1 on four of five categories and passes about 8 turns per question instead of about 100.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2604.18349"
+    },
+    "sections": {
+      "Memory architecture": "§3",
+      "Results": "§4.2, App. B.2-B.6",
+      "Ablation": "§4.3, App. B.1",
+      "Discussion": "§5, Limitations",
+      "Details": "§3.2-3.3, §4.1, App. C"
+    }
+  }
+}

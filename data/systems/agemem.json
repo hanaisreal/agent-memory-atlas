@@ -1,0 +1,578 @@
+{
+  "id": "agemem",
+  "name": "AgeMem",
+  "paper": {
+    "title": "Agentic Memory: Learning Unified Long-Term and Short-Term Memory Management for Large Language Model Agents",
+    "arxiv": "2601.01885",
+    "url": "https://arxiv.org/abs/2601.01885",
+    "venue": "ACL 2026",
+    "venue_short": "ACL",
+    "track": "main",
+    "year": 2026,
+    "code": "https://github.com/y1y5/AgeMem"
+  },
+  "design": {
+    "construction": {
+      "unit": "LTM entry: free text the agent chooses to store, with an embedding, metadata and an id",
+      "kept_as": "agent-written text (whatever the policy puts in an Add_memory call)",
+      "processing": "no fixed extraction step: the policy decides in its own output whether to call Add / Update / Delete",
+      "trigger": "agent-decides",
+      "writer": "the agent policy itself (Qwen2.5-7B-Instruct or Qwen3-4B-Instruct, RL-trained)"
+    },
+    "organization": {
+      "structure": "flat long-term vector store + the agent's short-term context (message list)",
+      "stores": "LTM: in-memory vector store; STM: the running message context",
+      "index": "dense embeddings, cosine (text-embedding-v4, 256-d, in the released code)"
+    },
+    "management": {
+      "operations": "LTM: Add / Update / Delete by memory_id; STM: Summary (LLM rewrites a span as one message), Filter (drops messages similar to a criterion)",
+      "conflicts": "the agent updates or deletes an entry whose id it saw in an earlier retrieval",
+      "forgetting": "Delete tool (LTM); Filter removes context messages (STM)",
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "a query the agent writes in a Retrieve_memory call",
+      "candidates": "cosine similarity against every LTM entry (optional metadata filter)",
+      "selection": "top-k, k chosen by the agent (default 3; paper: typically 3-5)",
+      "budget": "8,192-token context, 2,048-token responses; up to 5 rounds per stage (released config)"
+    },
+    "use": {
+      "context": "the agent's own context: system prompt with the six tool schemas, messages, and retrieved entries appended as tool messages",
+      "reasoning": "multi-round think / tool call / answer loop by the same policy"
+    },
+    "control": {
+      "construction": "learned-rl",
+      "management": "learned-rl",
+      "retrieval": "learned-rl"
+    }
+  },
+  "classify": {
+    "structure": "flat",
+    "index": "vector",
+    "management": "update in place",
+    "candidates": "agent searches",
+    "decides": "top-k rule",
+    "note": "The trained agent decides whether to search, what query to write and k; the store then returns the k most similar entries by cosine, with no reranking."
+  },
+  "tags": {
+    "fidelity": "extracted",
+    "structure": [
+      "flat"
+    ],
+    "write_time": [
+      "agent-chosen",
+      "learned"
+    ],
+    "selection": [
+      "dense",
+      "llm-tool-call"
+    ],
+    "memory_type": [
+      "semantic",
+      "working"
+    ],
+    "learning": "rl",
+    "domain": [
+      "general",
+      "embodied"
+    ]
+  },
+  "stages": {
+    "ingestion": "Pre-task information arrives as ordinary messages in the agent's context; for HotpotQA the code sends all context paragraphs (up to 10 sentences each) as one 'casual chat' message.",
+    "construction": "The agent writes long-term entries itself by calling Add_memory with content, metadata and a type; each entry is embedded and stored with a new id.",
+    "organization": "One flat vector store of entries (content, embedding, metadata, id) plus the short-term message context; no links or hierarchy.",
+    "update": "Update_memory rewrites and re-embeds an entry, Delete_memory removes one (both need an id seen in a retrieval); Summary_context replaces a span of messages with an LLM summary and Filter_context drops messages judged similar to a criterion (threshold 0.6).",
+    "retrieval": "Retrieve_memory embeds an agent-written query and appends the top-k entries by cosine (k default 3) to the context as a tool message with their ids.",
+    "answer": "The same policy answers from its context after up to 5 think/tool rounds; there is no separate reader.",
+    "learning": "Three-stage rollouts (store from context; manage context under distractors after a context reset; answer the question) are scored once at the end, and step-wise GRPO gives every step of the trajectory the same group-normalised advantage (K = 8 rollouts). Trained on HotpotQA only."
+  },
+  "summary": "Memory operations on a vector store (add, update, delete, retrieve) and on the agent's own context (summarise, filter) become tool calls of the agent itself, trained end to end with a three-stage RL curriculum and step-wise GRPO.",
+  "verified": false,
+  "notes": "AXES-CHECK: control is learned-rl at every stage because the RL-trained policy emits every memory tool call; the operations themselves are fixed code (cosine top-k) or an external Qwen-Max (Summary, Filter). Venue: the arXiv PDF (v3, 23 Jul 2026) names no venue; 'ACL 2026' comes from the authors' GitHub repo description ('ACL 2026 SAC Highlight'), and track 'main' is assumed from that label, not stated. Code: y1y5/AgeMem (owner matches the first author's handle, not linked from the PDF), pinned at 98f563f9 (2026-04-24). It covers only the HotpotQA workflow.\nDESIGN: §3.1-3.5, §4.1, App. A.1-A.3, C.4; code train_hotpotQA.py, eval_hotpotQA.py, memory_store.py, agemem_train.yaml. Benchmarks are agent environments (ALFWorld, SciWorld, PDDL, BabyAI) plus HotpotQA, not long-dialogue memory benchmarks.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2601.01885v3 (PDF read 2026-09-30)",
+      "code": "https://github.com/y1y5/AgeMem/tree/98f563f907d67b2f2436e3ae7b7ceff32e482814/",
+      "code_note": "Authors' repository (description: 'ACL 2026 SAC Highlight'; not linked from the arXiv PDF). Pinned at the latest commit 98f563f9 (2026-04-24). It holds the Trinity-RFT HotpotQA training and evaluation workflows only; the ALFWorld, SciWorld, PDDL and BabyAI runs are not in the repo."
+    },
+    "headline": [
+      "Memory is not a pipeline around the model: the RL-trained agent itself decides when to store, update, delete, retrieve, summarise or filter.",
+      "Retrieval is plain cosine top-k over a flat store; what is learned is when to call it and what to store.",
+      "Summary and Filter are executed by an external Qwen-Max in the released code, not by the trained model."
+    ],
+    "units": [
+      {
+        "name": "LTM entry",
+        "role": "one piece of knowledge the agent chose to keep",
+        "made_by": "the agent, through Add_memory / Update_memory",
+        "fields": [
+          {
+            "name": "content",
+            "what": "free text written by the agent in the tool call",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "code train_hotpotQA.py L267-L280",
+            "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/trinity/common/workflows/memory_context/train_hotpotQA.py#L267-L280"
+          },
+          {
+            "name": "embedding",
+            "what": "text-embedding-v4 vector, 256 dimensions, recomputed on update",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code memory_store.py L103-L129; train_hotpotQA.py L77",
+            "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/trinity/common/workflows/memory_context/memory_store.py#L103-L129"
+          },
+          {
+            "name": "memory_id",
+            "what": "random UUID, shown next to each retrieved entry so the agent can update or delete it",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code train_hotpotQA.py L261, L277",
+            "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/trinity/common/workflows/memory_context/train_hotpotQA.py#L255-L280"
+          },
+          {
+            "name": "metadata",
+            "what": "agent-given tags plus memory_type and the stage number; usable as a retrieval filter",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code train_hotpotQA.py L270-L275; memory_store.py L74",
+            "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/trinity/common/workflows/memory_context/train_hotpotQA.py#L267-L280"
+          }
+        ]
+      },
+      {
+        "name": "Context (STM)",
+        "role": "the agent's running message list; what it reasons and answers from",
+        "made_by": "the conversation, plus tool results; edited by Summary and Filter",
+        "fields": [
+          {
+            "name": "messages",
+            "what": "system prompt with tool schemas, user turns, agent outputs, tool results",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code train_hotpotQA.py L108-L110",
+            "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/trinity/common/workflows/memory_context/train_hotpotQA.py#L108-L110"
+          },
+          {
+            "name": "retrieved block",
+            "what": "\"[retrieved memories]\" then one line per entry: content and Memory ID",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code train_hotpotQA.py L255-L265",
+            "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/trinity/common/workflows/memory_context/train_hotpotQA.py#L255-L265"
+          },
+          {
+            "name": "summary message",
+            "what": "Qwen-Max summary that replaces the last N (or all) non-system messages",
+            "kept_as": "summarized",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code train_hotpotQA.py L129-L209",
+            "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/trinity/common/workflows/memory_context/train_hotpotQA.py#L129-L209"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Receive context",
+        "how": "Stage 1 sends all HotpotQA context paragraphs (title + up to 10 sentences each) as one casual-chat message",
+        "src": "code train_hotpotQA.py L486-L500",
+        "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/trinity/common/workflows/memory_context/train_hotpotQA.py#L486-L500"
+      },
+      {
+        "step": "Add",
+        "how": "the agent calls Add_memory with content, metadata and a type; the entry is embedded and stored with a new UUID",
+        "out": "0.92 → 1.64 Add calls per HotpotQA episode after RL (Qwen2.5-7B)",
+        "src": "paper App. A.1, Table 3; code L267-L280",
+        "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/trinity/common/workflows/memory_context/train_hotpotQA.py#L267-L280"
+      },
+      {
+        "step": "Update / Delete",
+        "how": "by memory_id taken from an earlier retrieval; Delete needs confirmation=true",
+        "out": "Update 0.00 → 0.13, Delete 0.00 → 0.08 per episode after RL (Qwen2.5-7B)",
+        "src": "paper Table 3; code L282-L300",
+        "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/trinity/common/workflows/memory_context/train_hotpotQA.py#L282-L300"
+      },
+      {
+        "step": "Summary",
+        "how": "Qwen-Max rewrites the last N rounds (or all non-system messages) into one tool message that replaces them",
+        "src": "paper App. A.1; code L129-L209",
+        "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/trinity/common/workflows/memory_context/train_hotpotQA.py#L129-L209"
+      },
+      {
+        "step": "Filter",
+        "how": "for each non-system message Qwen-Max scores its similarity to the agent's criterion (0-1); messages scoring ≥ 0.6 are removed",
+        "params": {
+          "θf": "0.6"
+        },
+        "src": "paper App. A.1 (Eq. 15); code L211-L253",
+        "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/trinity/common/workflows/memory_context/train_hotpotQA.py#L211-L253"
+      }
+    ],
+    "read": [
+      {
+        "step": "Decide",
+        "round": 1,
+        "how": "after each <think> block the policy emits either a <tool_call> list or an <answer>",
+        "src": "paper App. A.1 system prompt",
+        "url": "https://arxiv.org/pdf/2601.01885"
+      },
+      {
+        "step": "Retrieve",
+        "round": 1,
+        "input": "agent-written query",
+        "scores": "entry content embeddings",
+        "how": "cosine similarity against every entry (optional exact-match metadata filter), keep top-k",
+        "params": {
+          "k": "agent-chosen, default 3"
+        },
+        "src": "code memory_store.py L70-L82, L138-L142; train L255-L265",
+        "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/trinity/common/workflows/memory_context/memory_store.py#L70-L82"
+      },
+      {
+        "step": "Append",
+        "round": 1,
+        "how": "retrieved entries join the context as a tool message with their ids; the loop repeats up to 5 rounds",
+        "src": "code train_hotpotQA.py L255-L265; agemem_train.yaml L39-L41",
+        "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/trinity/common/workflows/memory_context/train_hotpotQA.py#L255-L265"
+      }
+    ],
+    "answer_context": {
+      "sees": "the agent's own context: system prompt, question, its earlier outputs and tool results",
+      "format": "\"[retrieved memories]\" followed by \"- {content} (Memory ID: {id})\" per entry, as a tool message",
+      "excludes": [
+        "entries never retrieved",
+        "messages removed by Filter or replaced by Summary"
+      ],
+      "includes": [
+        "the six tool schemas",
+        "retrieved LTM entries with ids",
+        "summaries written by Qwen-Max"
+      ],
+      "note": "In HotpotQA evaluation the context is wiped after Stage 1 and Stage 2 is skipped, so the question is answered from what the agent stored and then retrieved.",
+      "src": "code eval_hotpotQA.py L572-L578, L923",
+      "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/trinity/common/workflows/memory_context/eval_hotpotQA.py#L572-L578"
+    },
+    "compression": [
+      {
+        "what": "prompt tokens per HotpotQA question, AgeMem vs AgeMem-RAG",
+        "kept": 2.117,
+        "of": 2.186,
+        "unit": "k tokens",
+        "basis": "Fig. 3, Qwen2.5-7B-Instruct (2,191 vs 2,310 on Qwen3-4B)",
+        "src": "paper Fig. 3, §4.2",
+        "url": "https://arxiv.org/pdf/2601.01885"
+      },
+      {
+        "what": "stored entries vs the pre-task context",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported; only Add calls per episode are given (Table 3).",
+        "src": "paper Table 3",
+        "url": "https://arxiv.org/pdf/2601.01885"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Filter similarity",
+        "paper": "cosine similarity of embeddings, remove if ≥ θf = 0.6",
+        "code": "Qwen-Max asked for a 0-1 similarity score per message; remove if ≥ 0.6",
+        "src": "train_hotpotQA.py L233-L243",
+        "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/trinity/common/workflows/memory_context/train_hotpotQA.py#L233-L243"
+      },
+      {
+        "topic": "Reward weights",
+        "paper": "task, context and memory weighted 1/3 each (App. C.4)",
+        "code": "task 0.5, tool efficiency 0.2, context 0.15, memory 0.15 (a fourth term not in the paper)",
+        "src": "train_hotpotQA.py L351-L357",
+        "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/trinity/common/workflows/memory_context/train_hotpotQA.py#L351-L357"
+      },
+      {
+        "topic": "Stage 1 retrieval",
+        "paper": "Algorithm 3 retrieves memories automatically at every step",
+        "code": "no automatic retrieval in Stage 1; the agent must call Retrieve_memory",
+        "src": "train_hotpotQA.py L486-L578",
+        "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/trinity/common/workflows/memory_context/train_hotpotQA.py#L486-L578"
+      },
+      {
+        "topic": "Distractors",
+        "paper": "N = 5 by default (Table 8)",
+        "code": "3 in the released train and eval configs",
+        "src": "agemem_train.yaml L38",
+        "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/examples/agemem_hotpotqa/agemem_train.yaml#L38"
+      },
+      {
+        "topic": "Stage 2 at evaluation",
+        "paper": "not stated",
+        "code": "disabled by default in HotpotQA evaluation (enable_stage2_in_eval: false)",
+        "src": "eval_hotpotQA.py L572-L578; agemem_eval.yaml L43",
+        "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/trinity/common/workflows/memory_context/eval_hotpotQA.py#L572-L578"
+      },
+      {
+        "topic": "Fine-tuning",
+        "paper": "RL fine-tuning, no adapter mentioned",
+        "code": "LoRA rank 32, lr 1e-5, 20 epochs, batch 16",
+        "src": "agemem_train.yaml L11-L21, L82",
+        "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/examples/agemem_hotpotqa/agemem_train.yaml#L11-L21"
+      }
+    ],
+    "open_questions": [
+      "How is memory used on ALFWorld, SciWorld, PDDL and BabyAI? The paper says Stage 1 context comes from HotpotQA supporting facts and gives no pre-task context for the other four; the code has no workflow for them.",
+      "The HotpotQA evaluation skips the distractor stage, so the STM tools trained in Stage 2 are not what the HotpotQA score measures."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 256",
+        "body": "<text class=\"fig-t\" x=\"58\" y=\"14\" text-anchor=\"middle\">Stage 1 input</text><rect class=\"gi-ev\" x=\"10\" y=\"24\" width=\"86\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"18\" y1=\"33\" x2=\"76\" y2=\"33\"/><rect class=\"gi-ev\" x=\"20\" y=\"46\" width=\"86\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"28\" y1=\"55\" x2=\"86\" y2=\"55\"/><rect class=\"gi-ev\" x=\"10\" y=\"68\" width=\"86\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"18\" y1=\"77\" x2=\"76\" y2=\"77\"/><rect class=\"gi-ev\" x=\"20\" y=\"90\" width=\"86\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"28\" y1=\"99\" x2=\"86\" y2=\"99\"/><text class=\"fig-s\" x=\"58\" y=\"126\" text-anchor=\"middle\">HotpotQA paragraphs,</text><text class=\"fig-s\" x=\"58\" y=\"138\" text-anchor=\"middle\">sent as one message</text><path class=\"gi-a\" d=\"M110 80 L133 80\"/><polygon class=\"gi-ah\" points=\"140,80 133,76 133,84\"/><rect class=\"gi-llm\" x=\"140\" y=\"54\" width=\"92\" height=\"52\" rx=\"8\"/><text class=\"fig-t\" x=\"186.0\" y=\"78.0\" text-anchor=\"middle\">Agent LLM</text><text class=\"fig-s\" x=\"186.0\" y=\"91.0\" text-anchor=\"middle\">RL-trained</text><text class=\"fig-s\" x=\"186\" y=\"122\" text-anchor=\"middle\">chooses each</text><text class=\"fig-s\" x=\"186\" y=\"134\" text-anchor=\"middle\">memory call</text><path class=\"gi-a\" d=\"M232 72 L263 72\"/><polygon class=\"gi-ah\" points=\"270,72 263,68 263,76\"/><rect class=\"gi-f\" x=\"270\" y=\"20\" width=\"150\" height=\"112\" rx=\"8\"/><text class=\"fig-t\" x=\"345\" y=\"36\" text-anchor=\"middle\">Long-term store</text><rect class=\"gi-ev\" x=\"280\" y=\"44\" width=\"130\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"288\" y1=\"52\" x2=\"372\" y2=\"52\"/><rect class=\"gi-r\" x=\"380\" y=\"47\" width=\"22\" height=\"10\" rx=\"2\"/><rect class=\"gi-ev\" x=\"280\" y=\"64\" width=\"130\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"288\" y1=\"72\" x2=\"372\" y2=\"72\"/><rect class=\"gi-r\" x=\"380\" y=\"67\" width=\"22\" height=\"10\" rx=\"2\"/><rect class=\"gi-ev\" x=\"280\" y=\"84\" width=\"130\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"288\" y1=\"92\" x2=\"372\" y2=\"92\"/><rect class=\"gi-r\" x=\"380\" y=\"87\" width=\"22\" height=\"10\" rx=\"2\"/><text class=\"fig-s\" x=\"345\" y=\"115\" text-anchor=\"middle\">text + embedding + id</text><text class=\"fig-s\" x=\"345\" y=\"127\" text-anchor=\"middle\">Add · Update · Delete</text><path class=\"gi-a\" d=\"M232 96 L250 96 L250 192 L263 192\"/><polygon class=\"gi-ah\" points=\"270,192 263,188 263,196\"/><rect class=\"gi-f\" x=\"270\" y=\"140\" width=\"150\" height=\"110\" rx=\"8\"/><text class=\"fig-t\" x=\"345\" y=\"156\" text-anchor=\"middle\">Context (messages)</text><rect class=\"gi-ev\" x=\"280\" y=\"164\" width=\"130\" height=\"18\" rx=\"5\"/><text class=\"fig-s\" x=\"288\" y=\"177\" text-anchor=\"start\">question, tool output</text><rect class=\"gi-ev d\" x=\"280\" y=\"186\" width=\"130\" height=\"18\" rx=\"5\"/><text class=\"fig-s\" x=\"288\" y=\"199\" text-anchor=\"start\">distractor</text><path class=\"gi-bad\" d=\"M388 190 L398 200 M398 190 L388 200\"/><rect class=\"gi-hi\" x=\"280\" y=\"208\" width=\"130\" height=\"18\" rx=\"5\"/><text class=\"fig-s\" x=\"288\" y=\"221\" text-anchor=\"start\">summary of a span</text><text class=\"fig-s\" x=\"345\" y=\"242\" text-anchor=\"middle\">Filter · Summary (Qwen-Max)</text><text class=\"fig-t\" x=\"496\" y=\"14\" text-anchor=\"middle\">RL training</text><rect class=\"gi-w\" x=\"442\" y=\"22\" width=\"110\" height=\"36\" rx=\"8\"/><text class=\"fig-t\" x=\"497.0\" y=\"38.0\" text-anchor=\"middle\">1 · store</text><text class=\"fig-s\" x=\"497.0\" y=\"51.0\" text-anchor=\"middle\">sees the context</text><path class=\"gi-a\" d=\"M497 58 L497 63\"/><polygon class=\"gi-ah\" points=\"497,70 501,63 493,63\"/><rect class=\"gi-w\" x=\"442\" y=\"70\" width=\"110\" height=\"36\" rx=\"8\"/><text class=\"fig-t\" x=\"497.0\" y=\"86.0\" text-anchor=\"middle\">2 · distractors</text><text class=\"fig-s\" x=\"497.0\" y=\"99.0\" text-anchor=\"middle\">context reset</text><path class=\"gi-a\" d=\"M497 106 L497 111\"/><polygon class=\"gi-ah\" points=\"497,118 501,111 493,111\"/><rect class=\"gi-w\" x=\"442\" y=\"118\" width=\"110\" height=\"36\" rx=\"8\"/><text class=\"fig-t\" x=\"497.0\" y=\"134.0\" text-anchor=\"middle\">3 · question</text><text class=\"fig-s\" x=\"497.0\" y=\"147.0\" text-anchor=\"middle\">retrieve, answer</text><path class=\"gi-a\" d=\"M497 154 L497 159\"/><polygon class=\"gi-ah\" points=\"497,166 501,159 493,159\"/><rect class=\"gi-hi\" x=\"442\" y=\"166\" width=\"110\" height=\"36\" rx=\"8\"/><text class=\"fig-t\" x=\"497.0\" y=\"182.0\" text-anchor=\"middle\">reward</text><text class=\"fig-s\" x=\"497.0\" y=\"195.0\" text-anchor=\"middle\">task + context + LTM</text><path class=\"gi-a d\" d=\"M442 184 L432 184 L432 40 L435 40\"/><polygon class=\"gi-ah\" points=\"442,40 435,36 435,44\"/><text class=\"fig-s\" x=\"497\" y=\"220\" text-anchor=\"middle\">same advantage for</text><text class=\"fig-s\" x=\"497\" y=\"232\" text-anchor=\"middle\">every step (GRPO, K = 8)</text>",
+        "text": [
+          "The agent reads the pre-task context and itself decides what to add, update or delete in a flat vector store, and when to filter or summarise its own context.",
+          "RL trains these decisions over three stages; one end-of-episode reward is given to every step."
+        ],
+        "src": "paper §3.2-3.4, App. A.1-A.3; code train_hotpotQA.py L129-L300, L351-L452",
+        "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/trinity/common/workflows/memory_context/train_hotpotQA.py#L129-L300"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 242",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"30\" width=\"60\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"34.0\" y=\"56.0\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M64 52 L69 52\"/><polygon class=\"gi-ah\" points=\"76,52 69,48 69,56\"/><rect class=\"gi-llm\" x=\"76\" y=\"30\" width=\"84\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"118.0\" y=\"50.0\" text-anchor=\"middle\">Agent LLM</text><text class=\"fig-s\" x=\"118.0\" y=\"63.0\" text-anchor=\"middle\">think</text><path class=\"gi-a\" d=\"M160 52 L165 52\"/><polygon class=\"gi-ah\" points=\"172,52 165,48 165,56\"/><polygon class=\"gi-llm\" points=\"214,24 258,52 214,80 170,52\"/><text class=\"fig-t\" x=\"214\" y=\"50\" text-anchor=\"middle\">Tool or</text><text class=\"fig-s\" x=\"214\" y=\"63\" text-anchor=\"middle\">answer?</text><path class=\"gi-a\" d=\"M258 52 L277 52\"/><polygon class=\"gi-ah\" points=\"284,52 277,48 277,56\"/><text class=\"fig-no\" x=\"262\" y=\"44\" text-anchor=\"start\">tool</text><rect class=\"gi-v fig-soft\" x=\"284\" y=\"30\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"332.0\" y=\"50.0\" text-anchor=\"middle\">Retrieve</text><text class=\"fig-s\" x=\"332.0\" y=\"63.0\" text-anchor=\"middle\">agent's query, k</text><path class=\"gi-a\" d=\"M380 52 L385 52\"/><polygon class=\"gi-ah\" points=\"392,52 385,48 385,56\"/><rect class=\"gi-f\" x=\"392\" y=\"30\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"436.0\" y=\"50.0\" text-anchor=\"middle\">Cosine</text><text class=\"fig-s\" x=\"436.0\" y=\"63.0\" text-anchor=\"middle\">all entries</text><path class=\"gi-a\" d=\"M480 52 L485 52\"/><polygon class=\"gi-ah\" points=\"492,52 485,48 485,56\"/><rect class=\"gi-f\" x=\"492\" y=\"30\" width=\"62\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"523.0\" y=\"50.0\" text-anchor=\"middle\">top-k</text><text class=\"fig-s\" x=\"523.0\" y=\"63.0\" text-anchor=\"middle\">default 3</text><path class=\"gi-a\" d=\"M523 74 L523 123\"/><polygon class=\"gi-ah\" points=\"523,130 527,123 519,123\"/><rect class=\"gi-ev\" x=\"392\" y=\"130\" width=\"162\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"473.0\" y=\"150.0\" text-anchor=\"middle\">Added to context</text><text class=\"fig-s\" x=\"473.0\" y=\"163.0\" text-anchor=\"middle\">- text (Memory ID: …)</text><path class=\"gi-a\" d=\"M270 52 L270 152 L277 152\"/><polygon class=\"gi-ah\" points=\"284,152 277,148 277,156\"/><rect class=\"gi-llm\" x=\"284\" y=\"126\" width=\"96\" height=\"52\" rx=\"8\"/><text class=\"fig-t\" x=\"332.0\" y=\"145.0\" text-anchor=\"middle\">STM tools</text><text class=\"fig-s\" x=\"332.0\" y=\"158.0\" text-anchor=\"middle\">Summary / Filter</text><text class=\"fig-s\" x=\"332.0\" y=\"170.0\" text-anchor=\"middle\">run by Qwen-Max</text><path class=\"gi-a\" d=\"M214 80 L214 123\"/><polygon class=\"gi-ah\" points=\"214,130 218,123 210,123\"/><text class=\"fig-yes\" x=\"220\" y=\"106\" text-anchor=\"start\">answer</text><rect class=\"gi-hi\" x=\"170\" y=\"130\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"214.0\" y=\"150.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"214.0\" y=\"163.0\" text-anchor=\"middle\">from its context</text><line class=\"gi-a\" x1=\"332\" y1=\"178\" x2=\"332\" y2=\"198\"/><path class=\"gi-a\" d=\"M473 174 L473 198 L118 198 L118 81\"/><polygon class=\"gi-ah\" points=\"118,74 122,81 114,81\"/><text class=\"fig-s\" x=\"300\" y=\"212\" text-anchor=\"middle\">next round (≤ 5 per stage in the released config)</text><text class=\"fig-s\" x=\"280\" y=\"232\" text-anchor=\"middle\">The agent is also the answer model: it answers from whatever its own context holds.</text>",
+        "text": [
+          "At each step the agent either calls a tool or answers. Retrieve embeds the agent's own query and appends the top-k entries (default 3) by cosine to its context.",
+          "Summary and Filter shrink the context through Qwen-Max; the loop runs at most 5 rounds per stage."
+        ],
+        "src": "code memory_store.py L70-L82; train_hotpotQA.py L129-L265; paper App. A.1",
+        "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/trinity/common/workflows/memory_context/memory_store.py#L70-L82"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Pre-task context (HotpotQA)",
+        "value": "all paragraphs, ≤ 10 sentences each, one message",
+        "src": "code train_hotpotQA.py L486-L500",
+        "section": "construction"
+      },
+      {
+        "label": "Add calls per HotpotQA episode",
+        "value": "0.92 → 1.64 after RL (Qwen2.5-7B) · 2.49 → 2.64 (Qwen3-4B)",
+        "src": "paper Table 3",
+        "section": "construction"
+      },
+      {
+        "label": "Distractors in Stage 2",
+        "value": "5 in the paper, 3 in the released config",
+        "src": "paper Table 8; code agemem_train.yaml L38",
+        "section": "construction"
+      },
+      {
+        "label": "Retrieve",
+        "value": "cosine top-k, k default 3 (3-5 in the paper)",
+        "src": "paper App. A.1; code train L257",
+        "section": "method"
+      },
+      {
+        "label": "Filter threshold θf",
+        "value": "0.6 (stable over 0.4-0.8)",
+        "src": "paper App. A.1, Table 5",
+        "section": "method"
+      },
+      {
+        "label": "Context budget",
+        "value": "8,192 tokens, 2,048 per response",
+        "src": "paper App. C.4",
+        "section": "method"
+      },
+      {
+        "label": "RL setup",
+        "value": "step-wise GRPO, K = 8 rollouts, KL β = 0.1, reward weights 1/3 each; trained on HotpotQA only",
+        "src": "paper §4.1, App. C.4",
+        "section": "method"
+      },
+      {
+        "label": "Training run (code)",
+        "value": "LoRA r 32, lr 1e-5, 20 epochs, batch 16, temperature 0.6, 8 GPUs",
+        "src": "code agemem_train.yaml L6-L33, L82",
+        "section": "method"
+      },
+      {
+        "label": "Hardware",
+        "value": "8 × RTX 4090 (48 GB)",
+        "src": "paper App. C.4",
+        "section": "method"
+      },
+      {
+        "label": "Prompt tokens per HotpotQA question",
+        "value": "2,117 vs 2,186 with RAG in place of STM tools (−3.1%) · 2,191 vs 2,310 on Qwen3-4B (−5.1%)",
+        "src": "paper Fig. 3",
+        "section": "results"
+      },
+      {
+        "label": "Tool calls per episode",
+        "value": "4.92 (Qwen2.5-7B) · 8.67 (Qwen3-4B) after RL",
+        "src": "paper Table 3",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "ALFWorld",
+        "SciWorld",
+        "HotpotQA"
+      ],
+      "rows": [
+        [
+          "No memory",
+          "27.16",
+          "13.80",
+          "38.36"
+        ],
+        [
+          "+ LTM tools, no RL (AgeMem-noRL-RAG)",
+          "37.73",
+          "27.98",
+          "45.76"
+        ],
+        [
+          "+ LTM tools with RL (AgeMem-RAG)",
+          "38.88",
+          "32.49",
+          "52.04"
+        ],
+        [
+          "+ LTM and STM tools with RL (AgeMem)",
+          "41.07",
+          "35.55",
+          "54.44"
+        ]
+      ],
+      "src": "paper Fig. 4 (Qwen2.5-7B-Instruct); -RAG variants replace STM tools with retrieval at every step"
+    },
+    "components": [
+      {
+        "role": "Decides every memory call and answers",
+        "model": "Qwen2.5-7B-Instruct or Qwen3-4B-Instruct, RL-trained",
+        "kind": "llm",
+        "src": "paper §4.1"
+      },
+      {
+        "role": "Embeds entries and queries",
+        "model": "text-embedding-v4, 256-d (DashScope API)",
+        "kind": "retriever",
+        "src": "code train_hotpotQA.py L77; memory_store.py L103-L112",
+        "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/trinity/common/workflows/memory_context/train_hotpotQA.py#L77"
+      },
+      {
+        "role": "Top-k search",
+        "model": "cosine over all entries (in-memory store)",
+        "kind": "rule",
+        "src": "code memory_store.py L70-L82",
+        "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/trinity/common/workflows/memory_context/memory_store.py#L70-L82"
+      },
+      {
+        "role": "Summary and Filter tools",
+        "model": "Qwen-Max (API)",
+        "kind": "llm",
+        "src": "code train_hotpotQA.py L182-L185, L234-L238",
+        "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/trinity/common/workflows/memory_context/train_hotpotQA.py#L182-L238"
+      },
+      {
+        "role": "Distractor generation",
+        "model": "Qwen-Max (paper: an external LLM)",
+        "kind": "llm",
+        "src": "paper App. D.4; code utils.py L407-L432",
+        "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/trinity/common/workflows/memory_context/utils.py#L407-L432"
+      },
+      {
+        "role": "Reward judge, J metric and memory quality",
+        "model": "Qwen-Max",
+        "kind": "llm",
+        "src": "paper App. C.2"
+      },
+      {
+        "role": "Training",
+        "model": "step-wise GRPO in Trinity-RFT (verl trainer)",
+        "kind": "rule",
+        "src": "paper §3.4, App. C.4; code agemem_train.yaml L4-L6, L69-L70",
+        "url": "https://github.com/y1y5/AgeMem/blob/98f563f907d67b2f2436e3ae7b7ceff32e482814/examples/agemem_hotpotqa/agemem_train.yaml#L4-L6"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Give an agent tools for both a long-term store and its own context and train when to use them with RL. Trained only on HotpotQA, AgeMem beats LangMem, A-Mem and Mem0 on average over five agent benchmarks in its own paper.",
+      "claims": [
+        {
+          "claim": "Unified, learned memory management beats memory-augmented baselines.",
+          "evidence": "Average 41.96 (Qwen2.5-7B) and 54.31 (Qwen3-4B) vs best baselines 37.14 (Mem0) and 45.74 (A-Mem). Table 2, §4.2"
+        },
+        {
+          "claim": "RL training is what makes the tools pay off.",
+          "evidence": "+8.53 and +8.72 points over AgeMem-noRL (33.43, 45.59). Table 2"
+        },
+        {
+          "claim": "The agent stores better long-term memories.",
+          "evidence": "Memory quality 0.533 and 0.605 vs 0.527 (Mem0) and 0.587 (A-Mem). Fig. 2"
+        },
+        {
+          "claim": "Learned context tools use fewer tokens than retrieval at every step.",
+          "evidence": "2,117 vs 2,186 (−3.1%) and 2,191 vs 2,310 (−5.1%) prompt tokens on HotpotQA. Fig. 3"
+        },
+        {
+          "claim": "LTM tools, RL and STM tools each add accuracy.",
+          "evidence": "ALFWorld 27.16 → 37.73 → 38.88 → 41.07; SciWorld 13.80 → 27.98 → 32.49 → 35.55; HotpotQA 38.36 → 45.76 → 52.04 → 54.44. Fig. 4"
+        },
+        {
+          "claim": "Memory-aware reward terms help beyond the task reward.",
+          "evidence": "J 0.544 vs 0.509 and memory quality 0.533 vs 0.479 against an answer-only reward. Table 4"
+        },
+        {
+          "claim": "Gains are not only from adding STM tools and RL to an existing memory.",
+          "evidence": "LangMem, A-Mem and Mem0 with the same ST/RL additions average 41.56, 41.70 and 40.67 vs 43.69 for AgeMem on three benchmarks. Table 7, App. D.3"
+        }
+      ],
+      "limits": [
+        "The tool set is fixed; finer-grained control is left open.",
+        "The benchmarks are controlled; long real dialogues and real users are untested.",
+        "Training trajectories come only from HotpotQA."
+      ],
+      "limits_src": "paper, Limitations",
+      "reading": [
+        "Only HotpotQA comes with pre-task context (its supporting facts). The paper does not say what the agent can store before the task on ALFWorld, SciWorld, PDDL or BabyAI, and the repo has no code for them, so how memory works on four of the five benchmarks is undocumented.",
+        "In the released HotpotQA evaluation the distractor stage is off and the context is wiped after Stage 1: the score measures storing and retrieving, not the distractor handling trained in Stage 2.",
+        "Summary, Filter, distractor generation and all judging call Qwen-Max through an API. The trained model makes the decisions, but the context operations depend on a larger external model, which the paper's point about avoiding auxiliary expert models does not mention.",
+        "The code's reward differs from the paper's: weights 0.5 / 0.2 / 0.15 / 0.15 with an extra tool-efficiency term instead of 1/3 each; Filter uses LLM-scored similarity instead of embedding cosine.",
+        "Token savings are small (3.1% and 5.1%) and every variant stays near 2.1-2.3k tokens under an 8,192-token budget, so context overflow is not what separates the configurations.",
+        "The per-bar gains in Fig. 4 (e.g. '+10.6') are percentage points, although the text calls them %.",
+        "Without RL the tools can hurt: AgeMem-noRL is below no memory on PDDL (8.87 vs 10.15) and BabyAI (46.34 vs 50.80) with Qwen2.5-7B.",
+        "Baselines run with default settings and untuned backbones, while AgeMem's backbone is RL-tuned on HotpotQA; Table 7 addresses this on three benchmarks only."
+      ]
+    },
+    "abstract": {
+      "text": "AgeMem treats both long-term memory and the agent's working context as things the agent manages itself through tools. It can add, update and delete entries in a long-term store and retrieve, summarise or filter what is in its context. A three-stage RL curriculum (store, handle distractors, answer) with a step-wise GRPO that passes the final reward to every step teaches it when to use each tool. Across ALFWorld, SciWorld, PDDL, BabyAI and HotpotQA, and two Qwen backbones, it outperforms LangMem, A-Mem and Mem0.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2601.01885"
+    },
+    "sections": {
+      "Memory architecture": "§3.1-3.2, App. A.1",
+      "Results": "§4.2",
+      "Ablation": "§4.3, App. D",
+      "Discussion": "§5, Limitations",
+      "Details": "§3.3-3.5, §4.1, App. A-C"
+    }
+  }
+}

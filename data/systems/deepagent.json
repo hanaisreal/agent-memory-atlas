@@ -1,0 +1,544 @@
+{
+  "id": "deepagent",
+  "name": "DeepAgent",
+  "paper": {
+    "title": "DeepAgent: A General Reasoning Agent with Scalable Toolsets",
+    "arxiv": "2510.21618",
+    "url": "https://arxiv.org/abs/2510.21618",
+    "venue": "WWW 2026",
+    "venue_short": "WWW",
+    "track": "main",
+    "year": 2026,
+    "code": "https://github.com/RUC-NLPIR/DeepAgent"
+  },
+  "design": {
+    "construction": {
+      "unit": "folded memory: three JSON blocks (episodic, working, tool)",
+      "kept_as": "LLM summary of the agent's own reasoning and tool-call trace",
+      "processing": "auxiliary LLM compresses the full trace in three parallel prompted calls, one per memory type",
+      "trigger": "agent-decides",
+      "writer": "auxiliary LLM (Qwen2.5-32B-Instruct)"
+    },
+    "organization": {
+      "structure": "three typed JSON blocks inserted into the task prompt",
+      "stores": "episodic memory (task summary, key events, progress); working memory (sub-goal, obstacles, next actions); tool memory (per-tool success rate, errors, derived rules)",
+      "index": null
+    },
+    "management": {
+      "operations": "a fold drops the reasoning trace from the context and replaces any earlier folded memory with a new one",
+      "conflicts": null,
+      "forgetting": "raw trace leaves the context at each fold; at most 3 folds per task (code default)",
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": null,
+      "candidates": "none: the whole folded memory sits in the prompt (tool search is dense retrieval over tool docs, not over memory)",
+      "selection": null,
+      "budget": "3 blocks; no length limit stated; at most 50 actions per task"
+    },
+    "use": {
+      "context": "original task prompt + 'Memory of previous folded thoughts' (episodic, working, tool) + question",
+      "reasoning": "the main reasoning model restarts its reasoning from this prompt and keeps acting"
+    },
+    "control": {
+      "construction": "learned-rl",
+      "management": "fixed-rule",
+      "retrieval": "none"
+    }
+  },
+  "classify": {
+    "structure": "typed stores",
+    "index": "none",
+    "management": "consolidate",
+    "candidates": "read everything",
+    "decides": "reads everything",
+    "note": "Memory is working context for one task: when to fold is a policy decision (trained with ToolPO), the content is written by a prompted auxiliary LLM, and the result is always read in full."
+  },
+  "tags": {
+    "fidelity": "compressed",
+    "structure": [
+      "typed-stores"
+    ],
+    "write_time": [
+      "summarize",
+      "agent-chosen"
+    ],
+    "selection": [
+      "full-context"
+    ],
+    "memory_type": [
+      "episodic",
+      "working",
+      "procedural"
+    ],
+    "learning": "rl",
+    "domain": [
+      "general",
+      "web",
+      "embodied"
+    ]
+  },
+  "stages": {
+    "ingestion": "The agent's own interaction trace (thoughts, tool searches, tool calls and their results) grows inside one reasoning stream; long tool results (over 5,000 characters) are condensed by the auxiliary LLM before they enter it.",
+    "construction": "When the agent emits <fold_thought>, the auxiliary LLM reads the whole trace (and the tool-call history) and writes episodic, working and tool memory as three JSON objects in parallel.",
+    "organization": "Three typed blocks with fixed JSON schemas: episodic (task description, key events with step/outcome, progress), working (immediate goal, challenges, next actions), tool (per-tool success rate, effective parameters, errors, derived rules).",
+    "update": "Each fold rebuilds all three blocks from the full trace so far and replaces the previous memory in the prompt; the code allows 3 folds per task.",
+    "retrieval": "No memory retrieval: the folded memory is inserted in full before the question. Separate from memory, tools are found by dense search over tool documentation (bge-large-en-v1.5, top-10 in the code).",
+    "answer": "The main reasoning model (QwQ-32B) continues from the original instructions plus the folded memory and answers when done or at the action limit.",
+    "learning": "ToolPO (RL) trains the main model end-to-end with LLM-simulated APIs; the action-level reward includes a term for efficient folding, and its advantage is credited only to tool-call and fold tokens. The auxiliary memory writer is not trained."
+  },
+  "summary": "A reasoning model that finds and calls tools inside one thought stream and can choose to 'fold' its history: an auxiliary LLM compresses the trace into episodic, working and tool memory, and reasoning restarts from that memory.",
+  "verified": false,
+  "notes": "Venue: the paper's own ACM reference block and footers give WWW '26 (Dubai, April 13-17 2026), DOI 10.1145/3774904.3792460; arXiv comment 'Accepted by WWW 2026'. Text read from arXiv v3 (5 Feb 2026). Memory here is within-task context management, not memory across tasks or sessions: nothing persists between questions. The ToolPO training code is not in the repository, so the RL side (fold reward, tool simulator) is from the paper only.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2510.21618v3 (PDF read 2026-09-30)",
+      "code": "https://github.com/RUC-NLPIR/DeepAgent/tree/7febc95a0c9f5068683aa335b322311591d1647b/",
+      "code_note": "Commit 7febc95 (2025-10-26) is the first code release, days after arXiv v1; the folding, memory prompts and tool search are unchanged at the current HEAD (2e25aba, 2026-04-13), which only adds an Exa search option. The repository holds inference and evaluation code only; ToolPO training and the tool simulator loop are not released."
+    },
+    "headline": [
+      "The 'memory' is a compressed restart point inside one task: nothing is kept across questions.",
+      "Folding is the agent's choice (a special token); the summary itself is written by a separate, untrained auxiliary LLM.",
+      "Each fold summarises the whole trace from the start, including text already folded, and replaces the previous memory."
+    ],
+    "units": [
+      {
+        "name": "Episodic memory",
+        "role": "high-level log of the task so far",
+        "made_by": "auxiliary LLM (Qwen2.5-32B-Instruct), prompted",
+        "fields": [
+          {
+            "name": "task_description",
+            "what": "summary of what the reasoning has been doing and its goals",
+            "kept_as": "summarized",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper App. C; code prompts_deepagent.py L414-L450",
+            "url": "https://github.com/RUC-NLPIR/DeepAgent/blob/7febc95a0c9f5068683aa335b322311591d1647b/src/prompts/prompts_deepagent.py#L414-L450"
+          },
+          {
+            "name": "key_events",
+            "what": "list of {step, description, outcome} for milestones and decisions",
+            "kept_as": "extracted",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper App. C; code prompts_deepagent.py L414-L450",
+            "url": "https://github.com/RUC-NLPIR/DeepAgent/blob/7febc95a0c9f5068683aa335b322311591d1647b/src/prompts/prompts_deepagent.py#L414-L450"
+          },
+          {
+            "name": "current_progress",
+            "what": "what is done and what remains",
+            "kept_as": "summarized",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper App. C",
+            "url": "https://arxiv.org/pdf/2510.21618"
+          }
+        ]
+      },
+      {
+        "name": "Working memory",
+        "role": "snapshot of the current state, for continuity across the fold",
+        "made_by": "auxiliary LLM, prompted to ignore completed history",
+        "fields": [
+          {
+            "name": "immediate_goal",
+            "what": "current sub-goal",
+            "kept_as": "summarized",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code prompts_deepagent.py L453-L487",
+            "url": "https://github.com/RUC-NLPIR/DeepAgent/blob/7febc95a0c9f5068683aa335b322311591d1647b/src/prompts/prompts_deepagent.py#L453-L487"
+          },
+          {
+            "name": "current_challenges",
+            "what": "obstacles met so far",
+            "kept_as": "summarized",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code prompts_deepagent.py L453-L487",
+            "url": "https://github.com/RUC-NLPIR/DeepAgent/blob/7febc95a0c9f5068683aa335b322311591d1647b/src/prompts/prompts_deepagent.py#L453-L487"
+          },
+          {
+            "name": "next_actions",
+            "what": "planned next steps, typed tool_call / planning / decision",
+            "kept_as": "rewritten",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code prompts_deepagent.py L453-L487",
+            "url": "https://github.com/RUC-NLPIR/DeepAgent/blob/7febc95a0c9f5068683aa335b322311591d1647b/src/prompts/prompts_deepagent.py#L453-L487"
+          }
+        ]
+      },
+      {
+        "name": "Tool memory",
+        "role": "experience with the tools used in this task",
+        "made_by": "auxiliary LLM, from the trace plus the list of tool calls and responses",
+        "fields": [
+          {
+            "name": "tools_used",
+            "what": "per tool: name, success rate, effective parameters, common errors, response pattern, experience",
+            "kept_as": "extracted",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code prompts_deepagent.py L490-L538; run_deep_agent.py L309-L318",
+            "url": "https://github.com/RUC-NLPIR/DeepAgent/blob/7febc95a0c9f5068683aa335b322311591d1647b/src/prompts/prompts_deepagent.py#L490-L538"
+          },
+          {
+            "name": "derived_rules",
+            "what": "if-then rules for choosing tools and parameters",
+            "kept_as": "rewritten",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper App. C",
+            "url": "https://arxiv.org/pdf/2510.21618"
+          }
+        ]
+      },
+      {
+        "name": "Reasoning trace",
+        "role": "the raw stream of thoughts, tool searches, calls and results",
+        "made_by": "main reasoning model and tools",
+        "fields": [
+          {
+            "name": "trace since the task began",
+            "what": "kept in the run log and re-summarised at every later fold, but removed from the model's prompt after a fold",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "code run_deep_agent.py L570-L590",
+            "url": "https://github.com/RUC-NLPIR/DeepAgent/blob/7febc95a0c9f5068683aa335b322311591d1647b/src/run_deep_agent.py#L570-L590"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Act",
+        "how": "the main model reasons and emits tool searches or tool calls; results over 5,000 characters are condensed by the auxiliary LLM, tool lists over 15,000 characters are filtered",
+        "src": "paper §3.3; code run_deep_agent.py L467, L517",
+        "url": "https://github.com/RUC-NLPIR/DeepAgent/blob/7febc95a0c9f5068683aa335b322311591d1647b/src/run_deep_agent.py#L517-L530"
+      },
+      {
+        "step": "Decide to fold",
+        "how": "the model emits <fold_thought>, e.g. after a sub-task or a failed path; the prompt suggests folding when history is long or tool calls keep failing",
+        "params": {
+          "max folds": "3 (code default)"
+        },
+        "src": "paper §3.4; code prompts_deepagent.py L29-L31, run_deep_agent.py L559-L569",
+        "url": "https://github.com/RUC-NLPIR/DeepAgent/blob/7febc95a0c9f5068683aa335b322311591d1647b/src/run_deep_agent.py#L559-L569"
+      },
+      {
+        "step": "Compress",
+        "how": "three prompted calls to the auxiliary LLM run in parallel on the whole trace (split on blank lines and numbered as steps); the tool call also gets the chronological list of tool calls and responses",
+        "out": "episodic, working and tool memory as JSON text",
+        "src": "paper §3.4, Eq. 4; code run_deep_agent.py L292-L384",
+        "url": "https://github.com/RUC-NLPIR/DeepAgent/blob/7febc95a0c9f5068683aa335b322311591d1647b/src/run_deep_agent.py#L292-L384"
+      },
+      {
+        "step": "Restart",
+        "how": "the prompt is rebuilt from the original instructions with the three blocks inserted before the question; the old trace is dropped from the prompt",
+        "src": "code run_deep_agent.py L580-L590",
+        "url": "https://github.com/RUC-NLPIR/DeepAgent/blob/7febc95a0c9f5068683aa335b322311591d1647b/src/run_deep_agent.py#L580-L590"
+      }
+    ],
+    "read": [
+      {
+        "step": "Read memory",
+        "round": 0,
+        "input": "none (no query)",
+        "scores": "nothing is scored",
+        "how": "the model reads all three memory blocks in its prompt",
+        "src": "code run_deep_agent.py L580-L581",
+        "url": "https://github.com/RUC-NLPIR/DeepAgent/blob/7febc95a0c9f5068683aa335b322311591d1647b/src/run_deep_agent.py#L580-L581"
+      },
+      {
+        "step": "Tool search (not memory)",
+        "round": 0,
+        "input": "the model's <tool_search> query",
+        "scores": "tool documentation (OpenAI function format)",
+        "how": "dense cosine similarity with bge-large-en-v1.5",
+        "params": {
+          "top-k": "10 (code default)"
+        },
+        "src": "paper §3.3, App. B; code tool_search.py L64-L89, run_deep_agent.py L102",
+        "url": "https://github.com/RUC-NLPIR/DeepAgent/blob/7febc95a0c9f5068683aa335b322311591d1647b/src/tools/tool_search.py#L64-L89"
+      }
+    ],
+    "answer_context": {
+      "sees": "original instructions and question plus the latest folded memory, then whatever the model generates after the fold",
+      "format": "\"Memory of previous folded thoughts:\\n\\nEpisode Memory:\\n{json}\\n\\nWorking Memory:\\n{json}\\n\\nTool Memory:\\n{json}\" inserted before \"Now, begin your reasoning for ...\"",
+      "excludes": [
+        "the reasoning trace before the fold",
+        "earlier folded memories",
+        "tool results except as summarised"
+      ],
+      "includes": [
+        "episodic, working and tool memory from the latest fold",
+        "the original task instructions and tool list"
+      ],
+      "src": "code run_deep_agent.py L580-L581",
+      "url": "https://github.com/RUC-NLPIR/DeepAgent/blob/7febc95a0c9f5068683aa335b322311591d1647b/src/run_deep_agent.py#L580-L581"
+    },
+    "compression": [
+      {
+        "what": "folded memory vs the trace it replaces",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported. The paper gives no token counts for traces or folded memories.",
+        "src": "paper §3.4, §5",
+        "url": "https://arxiv.org/pdf/2510.21618"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Average over ToolBench, ToolHop, WebShop, GAIA, full system",
+        "value": "48.1",
+        "src": "paper Table 3"
+      },
+      {
+        "label": "Same, without memory folding",
+        "value": "44.2",
+        "src": "paper Table 3"
+      },
+      {
+        "label": "GAIA with / without folding",
+        "value": "53.3 / 44.7",
+        "src": "paper Table 3"
+      },
+      {
+        "label": "Without ToolPO training (Base)",
+        "value": "44.3",
+        "src": "paper Table 3"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Tool list given to the memory writer",
+        "paper": "not discussed",
+        "code": "run_thought_folding sets available_tools to an empty string before using it, so the tool list never reaches the three memory prompts",
+        "src": "run_deep_agent.py L319-L324",
+        "url": "https://github.com/RUC-NLPIR/DeepAgent/blob/7febc95a0c9f5068683aa335b322311591d1647b/src/run_deep_agent.py#L319-L324"
+      },
+      {
+        "topic": "What a later fold summarises",
+        "paper": "the preceding interaction history s_t",
+        "code": "the whole output since the task began, including text already folded; the earlier memory is not an input",
+        "src": "run_deep_agent.py L305, L576",
+        "url": "https://github.com/RUC-NLPIR/DeepAgent/blob/7febc95a0c9f5068683aa335b322311591d1647b/src/run_deep_agent.py#L570-L581"
+      },
+      {
+        "topic": "Limits",
+        "paper": "maximum 50 actions; fold count not stated",
+        "code": "3 folds per task; also a 40,000 whitespace-token cap on the prompt",
+        "src": "run_deep_agent.py L100, L400",
+        "url": "https://github.com/RUC-NLPIR/DeepAgent/blob/7febc95a0c9f5068683aa335b322311591d1647b/src/run_deep_agent.py#L398-L402"
+      },
+      {
+        "topic": "--enable_thought_folding flag",
+        "paper": "ablation removes folding",
+        "code": "the flag is parsed but never read; <fold_thought> is always a stop token and always handled",
+        "src": "run_deep_agent.py L98, L559",
+        "url": "https://github.com/RUC-NLPIR/DeepAgent/blob/7febc95a0c9f5068683aa335b322311591d1647b/src/run_deep_agent.py#L98"
+      }
+    ],
+    "open_questions": [
+      "The ablation removes folding from a model trained with folding; it does not show how much of the gain comes from the three-part schema versus a plain summary.",
+      "No numbers on how often the agent folds, or how long the trace and the memory are."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 240",
+        "body": "<text class=\"fig-t\" x=\"68\" y=\"16\" text-anchor=\"middle\">Reasoning trace</text><rect class=\"gi-ev\" x=\"8\" y=\"26\" width=\"120\" height=\"20\" rx=\"6\"/><text class=\"fig-s\" x=\"16\" y=\"40\" text-anchor=\"start\">think</text><rect class=\"gi-ev\" x=\"8\" y=\"50\" width=\"120\" height=\"20\" rx=\"6\"/><text class=\"fig-s\" x=\"16\" y=\"64\" text-anchor=\"start\">tool search: top-10</text><rect class=\"gi-ev\" x=\"8\" y=\"74\" width=\"120\" height=\"20\" rx=\"6\"/><text class=\"fig-s\" x=\"16\" y=\"88\" text-anchor=\"start\">tool call + result</text><rect class=\"gi-ev\" x=\"8\" y=\"98\" width=\"120\" height=\"20\" rx=\"6\"/><text class=\"fig-s\" x=\"16\" y=\"112\" text-anchor=\"start\">think</text><rect class=\"gi-ev\" x=\"8\" y=\"122\" width=\"120\" height=\"20\" rx=\"6\"/><text class=\"fig-s\" x=\"16\" y=\"136\" text-anchor=\"start\">tool call + result</text><rect class=\"gi-hi\" x=\"8\" y=\"148\" width=\"120\" height=\"24\" rx=\"6\"/><text class=\"fig-t\" x=\"68\" y=\"164\" text-anchor=\"middle\">&lt;fold_thought&gt;</text><text class=\"fig-s\" x=\"68\" y=\"190\" text-anchor=\"middle\">emitted by the agent</text><text class=\"fig-s\" x=\"68\" y=\"203\" text-anchor=\"middle\">when it chooses</text><path class=\"gi-a\" d=\"M132 108 L165 108\"/><polygon class=\"gi-ah\" points=\"172,108 165,104 165,112\"/><rect class=\"gi-llm\" x=\"172\" y=\"80\" width=\"88\" height=\"56\" rx=\"8\"/><text class=\"fig-t\" x=\"216\" y=\"100\" text-anchor=\"middle\">Auxiliary LLM</text><text class=\"fig-s\" x=\"216\" y=\"114\" text-anchor=\"middle\">Qwen2.5-32B</text><text class=\"fig-s\" x=\"216\" y=\"127\" text-anchor=\"middle\">reads full trace</text><text class=\"fig-s\" x=\"216\" y=\"152\" text-anchor=\"middle\">3 parallel calls</text><path class=\"gi-a\" d=\"M260 108 L272 108\"/><path class=\"gi-a\" d=\"M272 48 L272 168\"/><path class=\"gi-a\" d=\"M272 48 L283 48\"/><polygon class=\"gi-ah\" points=\"290,48 283,44 283,52\"/><path class=\"gi-a\" d=\"M272 108 L283 108\"/><polygon class=\"gi-ah\" points=\"290,108 283,104 283,112\"/><path class=\"gi-a\" d=\"M272 168 L283 168\"/><polygon class=\"gi-ah\" points=\"290,168 283,164 283,172\"/><rect class=\"gi-f\" x=\"290\" y=\"23\" width=\"160\" height=\"50\" rx=\"6\"/><text class=\"fig-t\" x=\"298\" y=\"38\" text-anchor=\"start\">Episodic memory</text><text class=\"fig-s\" x=\"444\" y=\"38\" text-anchor=\"end\">JSON</text><text class=\"fig-s\" x=\"298\" y=\"52\" text-anchor=\"start\">task, key events + outcomes</text><text class=\"fig-s\" x=\"298\" y=\"65\" text-anchor=\"start\">overall progress</text><rect class=\"gi-f\" x=\"290\" y=\"83\" width=\"160\" height=\"50\" rx=\"6\"/><text class=\"fig-t\" x=\"298\" y=\"98\" text-anchor=\"start\">Working memory</text><text class=\"fig-s\" x=\"444\" y=\"98\" text-anchor=\"end\">JSON</text><text class=\"fig-s\" x=\"298\" y=\"112\" text-anchor=\"start\">current sub-goal, obstacles</text><text class=\"fig-s\" x=\"298\" y=\"125\" text-anchor=\"start\">planned next actions</text><rect class=\"gi-f\" x=\"290\" y=\"143\" width=\"160\" height=\"50\" rx=\"6\"/><text class=\"fig-t\" x=\"298\" y=\"158\" text-anchor=\"start\">Tool memory</text><text class=\"fig-s\" x=\"444\" y=\"158\" text-anchor=\"end\">JSON</text><text class=\"fig-s\" x=\"298\" y=\"172\" text-anchor=\"start\">tools used, success rate</text><text class=\"fig-s\" x=\"298\" y=\"185\" text-anchor=\"start\">common errors, derived rules</text><path class=\"gi-a\" d=\"M450 108 L463 108\"/><polygon class=\"gi-ah\" points=\"470,108 463,104 463,112\"/><rect class=\"gi-ev\" x=\"470\" y=\"72\" width=\"84\" height=\"72\" rx=\"8\"/><text class=\"fig-t\" x=\"512\" y=\"94\" text-anchor=\"middle\">New prompt</text><text class=\"fig-s\" x=\"512\" y=\"110\" text-anchor=\"middle\">task + memory</text><text class=\"fig-s\" x=\"512\" y=\"124\" text-anchor=\"middle\">trace dropped</text><text class=\"fig-s\" x=\"280\" y=\"220\" text-anchor=\"middle\">A later fold summarises the whole trace again (not the old memory) and replaces</text><text class=\"fig-s\" x=\"280\" y=\"233\" text-anchor=\"middle\">the earlier memory; at most 3 folds per task (code default).</text>",
+        "text": [
+          "When the agent emits a fold token, an auxiliary LLM reads the whole trace and writes episodic, working and tool memory as three JSON blocks in parallel.",
+          "The blocks replace the trace in the prompt; a later fold rebuilds them from the full trace again."
+        ],
+        "src": "paper §3.4, App. C; code run_deep_agent.py L292-L384, L559-L590",
+        "url": "https://github.com/RUC-NLPIR/DeepAgent/blob/7febc95a0c9f5068683aa335b322311591d1647b/src/run_deep_agent.py#L292-L384"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 250",
+        "body": "<rect class=\"gi-f\" x=\"6\" y=\"35\" width=\"130\" height=\"70\" rx=\"8\"/><text class=\"fig-t\" x=\"71\" y=\"52\" text-anchor=\"middle\">Prompt</text><text class=\"fig-s\" x=\"71\" y=\"67\" text-anchor=\"middle\">instructions + tools</text><text class=\"fig-s\" x=\"71\" y=\"80\" text-anchor=\"middle\">folded memory (3)</text><text class=\"fig-s\" x=\"71\" y=\"93\" text-anchor=\"middle\">question</text><path class=\"gi-a\" d=\"M136 70 L149 70\"/><polygon class=\"gi-ah\" points=\"156,70 149,66 149,74\"/><rect class=\"gi-llm\" x=\"156\" y=\"45\" width=\"90\" height=\"50\" rx=\"8\"/><text class=\"fig-t\" x=\"201\" y=\"67\" text-anchor=\"middle\">Main LRM</text><text class=\"fig-s\" x=\"201\" y=\"81\" text-anchor=\"middle\">QwQ-32B, RL</text><path class=\"gi-a\" d=\"M246 70 L259 70\"/><polygon class=\"gi-ah\" points=\"266,70 259,66 259,74\"/><polygon class=\"gi-llm\" points=\"266,70 310,42 354,70 310,98\"/><text class=\"fig-t\" x=\"310\" y=\"74\" text-anchor=\"middle\">Action?</text><path class=\"gi-a\" d=\"M354 70 L372 70\"/><path class=\"gi-a\" d=\"M372 45 L372 120\"/><path class=\"gi-a\" d=\"M372 45 L383 45\"/><polygon class=\"gi-ah\" points=\"390,45 383,41 383,49\"/><path class=\"gi-a\" d=\"M372 120 L383 120\"/><polygon class=\"gi-ah\" points=\"390,120 383,116 383,124\"/><rect class=\"gi-v fig-soft\" x=\"390\" y=\"22\" width=\"164\" height=\"46\" rx=\"8\"/><text class=\"fig-t\" x=\"472\" y=\"38\" text-anchor=\"middle\">Search or call a tool</text><text class=\"fig-s\" x=\"472\" y=\"51\" text-anchor=\"middle\">search: bge, top-10 tools</text><text class=\"fig-s\" x=\"472\" y=\"63\" text-anchor=\"middle\">long outputs condensed</text><rect class=\"gi-hi\" x=\"390\" y=\"100\" width=\"164\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"472\" y=\"117\" text-anchor=\"middle\">Fold</text><text class=\"fig-s\" x=\"472\" y=\"131\" text-anchor=\"middle\">memory from the aux LLM</text><path class=\"gi-a d\" d=\"M472 22 L472 8 L201 8 L201 38\"/><polygon class=\"gi-ah\" points=\"201,45 197,38 205,38\"/><text class=\"fig-s\" x=\"300\" y=\"24\" text-anchor=\"middle\">result appended to trace</text><path class=\"gi-a\" d=\"M310 98 L310 158\"/><polygon class=\"gi-ah\" points=\"310,165 306,158 314,158\"/><rect class=\"gi-ev\" x=\"250\" y=\"165\" width=\"120\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"310\" y=\"182\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"310\" y=\"196\" text-anchor=\"middle\">or stop at 50 actions</text><path class=\"gi-a d\" d=\"M472 140 L472 222 L30 222 L30 112\"/><polygon class=\"gi-ah\" points=\"30,105 26,112 34,112\"/><text class=\"fig-s\" x=\"270\" y=\"238\" text-anchor=\"middle\">fold: restart from the original prompt with the new memory (at most 3 times)</text><text class=\"fig-s\" x=\"42\" y=\"128\" text-anchor=\"start\">memory is not searched:</text><text class=\"fig-s\" x=\"42\" y=\"141\" text-anchor=\"start\">it is read in full</text>",
+        "text": [
+          "There is no memory search: the folded memory sits in full in the prompt, and the model picks its next action.",
+          "Tool search (top-10 tool docs by bge) and tool calls append results to the trace; a fold restarts from the prompt with fresh memory."
+        ],
+        "src": "paper §3.3-3.4, App. B; code run_deep_agent.py L440-L612, tool_search.py L64-L89",
+        "url": "https://github.com/RUC-NLPIR/DeepAgent/blob/7febc95a0c9f5068683aa335b322311591d1647b/src/run_deep_agent.py#L440-L612"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Memory blocks per fold",
+        "value": "3, written in parallel",
+        "src": "paper §3.4",
+        "section": "construction"
+      },
+      {
+        "label": "Folds per task",
+        "value": "at most 3 (code default)",
+        "src": "code run_deep_agent.py L100",
+        "section": "construction"
+      },
+      {
+        "label": "Tool results condensed when",
+        "value": "over 5,000 characters",
+        "src": "code run_deep_agent.py L517",
+        "section": "method"
+      },
+      {
+        "label": "Tools returned per search",
+        "value": "top-10, bge-large-en-v1.5",
+        "src": "paper App. B; code L102",
+        "section": "method"
+      },
+      {
+        "label": "Actions per task",
+        "value": "at most 50",
+        "src": "paper App. B",
+        "section": "method"
+      },
+      {
+        "label": "Folding ablation (avg of 4)",
+        "value": "48.1 with, 44.2 without",
+        "src": "paper Table 3",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Reasons, searches tools, calls tools, decides to fold",
+        "model": "QwQ-32B trained with ToolPO",
+        "kind": "llm",
+        "src": "paper §4.3"
+      },
+      {
+        "role": "Writes the folded memory; condenses long tool output",
+        "model": "Qwen2.5-32B-Instruct (auxiliary)",
+        "kind": "llm",
+        "src": "paper App. B"
+      },
+      {
+        "role": "Tool search",
+        "model": "bge-large-en-v1.5, cosine top-10",
+        "kind": "retriever",
+        "src": "paper App. B; code tool_search.py L64-L89",
+        "url": "https://github.com/RUC-NLPIR/DeepAgent/blob/7febc95a0c9f5068683aa335b322311591d1647b/src/tools/tool_search.py#L64-L89"
+      },
+      {
+        "role": "Fold limit and prompt reset",
+        "model": "code rule (3 folds)",
+        "kind": "rule",
+        "src": "code run_deep_agent.py L559-L590",
+        "url": "https://github.com/RUC-NLPIR/DeepAgent/blob/7febc95a0c9f5068683aa335b322311591d1647b/src/run_deep_agent.py#L559-L590"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "ToolBench",
+        "ToolHop",
+        "WebShop",
+        "GAIA",
+        "Avg."
+      ],
+      "rows": [
+        [
+          "DeepAgent-32B-RL",
+          "64.0",
+          "40.6",
+          "34.4",
+          "53.3",
+          "48.1"
+        ],
+        [
+          "without training (Base)",
+          "60.0",
+          "38.4",
+          "32.0",
+          "46.7",
+          "44.3"
+        ],
+        [
+          "without memory folding",
+          "63.0",
+          "36.6",
+          "32.4",
+          "44.7",
+          "44.2"
+        ],
+        [
+          "without tool simulation",
+          "62.0",
+          "35.2",
+          "33.6",
+          "48.5",
+          "44.8"
+        ],
+        [
+          "without tool-call advantage attribution",
+          "62.0",
+          "39.6",
+          "33.2",
+          "49.5",
+          "46.1"
+        ]
+      ],
+      "src": "paper Table 3 (open-set ToolBench and ToolHop)"
+    },
+    "discussion": {
+      "takeaway": "Letting a reasoning model search for tools on demand and fold its own history into structured memory beats fixed ReAct-style workflows, most clearly when tools must be found in large open sets.",
+      "claims": [
+        {
+          "claim": "End-to-end reasoning with on-demand tool discovery beats workflow agents.",
+          "evidence": "Open-set ToolBench 64.0 and ToolHop 40.6 vs best baselines 54.0 and 29.0 (Table 1, §5.1)."
+        },
+        {
+          "claim": "Autonomous tool retrieval during reasoning is better than retrieving tools up front.",
+          "evidence": "Average 52.6 vs 28.5 for the best workflow method (Table 4, §5.5)."
+        },
+        {
+          "claim": "Memory folding matters for long-horizon tasks.",
+          "evidence": "Without folding the 4-task average drops 48.1 to 44.2 and GAIA 53.3 to 44.7 (Table 3, §5.4)."
+        },
+        {
+          "claim": "ToolPO improves over the untrained agent and over GRPO.",
+          "evidence": "GAIA 46.7 to 53.3, ALFWorld 88.1 to 91.8 (Table 2); higher, steadier reward curves than GRPO (Fig. 4)."
+        }
+      ],
+      "limits": [],
+      "limits_src": "The paper has no limitations section.",
+      "reading": [
+        "Memory here is per task and is rebuilt at each fold; nothing carries over between questions, so it is context compression rather than long-term memory.",
+        "The folding ablation is on the RL model and moves GAIA most (-8.6) while ToolBench moves 1 point; the paper does not report fold frequency or memory size, so how often folding fires is unknown.",
+        "In the code the tool list meant for the memory prompts is overwritten with an empty string, and every later fold re-summarises the full trace from the start.",
+        "The auxiliary LLM also condenses long tool outputs for all baselines (App. B), so the comparison with ReAct differs mainly in the reasoning model's control loop, folding and tool search.",
+        "Baseline numbers carry no statement of who ran them; OpenAI Deep Research and AgentLM rows have gaps that suggest reported numbers."
+      ]
+    },
+    "abstract": {
+      "text": "DeepAgent is a single-stream reasoning agent: a large reasoning model thinks, searches a tool index when it needs a tool, and calls tools without a fixed workflow. For long tasks it can fold its history: an auxiliary LLM compresses the trace into episodic, working and tool memory in JSON, and reasoning restarts from that. The model is trained with ToolPO, an RL method that uses LLM-simulated APIs and gives extra credit to the tokens of correct tool calls. Across ToolBench, API-Bank, RestBench, ToolHop, ALFWorld, WebShop, GAIA and HLE it outperforms workflow-based baselines, most in open-set tool retrieval.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2510.21618"
+    },
+    "sections": {
+      "Memory architecture": "§3.4, App. C",
+      "Results": "§5.1-5.2",
+      "Ablation": "§5.4",
+      "Discussion": "§6 (no limitations section)",
+      "Details": "§3.3, §4.3, App. B"
+    }
+  }
+}

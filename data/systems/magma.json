@@ -1,0 +1,588 @@
+{
+  "id": "magma",
+  "name": "MAGMA",
+  "paper": {
+    "title": "MAGMA: A Multi-Graph based Agentic Memory Architecture for AI Agents",
+    "arxiv": "2601.03236",
+    "url": "https://arxiv.org/abs/2601.03236",
+    "venue": "ACL 2026",
+    "venue_short": "ACL",
+    "track": "main",
+    "year": 2026,
+    "code": "https://github.com/FredJiang0324/MAGMA"
+  },
+  "design": {
+    "construction": {
+      "unit": "event node: one dialogue turn (episode grouping optional, off by default)",
+      "kept_as": "verbatim turn + LLM summary, facts, relations, activities, entities and dates",
+      "processing": "two LLM calls per turn extract a summary, entities, facts, relations and dates (the prompt also sees the neighbouring turns); relative dates resolved by rules",
+      "trigger": "every-turn",
+      "writer": "gpt-4o-mini"
+    },
+    "organization": {
+      "structure": "multigraph over event nodes: temporal chain, semantic, shared-entity and reply/question links, plus session nodes",
+      "stores": "graph store + vector index (FAISS) + keyword index",
+      "index": "all-MiniLM-L6-v2 embedding of the LLM summary + keywords; keyword index over extracted terms"
+    },
+    "management": {
+      "operations": "paper: fast path adds node and temporal edge, an async LLM pass infers causal and entity edges; code: all links built by rules in one batch after ingestion",
+      "conflicts": null,
+      "forgetting": null,
+      "timing": "both"
+    },
+    "retrieval": {
+      "query": "question; rule-based type (9 kinds) sets weights and depth",
+      "candidates": "vector top 20 + keyword top 20 + full scan top 25, fused by RRF (k 60); BFS from the top 15 seeds over graph edges (≤ 800 nodes)",
+      "selection": "weighted rule rerank (keyword, entity, time, phrase, similarity); keep 15, or 30 when the gold category is multi-hop",
+      "budget": "15 or 30 nodes; no token budget in code"
+    },
+    "use": {
+      "context": "numbered list of nodes: date, speaker, verbatim turn and up to 2 facts, relations and activities each, plus key sentences",
+      "reasoning": "one answer call with a category-specific prompt; code default runs it 3 times and keeps the answer the judge scores highest against the gold answer"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "fixed-rule",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "graph",
+    "index": "vector and lexical",
+    "management": "append-only",
+    "candidates": "graph walk",
+    "decides": "top-k rule",
+    "note": "Anchors are found by hybrid vector + keyword search, but the candidate set comes from walking graph edges out of them; a weighted rule score picks the final nodes."
+  },
+  "tags": {
+    "fidelity": "verbatim+derived",
+    "structure": [
+      "graph"
+    ],
+    "write_time": [
+      "extract",
+      "link"
+    ],
+    "selection": [
+      "hybrid",
+      "graph-expansion"
+    ],
+    "memory_type": [
+      "episodic",
+      "semantic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "conversation"
+    ]
+  },
+  "stages": {
+    "ingestion": "Each dialogue turn becomes one event node timestamped from its session date (episode segmentation exists but is off by default).",
+    "construction": "Two LLM calls per turn extract a summary, entities, topic, facts, relations, activities and dates; the verbatim turn is kept alongside. The summary plus keywords is embedded with all-MiniLM-L6-v2.",
+    "organization": "Nodes are linked into a multigraph: temporal chain and near-in-time links, semantic neighbours (top 3, similarity > 0.5; ±3 turns), shared-entity links, reply and question-to-next-turn links, and session nodes built from the dataset's session summaries.",
+    "update": "The paper describes an asynchronous LLM consolidation that adds causal and entity edges; in the released code it is switched off and links are built by rules in one batch after ingestion.",
+    "retrieval": "Vector, keyword and full-scan lists are fused by RRF (k 60); a similarity-thresholded BFS expands from the top 15 seeds, and a weighted rule score keeps 15 nodes (30 for multi-hop).",
+    "answer": "The answer model reads a numbered list of the kept turns with dates, speakers and extracted facts, under a prompt chosen by question category.",
+    "learning": ""
+  },
+  "summary": "Conversation memory that stores each turn as an event node linked by temporal, semantic, causal and entity edges, and retrieves by fusing vector and keyword anchors and then walking the graph with query-type weights.",
+  "verified": false,
+  "notes": "Venue: ACL 2026 main, long paper (ACL Anthology 2026.acl-long.1709, page checked 2026-09-30; arXiv comment 'ACL 2026 Main'). Code: the paper links github.com/FredJiang0324/MAGMA; the given hint MAMGA redirects to the same repository. Pinned at 467cb70 (2026-07-10); code files unchanged since the initial commit f161094 (2026-01-05). DESIGN: §3.2-3.5, App. B-D; figures follow the code, which departs from the paper in several places (see paper_vs_code). Results: Tables 1, 2, 9 in data/results/magma-2601.03236.json.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2601.03236v2 (PDF read 2026-09-30)",
+      "code": "https://github.com/FredJiang0324/MAGMA/tree/467cb70b67ac337b22fdb42194d37c04ad701b62/",
+      "code_note": "HEAD of main; all code files date from the initial commit (2026-01-05), one day before arXiv v1, so this is taken as the evaluation code. LoCoMo entry point: test_fixed_memory.py; LongMemEval: test_longmemeval_chunked.py."
+    },
+    "sections": {
+      "Memory architecture": "§3, Figs. 2-3",
+      "Results": "§4.2-4.4, Tables 1-3",
+      "Ablation": "§4.5, Tables 4-5",
+      "Discussion": "§5, §6 Limitations",
+      "Details": "§3.5, App. B-D, F"
+    },
+    "abstract": {
+      "text": "MAGMA stores an agent's conversation history as event nodes connected in four separate graphs: semantic, temporal, causal and entity. At question time it classifies the query, finds entry nodes by fusing vector, keyword and time signals, and walks the graphs with weights that depend on the query type. The retrieved nodes are ordered and serialized into a compact context for the answer model. The authors report better LoCoMo and LongMemEval scores than A-MEM, MemoryOS and Nemori, with lower query latency.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2601.03236"
+    },
+    "headline": [
+      "In the released code the answer model reads the verbatim turns plus LLM-extracted facts; the paper's LLM causal edges, entity nodes and intent-weighted beam search are not on the executed path.",
+      "The default LoCoMo script uses gold labels at answer time: the category picks the prompt and node count, and best-of-3 keeps the answer the judge scores highest against the gold answer.",
+      "Scores come from the authors' own graded judge (0-1 rubric, gpt-4o-mini) over all 1,986 LoCoMo questions, adversarial included."
+    ],
+    "units": [
+      {
+        "name": "Event node",
+        "role": "one dialogue turn",
+        "made_by": "two gpt-4o-mini calls per turn + date rules",
+        "fields": [
+          {
+            "name": "original text",
+            "what": "the raw turn",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code answer_formatter.py L683-L716; memory_builder.py L287-L302",
+            "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/answer_formatter.py#L683-L716"
+          },
+          {
+            "name": "narrative",
+            "what": "LLM summary of the extracted record; embedded with keywords",
+            "kept_as": "summarized",
+            "used_for": [
+              "index",
+              "rerank"
+            ],
+            "src": "code trg_memory.py L170-L199",
+            "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/trg_memory.py#L170-L199"
+          },
+          {
+            "name": "facts, relations, activities",
+            "what": "LLM-extracted lists; up to 2 of each shown to the answer model",
+            "kept_as": "extracted",
+            "used_for": [
+              "answer",
+              "rerank"
+            ],
+            "src": "code memory_builder.py L160-L221; answer_formatter.py L718-L753",
+            "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/memory_builder.py#L160-L221"
+          },
+          {
+            "name": "entities, topic, keywords",
+            "what": "LLM-extracted; build shared-entity links and the keyword index",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "rerank"
+            ],
+            "src": "code memory_builder.py L722-L763; keyword_enrichment.py L118-L165",
+            "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/memory_builder.py#L722-L763"
+          },
+          {
+            "name": "dates",
+            "what": "session time + turn offset; mentioned dates resolved to ISO by rules",
+            "kept_as": "derived",
+            "used_for": [
+              "answer",
+              "rerank"
+            ],
+            "src": "code memory_builder.py L277-L302",
+            "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/memory_builder.py#L277-L302"
+          }
+        ]
+      },
+      {
+        "name": "Session node",
+        "role": "one LoCoMo session",
+        "made_by": "copied from the dataset's own session_summary field",
+        "fields": [
+          {
+            "name": "session summary",
+            "what": "LoCoMo-provided summary, embedded; boosts events of matching sessions",
+            "kept_as": "summarized",
+            "used_for": [
+              "rerank"
+            ],
+            "src": "code memory_builder.py L360-L408; query_engine.py L769-L790",
+            "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/memory_builder.py#L360-L408"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Extract",
+        "how": "LLM reads the turn with the previous and next turn (100 chars each) and returns JSON: entities, topic, dates, summary, facts, relations, activities",
+        "src": "code memory_builder.py L147-L221",
+        "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/memory_builder.py#L147-L221"
+      },
+      {
+        "step": "Summarize",
+        "how": "a second LLM call turns that record into a short narrative, which is embedded (all-MiniLM-L6-v2)",
+        "src": "code trg_memory.py L170-L199, L309-L366",
+        "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/trg_memory.py#L309-L366"
+      },
+      {
+        "step": "Link",
+        "how": "after all turns: next-turn and ≤ 24 h links; top-3 similar (> 0.5); ±3-turn neighbours; shared entity; reply-to; question → next turn; session membership",
+        "params": {
+          "sim": "> 0.5",
+          "window": "±3 turns"
+        },
+        "src": "code memory_builder.py L539-L906",
+        "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/memory_builder.py#L539-L906"
+      },
+      {
+        "step": "Consolidate (paper)",
+        "how": "async LLM pass infers causal and entity edges from a 2-hop neighbourhood",
+        "note": "disabled in code: enable_async=False; slow_path_consolidation never called",
+        "src": "paper §3.4, Alg. 3; code memory_builder.py L62",
+        "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/memory_builder.py#L58-L64"
+      }
+    ],
+    "read": [
+      {
+        "step": "Classify",
+        "round": 1,
+        "input": "question",
+        "how": "keyword rules pick one of 9 types (multi-hop, temporal, entity, causal, ...), which set depths, thresholds and weights",
+        "src": "code query_engine.py L247-L469",
+        "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/query_engine.py#L247-L469"
+      },
+      {
+        "step": "Anchors",
+        "round": 1,
+        "input": "question",
+        "scores": "question vs narrative + keywords (vector); extracted terms (keyword); all nodes (scan)",
+        "how": "three ranked lists fused by RRF",
+        "params": {
+          "vector": "20 (30 multi-hop, 15 temporal)",
+          "keyword": "20",
+          "scan": "25",
+          "RRF k": "60"
+        },
+        "src": "code query_engine.py L729-L760",
+        "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/query_engine.py#L729-L760"
+      },
+      {
+        "step": "Walk",
+        "round": 1,
+        "how": "BFS from the top 15 seeds (30 multi-hop) over all edge types; stop on similarity threshold or a 15% relative drop",
+        "params": {
+          "depth": "4-12 by type",
+          "max nodes": "800",
+          "drop": "0.15"
+        },
+        "src": "code query_engine.py L792-L813, L1099-L1195",
+        "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/query_engine.py#L1099-L1195"
+      },
+      {
+        "step": "Rerank",
+        "round": 1,
+        "how": "sum of keyword, entity, time, phrase and similarity scores with per-type weights, plus person, session and dialogue-id boosts",
+        "src": "code query_engine.py L1282-L1630",
+        "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/query_engine.py#L1282-L1630"
+      },
+      {
+        "step": "Keep",
+        "round": 1,
+        "how": "top 15 nodes, 30 when the gold LoCoMo category is multi-hop",
+        "params": {
+          "K": "15 / 30"
+        },
+        "src": "code test_harness.py L304-L307; query_engine.py L845-L850",
+        "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/test_harness.py#L304-L307"
+      }
+    ],
+    "answer_context": {
+      "sees": "15 turns (30 for multi-hop), ranked by relevance",
+      "format": "numbered lines \"i. [date] [Speaker: X] original turn • fact …\", temporal questions add resolved event dates, closing \"=== Key Information ===\" block of up to 5 keyword sentences",
+      "excludes": [
+        "LLM narrative summaries",
+        "session summaries as text",
+        "<t:τ> … <ref:id> tags described in the paper"
+      ],
+      "note": "The prompt block is chosen by the gold LoCoMo category (answer_formatter.py L531-L681); best-of-3 selection scores candidates against the gold answer (test_harness.py L94-L132).",
+      "src": "code answer_formatter.py L821-L1031",
+      "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/answer_formatter.py#L821-L1031"
+    },
+    "compression": [
+      {
+        "what": "tokens per query vs one LoCoMo conversation",
+        "kept": 3.37,
+        "of": 9,
+        "unit": "k tokens",
+        "basis": "Table 3 average tokens per query (3.37k) against the ~9K-token LoCoMo conversations stated in §4.1; the paper does not say whether the 3.37k includes the prompt template and answer.",
+        "src": "paper Table 3, §4.1",
+        "url": "https://arxiv.org/pdf/2601.03236"
+      },
+      {
+        "what": "tokens per query vs one LongMemEval history",
+        "kept": 4.2,
+        "of": 101,
+        "unit": "k tokens",
+        "basis": "Table 2 header: MAGMA 0.7-4.2K tokens per query (upper end used) vs 101K for full context.",
+        "src": "paper Table 2",
+        "url": "https://arxiv.org/pdf/2601.03236"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "LoCoMo judge, overall",
+        "value": "0.700",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "LongMemEval average",
+        "value": "61.2%",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "Build time / tokens per query / latency",
+        "value": "0.39 h / 3.37k / 1.47 s",
+        "src": "paper Table 3"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Traversal",
+        "paper": "heuristic beam search scored by exp(λ1·intent edge weight + λ2·similarity) with decay γ",
+        "code": "_probabilistic_beam_search is never called; a similarity-thresholded BFS (≤ 800 nodes, depth 4-12) is used",
+        "src": "query_engine.py L1002-L1195",
+        "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/query_engine.py#L1002-L1195"
+      },
+      {
+        "topic": "Intent",
+        "paper": "WHY / WHEN / ENTITY classifier steers edge weights",
+        "code": "detect_query_intent is unused; 9 keyword-rule types set BFS depth and rerank weights",
+        "src": "query_engine.py L225-L469",
+        "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/query_engine.py#L225-L469"
+      },
+      {
+        "topic": "Causal and entity edges",
+        "paper": "inferred by an async LLM over each new node's 2-hop neighbourhood; edges to abstract entity nodes",
+        "code": "async off (enable_async=False); causal = reply-to and question → next turn rules; entity = links between nodes sharing a name, no entity nodes",
+        "src": "memory_builder.py L62, L670-L847",
+        "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/memory_builder.py#L670-L847"
+      },
+      {
+        "topic": "Context format",
+        "paper": "time-sorted (WHEN) or causally sorted (WHY) nodes as <t:τ> content <ref:id>, salience-based token budget",
+        "code": "relevance-ranked numbered list; no tags, sorting by time or cause, or token budget",
+        "src": "answer_formatter.py L821-L1031",
+        "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/answer_formatter.py#L821-L1031"
+      },
+      {
+        "topic": "Oracle labels",
+        "paper": "dynamic instruction chosen by the router, 'no oracle labels' (App. C.2)",
+        "code": "prompt, node count and adversarial post-filter keyed on the gold category; best-of-3 picked by judge against the gold answer (defaults)",
+        "src": "answer_formatter.py L531-L681; test_harness.py L94-L132, L304-L311; test_fixed_memory.py L364-L368",
+        "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/test_harness.py#L94-L132"
+      },
+      {
+        "topic": "LongMemEval scoring",
+        "paper": "same LLM-as-a-judge as LoCoMo (App. D)",
+        "code": "a lenient string/number matcher, correct if ≥ 0.5; the LLM judge function is never called; prompts branch on the gold question type",
+        "src": "test_longmemeval_chunked.py L1061-L1189, L2098-L2105",
+        "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/test_longmemeval_chunked.py#L2098-L2105"
+      }
+    ],
+    "open_questions": [
+      "The ablations (Tables 4-5) switch off edge types, but in the code causal edges are reply/question rules, so 'w/o causal links' removes turn adjacency rather than LLM-inferred causality.",
+      "No run separates the gain of the graph from the gold-label prompt selection and best-of-3 that the default script applies."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 236",
+        "body": "<text class=\"fig-t\" x=\"52\" y=\"16\" text-anchor=\"middle\">Dialogue</text><rect class=\"gi-ev\" x=\"10\" y=\"28\" width=\"68\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"18\" y1=\"37\" x2=\"64\" y2=\"37\"/><rect class=\"gi-ev\" x=\"26\" y=\"54\" width=\"68\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"34\" y1=\"63\" x2=\"80\" y2=\"63\"/><rect class=\"gi-ev\" x=\"10\" y=\"80\" width=\"68\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"18\" y1=\"89\" x2=\"64\" y2=\"89\"/><rect class=\"gi-ev\" x=\"26\" y=\"106\" width=\"68\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"34\" y1=\"115\" x2=\"80\" y2=\"115\"/><rect class=\"gi-hi\" x=\"26\" y=\"106\" width=\"68\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"34\" y1=\"115\" x2=\"80\" y2=\"115\"/><text class=\"fig-s\" x=\"52\" y=\"142\" text-anchor=\"middle\">one node per turn</text><path class=\"gi-a\" d=\"M98.0 115.0 L127.0 115.0\"/><polygon class=\"gi-ah\" points=\"134.0,115.0 127.0,119.0 127.0,111.0\"/><rect class=\"gi-llm\" x=\"100\" y=\"97\" width=\"30\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"115\" y=\"107\" text-anchor=\"middle\">LLM</text><text class=\"fig-s\" x=\"116\" y=\"128\" text-anchor=\"middle\">×2</text><rect class=\"gi-ev\" x=\"138\" y=\"24\" width=\"178\" height=\"184\" rx=\"10\"/><text class=\"fig-t\" x=\"227\" y=\"42\" text-anchor=\"middle\">Event node</text><rect class=\"gi-hi\" x=\"148\" y=\"52\" width=\"158\" height=\"34\" rx=\"6\"/><text class=\"fig-t\" x=\"156\" y=\"66\" text-anchor=\"start\">raw turn</text><text class=\"fig-s\" x=\"156\" y=\"79\" text-anchor=\"start\">verbatim</text><text class=\"fig-s\" x=\"298\" y=\"79\" text-anchor=\"end\">→ answer</text><rect class=\"gi-f\" x=\"148\" y=\"90\" width=\"158\" height=\"34\" rx=\"6\"/><text class=\"fig-t\" x=\"156\" y=\"104\" text-anchor=\"start\">narrative</text><text class=\"fig-s\" x=\"156\" y=\"117\" text-anchor=\"start\">LLM summary</text><text class=\"fig-s\" x=\"298\" y=\"117\" text-anchor=\"end\">→ embedded</text><rect class=\"gi-f\" x=\"148\" y=\"128\" width=\"158\" height=\"34\" rx=\"6\"/><text class=\"fig-t\" x=\"156\" y=\"142\" text-anchor=\"start\">facts, relations</text><text class=\"fig-s\" x=\"156\" y=\"155\" text-anchor=\"start\">LLM-extracted</text><text class=\"fig-s\" x=\"298\" y=\"155\" text-anchor=\"end\">→ answer</text><rect class=\"gi-f\" x=\"148\" y=\"166\" width=\"158\" height=\"34\" rx=\"6\"/><text class=\"fig-t\" x=\"156\" y=\"180\" text-anchor=\"start\">entities, dates</text><text class=\"fig-s\" x=\"156\" y=\"193\" text-anchor=\"start\">LLM + date rules</text><text class=\"fig-s\" x=\"298\" y=\"193\" text-anchor=\"end\">→ links</text><path class=\"gi-a\" d=\"M320.0 115.0 L335.0 115.0\"/><polygon class=\"gi-ah\" points=\"342.0,115.0 335.0,119.0 335.0,111.0\"/><text class=\"fig-t\" x=\"446\" y=\"16\" text-anchor=\"middle\">Graph (after all turns)</text><line class=\"gi-e\" x1=\"364\" y1=\"110\" x2=\"392\" y2=\"110\"/><line class=\"gi-e\" x1=\"404\" y1=\"110\" x2=\"432\" y2=\"110\"/><line class=\"gi-e\" x1=\"444\" y1=\"110\" x2=\"472\" y2=\"110\"/><line class=\"gi-e\" x1=\"484\" y1=\"110\" x2=\"512\" y2=\"110\"/><path class=\"gi-e d\" d=\"M358 104 Q 398.0 70 438 104\"/><path class=\"gi-e\" d=\"M398 116 Q 458.0 154 518 116\"/><circle class=\"gi-n\" cx=\"358\" cy=\"110\" r=\"6\"/><circle class=\"gi-n\" cx=\"398\" cy=\"110\" r=\"6\"/><circle class=\"gi-n\" cx=\"438\" cy=\"110\" r=\"6\"/><circle class=\"gi-n\" cx=\"478\" cy=\"110\" r=\"6\"/><circle class=\"gi-n\" cx=\"518\" cy=\"110\" r=\"6\"/><rect class=\"gi-r\" x=\"438\" y=\"34\" width=\"12\" height=\"12\" rx=\"2\"/><rect class=\"gi-r\" x=\"506\" y=\"34\" width=\"12\" height=\"12\" rx=\"2\"/><line class=\"gi-e d\" x1=\"444\" y1=\"46\" x2=\"478\" y2=\"104\"/><line class=\"gi-e d\" x1=\"512\" y1=\"46\" x2=\"518\" y2=\"104\"/><text class=\"fig-s\" x=\"478\" y=\"44\" text-anchor=\"middle\">session</text><text class=\"fig-s\" x=\"398\" y=\"80\" text-anchor=\"middle\">similar</text><text class=\"fig-s\" x=\"478\" y=\"148\" text-anchor=\"middle\">same entity</text><text class=\"fig-s\" x=\"352\" y=\"172\" text-anchor=\"start\">temporal: next turn; ≤ 24 h, 10 ahead</text><text class=\"fig-s\" x=\"352\" y=\"185\" text-anchor=\"start\">semantic: top 3 with sim &gt; 0.5; ±3 turns</text><text class=\"fig-s\" x=\"352\" y=\"198\" text-anchor=\"start\">entity: shared name (no entity nodes)</text><text class=\"fig-s\" x=\"352\" y=\"211\" text-anchor=\"start\">causal: reply-to, question → next turn</text><text class=\"fig-s\" x=\"352\" y=\"224\" text-anchor=\"start\">session: dataset's own summaries</text><text class=\"fig-s\" x=\"227\" y=\"226\" text-anchor=\"middle\">paper's async LLM causal pass: not run</text>",
+        "text": [
+          "Each turn becomes an event node: the verbatim turn plus an LLM summary (the embedded text), extracted facts, entities and dates.",
+          "After all turns are in, rules link the nodes by time, similarity, shared names and reply order; the paper's asynchronous LLM pass for causal edges does not run."
+        ],
+        "src": "code memory_builder.py L147-L906, trg_memory.py L170-L199; paper §3.2, §3.4",
+        "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/memory_builder.py#L539-L906"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 244",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"34\" width=\"58\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"33.0\" y=\"60.0\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M62.0 56.0 L69.0 56.0\"/><polygon class=\"gi-ah\" points=\"76.0,56.0 69.0,60.0 69.0,52.0\"/><rect class=\"gi-f\" x=\"76\" y=\"34\" width=\"74\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"113.0\" y=\"54.0\" text-anchor=\"middle\">Type</text><text class=\"fig-s\" x=\"113.0\" y=\"67.0\" text-anchor=\"middle\">9 rule types</text><path class=\"gi-a\" d=\"M150.0 56.0 L157.0 56.0\"/><polygon class=\"gi-ah\" points=\"164.0,56.0 157.0,60.0 157.0,52.0\"/><rect class=\"gi-v fig-soft\" x=\"164\" y=\"34\" width=\"104\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"216.0\" y=\"54.0\" text-anchor=\"middle\">Anchors</text><text class=\"fig-s\" x=\"216.0\" y=\"67.0\" text-anchor=\"middle\">vector 20 + keyword</text><text class=\"fig-s\" x=\"216\" y=\"90\" text-anchor=\"middle\">RRF k = 60</text><path class=\"gi-a\" d=\"M268.0 56.0 L275.0 56.0\"/><polygon class=\"gi-ah\" points=\"282.0,56.0 275.0,60.0 275.0,52.0\"/><rect class=\"gi-f\" x=\"282\" y=\"34\" width=\"70\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"317.0\" y=\"54.0\" text-anchor=\"middle\">Seeds</text><text class=\"fig-s\" x=\"317.0\" y=\"67.0\" text-anchor=\"middle\">top 15</text><path class=\"gi-a\" d=\"M352.0 56.0 L359.0 56.0\"/><polygon class=\"gi-ah\" points=\"366.0,56.0 359.0,60.0 359.0,52.0\"/><rect class=\"gi-f\" x=\"366\" y=\"34\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"410.0\" y=\"54.0\" text-anchor=\"middle\">Graph walk</text><text class=\"fig-s\" x=\"410.0\" y=\"67.0\" text-anchor=\"middle\">BFS, ≤ 800</text><text class=\"fig-s\" x=\"410\" y=\"90\" text-anchor=\"middle\">depth 4-12 by type</text><path class=\"gi-a\" d=\"M454.0 56.0 L461.0 56.0\"/><polygon class=\"gi-ah\" points=\"468.0,56.0 461.0,60.0 461.0,52.0\"/><rect class=\"gi-f\" x=\"468\" y=\"34\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"512.0\" y=\"54.0\" text-anchor=\"middle\">Rerank</text><text class=\"fig-s\" x=\"512.0\" y=\"67.0\" text-anchor=\"middle\">rule weights</text><path class=\"gi-a\" d=\"M512.0 78.0 L512.0 143.0\"/><polygon class=\"gi-ah\" points=\"512.0,150.0 508.0,143.0 516.0,143.0\"/><rect class=\"gi-f\" x=\"468\" y=\"150\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"512.0\" y=\"170.0\" text-anchor=\"middle\">Keep 15</text><text class=\"fig-s\" x=\"512.0\" y=\"183.0\" text-anchor=\"middle\">30 if multi-hop</text><path class=\"gi-a\" d=\"M468.0 172.0 L461.0 172.0\"/><polygon class=\"gi-ah\" points=\"454.0,172.0 461.0,168.0 461.0,176.0\"/><rect class=\"gi-ev\" x=\"346\" y=\"150\" width=\"108\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"400.0\" y=\"170.0\" text-anchor=\"middle\">Context</text><text class=\"fig-s\" x=\"400.0\" y=\"183.0\" text-anchor=\"middle\">raw turns + facts</text><path class=\"gi-a\" d=\"M346.0 172.0 L339.0 172.0\"/><polygon class=\"gi-ah\" points=\"332.0,172.0 339.0,168.0 339.0,176.0\"/><rect class=\"gi-llm\" x=\"206\" y=\"150\" width=\"126\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"269.0\" y=\"170.0\" text-anchor=\"middle\">Answer ×3</text><text class=\"fig-s\" x=\"269.0\" y=\"183.0\" text-anchor=\"middle\">prompt per category</text><path class=\"gi-a\" d=\"M206.0 172.0 L199.0 172.0\"/><polygon class=\"gi-ah\" points=\"192.0,172.0 199.0,168.0 199.0,176.0\"/><rect class=\"gi-hi\" x=\"76\" y=\"150\" width=\"116\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"134.0\" y=\"170.0\" text-anchor=\"middle\">Pick best</text><text class=\"fig-s\" x=\"134.0\" y=\"183.0\" text-anchor=\"middle\">judge vs gold answer</text><text class=\"fig-s\" x=\"280\" y=\"222\" text-anchor=\"middle\">category and gold answer come from LoCoMo labels (code defaults);</text><text class=\"fig-s\" x=\"280\" y=\"235\" text-anchor=\"middle\">the paper's typed-edge beam search is not called</text>",
+        "text": [
+          "Vector, keyword and full-scan matches are fused into anchors, a graph walk widens them, and a weighted rule score keeps 15 turns (30 for multi-hop).",
+          "The answer model reads those turns with facts; in the default script the prompt follows the gold category and the best of three answers is picked against the gold answer."
+        ],
+        "src": "code query_engine.py L729-L1630; test_harness.py L94-L132, L304-L311",
+        "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/query_engine.py#L729-L1630"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "LLM calls per turn at ingestion",
+        "value": "2 (extraction, summary)",
+        "src": "code memory_builder.py L160-L181; trg_memory.py L309-L366",
+        "section": "construction"
+      },
+      {
+        "label": "Build time, all of LoCoMo",
+        "value": "0.39 h",
+        "src": "paper Table 3",
+        "section": "construction"
+      },
+      {
+        "label": "Semantic links",
+        "value": "top 3 with similarity > 0.5",
+        "src": "code memory_builder.py L623-L668",
+        "section": "construction"
+      },
+      {
+        "label": "Anchor lists",
+        "value": "vector 20 + keyword 20 + scan 25, RRF k 60",
+        "src": "code query_engine.py L729-L760",
+        "section": "method"
+      },
+      {
+        "label": "Graph walk",
+        "value": "≤ 800 nodes, depth 4-12, drop 0.15",
+        "src": "code query_engine.py L367-L469, L805-L813",
+        "section": "method"
+      },
+      {
+        "label": "Turns to the answer model",
+        "value": "15 (30 multi-hop)",
+        "src": "code test_harness.py L304-L307",
+        "section": "method"
+      },
+      {
+        "label": "Tokens per query",
+        "value": "3.37k LoCoMo · 0.7-4.2K LongMemEval",
+        "src": "paper Tables 2-3",
+        "section": "results"
+      },
+      {
+        "label": "Query latency",
+        "value": "1.47 s",
+        "src": "paper Table 3",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Extract and summarize each turn",
+        "model": "gpt-4o-mini",
+        "kind": "llm",
+        "src": "paper App. B Table 6; code memory_builder.py L160-L181",
+        "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/memory_builder.py#L160-L181"
+      },
+      {
+        "role": "Embedding (vector search, semantic links)",
+        "model": "all-MiniLM-L6-v2 (default); text-embedding-3-small optional",
+        "kind": "retriever",
+        "src": "paper Table 6; code test_fixed_memory.py L347-L349",
+        "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/test_fixed_memory.py#L347-L349"
+      },
+      {
+        "role": "Keyword and scan search, RRF",
+        "model": "keyword index, k 60",
+        "kind": "retriever",
+        "src": "code query_engine.py L55-L115, L878-L1000",
+        "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/query_engine.py#L55-L115"
+      },
+      {
+        "role": "Graph walk and rerank",
+        "model": "BFS + weighted rule score",
+        "kind": "rule",
+        "src": "code query_engine.py L1099-L1630",
+        "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/query_engine.py#L1099-L1630"
+      },
+      {
+        "role": "Answer (×3) and best-of-3 judge",
+        "model": "gpt-4o-mini",
+        "kind": "llm",
+        "src": "code test_harness.py L66-L132; llm_judge.py L14-L44",
+        "url": "https://github.com/FredJiang0324/MAGMA/blob/467cb70b67ac337b22fdb42194d37c04ad701b62/memory/test_harness.py#L66-L132"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "LoCoMo judge",
+        "F1",
+        "BLEU-1"
+      ],
+      "rows": [
+        [
+          "MAGMA (full)",
+          "70.0",
+          "46.7",
+          "37.8"
+        ],
+        [
+          "w/o adaptive policy",
+          "63.7",
+          "41.3",
+          "35.7"
+        ],
+        [
+          "w/o causal links",
+          "64.4",
+          "43.9",
+          "35.4"
+        ],
+        [
+          "w/o temporal backbone",
+          "64.7",
+          "43.8",
+          "34.9"
+        ],
+        [
+          "w/o entity links",
+          "66.6",
+          "45.1",
+          "36.3"
+        ],
+        [
+          "causal graph only",
+          "59.0",
+          "–",
+          "–"
+        ],
+        [
+          "temporal graph only",
+          "57.7",
+          "–",
+          "–"
+        ],
+        [
+          "entity graph only",
+          "53.1",
+          "–",
+          "–"
+        ]
+      ],
+      "src": "paper Tables 4-5 (LoCoMo, gpt-4o-mini; scores ×100)"
+    },
+    "discussion": {
+      "takeaway": "Splitting memory links into temporal, causal, semantic and entity views and weighting them by query type gives MAGMA the best LoCoMo judge score in its own comparison (0.700), with the lowest query latency.",
+      "claims": [
+        {
+          "claim": "Best accuracy among agentic memory systems on LoCoMo.",
+          "evidence": "Judge 0.700 vs Nemori 0.590, A-MEM 0.580, MemoryOS 0.553, full context 0.481. Table 1, §4.2"
+        },
+        {
+          "claim": "Robust on adversarial questions.",
+          "evidence": "Adversarial 0.742 vs 0.205-0.616 for baselines. Table 1"
+        },
+        {
+          "claim": "Generalizes to LongMemEval with far fewer tokens.",
+          "evidence": "61.2% vs full context 55.0% and Nemori 56.2%, with 0.7-4.2K tokens per query vs 101K. Table 2, §4.3"
+        },
+        {
+          "claim": "Fastest queries.",
+          "evidence": "1.47 s vs 2.26 s (A-MEM) and 32.68 s (MemoryOS); 3.37k tokens per query. Table 3, §4.4"
+        },
+        {
+          "claim": "Every relation view and the adaptive policy contribute.",
+          "evidence": "Full 0.700; w/o adaptive policy 0.637, causal 0.644, temporal 0.647, entity 0.666; no single graph above 0.60. Tables 4-5, §4.5"
+        }
+      ],
+      "limits": [
+        "Graph quality depends on the LLM used for consolidation, which can add wrong or miss relations.",
+        "Several graphs and two processing streams add storage and engineering cost over a vector-only store.",
+        "Evaluated only on conversational benchmarks (LoCoMo, LongMemEval); other settings such as multimodal agents may need adaptation."
+      ],
+      "limits_src": "paper §6 Limitations",
+      "reading": [
+        "The default LoCoMo script uses gold labels at answer time: the category chooses the prompt, the node count and an adversarial-only post-filter, and best-of-3 keeps the answer the judge scores highest against the gold answer (at temperature 0 the three answers may often be identical). The paper says the instruction comes from the router with no oracle labels.",
+        "Session nodes are built from LoCoMo's own session summaries, and the query code hard-codes LoCoMo-specific keyword-to-session hints (query_engine.py L174-L188).",
+        "The LLM causal edges, entity nodes and intent-weighted beam search that define the method in §3 are not on the executed path; the ablations therefore remove rule-built links.",
+        "The judge is the authors' graded 0-1 rubric with gpt-4o-mini, and adversarial answers are scored by a refusal pattern in code; scores are not comparable with binary-judge LoCoMo results.",
+        "The LongMemEval script scores with a lenient string matcher rather than the LLM judge the paper describes, and routes prompts by the gold question type.",
+        "Hyperparameters were tuned on LoCoMo (App. B.1), the benchmark of the main table.",
+        "The code's default command tests categories 1-4 and 50 questions per conversation, while Table 1 reports all five categories over 1,986 questions; the exact command behind the tables is not given."
+      ]
+    }
+  }
+}

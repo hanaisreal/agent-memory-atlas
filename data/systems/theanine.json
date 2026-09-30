@@ -1,0 +1,511 @@
+{
+  "id": "theanine",
+  "name": "THEANINE",
+  "paper": {
+    "title": "Towards Lifelong Dialogue Agents via Timeline-based Memory Management",
+    "arxiv": "2406.10996",
+    "url": "https://arxiv.org/abs/2406.10996",
+    "venue": "NAACL 2025",
+    "venue_short": "NAACL",
+    "track": "main",
+    "year": 2025,
+    "code": "https://github.com/kimnamssya/Theanine"
+  },
+  "design": {
+    "construction": {
+      "unit": "memory sentence (event) summarized from one session, tagged with its session",
+      "kept_as": "LLM-extracted fact sentences about the speakers",
+      "processing": "end-of-session LLM summary into numbered fact sentences; each is linked to related past memories with an LLM-chosen cause-effect relation",
+      "trigger": "session-end",
+      "writer": "gpt-3.5-turbo-0125"
+    },
+    "organization": {
+      "structure": "directed memory graph; edges carry temporal order and one of 7 commonsense relations",
+      "stores": "one memory graph per conversation",
+      "index": "text-embedding-3-small over memory sentences"
+    },
+    "management": {
+      "operations": "append and link only; no memory is updated or deleted",
+      "conflicts": "kept on purpose: outdated memories stay and are linked (e.g. by 'Changed')",
+      "forgetting": null,
+      "timing": "offline"
+    },
+    "retrieval": {
+      "query": "current dialogue context (all turns of the session so far)",
+      "candidates": "top-3 memories by embedding similarity, each expanded to its connected component",
+      "selection": "one linear timeline through each hit (sampled at random, n=1); an LLM then rewrites each timeline for the current dialogue",
+      "budget": "k=3 hits, so at most 3 refined timelines"
+    },
+    "use": {
+      "context": "refined timelines (numbered) + current dialogue",
+      "reasoning": "one refinement call per timeline, then one response-generation call"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "prompted-llm",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "graph",
+    "index": "vector",
+    "management": "append-only",
+    "candidates": "graph walk",
+    "decides": "top-k rule",
+    "note": "Dense top-3 seeds a walk over the memory graph; which path is used is random, and the LLM refinement rewrites rather than filters, so no learned or LLM selector fixes the set."
+  },
+  "tags": {
+    "fidelity": "extracted",
+    "structure": [
+      "graph"
+    ],
+    "write_time": [
+      "extract",
+      "link"
+    ],
+    "selection": [
+      "dense",
+      "graph-expansion"
+    ],
+    "memory_type": [
+      "episodic",
+      "semantic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "conversation"
+    ]
+  },
+  "stages": {
+    "ingestion": "Nothing happens during a session; memory is written once the session ends.",
+    "construction": "An LLM summarizes the finished session into numbered fact sentences about the speakers; each becomes a memory (event, session).",
+    "organization": "Each new memory is compared with its top-3 most similar past memories; an LLM labels each pair with one of 7 cause-effect relations or None, and the new memory is linked to the most recent related memory in each connected component.",
+    "update": "No update or deletion: old and contradicting memories remain in the graph, joined by edges such as 'Changed'.",
+    "retrieval": "The dialogue so far retrieves the top-3 memories; for each, the linear paths from the oldest memory of its component through it to an end are listed and one is picked at random; an LLM rewrites each timeline to suit the current dialogue.",
+    "answer": "The response model reads the refined timelines and the current dialogue and writes the next utterance.",
+    "learning": ""
+  },
+  "summary": "Keeps every past memory and links them into a graph by temporal order and LLM-labelled cause-effect relations; at response time it retrieves whole timelines around the best matches and has an LLM tailor them to the conversation.",
+  "verified": false,
+  "notes": "Venue verified: NAACL 2025 long paper, ACL Anthology 2025.naacl-long.435 (pp. 8631-8661); arXiv v3 comment 'Accepted to NAACL 2025'. Code found via the paper's Hugging Face project page (link to github.com/kimnamssya/Theanine); it was released 2025-08-18, after the paper, and ships only a sample dialogue and the THEANINE pipeline (no baselines, no evaluation). Paper read from arXiv v3 PDF.\nDESIGN: §2, §3.3, App. B, H. control.management = prompted-llm because the LLM relation label decides whether a link is made; retrieval = fixed-rule (top-k + graph paths + random pick); refinement is an LLM rewrite after selection. timing = offline follows the paper's own wording ('off-line memory construction', §2.2).",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2406.10996v3 (PDF read 2026-09-30)",
+      "code": "https://github.com/kimnamssya/Theanine/tree/650797962eacd28f07b34a351b655303f1c8533d/",
+      "code_note": "Official repo linked from the authors' project page; latest commit (2025-08-18, 'assets'). It is a cleaned inference release made after the paper, with one sample dialogue; the numbers in the paper cannot be re-run from it."
+    },
+    "headline": [
+      "Nothing is ever deleted: THEANINE keeps outdated memories and links them so the model can see how things changed.",
+      "The response model reads LLM-rewritten timelines, not the memories themselves; relation labels and order only reach it through that rewrite.",
+      "Gains are largest in MAUVE; on MSC plain memory retrieval scores higher BLEU-4 (1.92 vs 1.80)."
+    ],
+    "units": [
+      {
+        "name": "Memory",
+        "role": "one fact sentence from a finished session; a graph node",
+        "made_by": "gpt-3.5 summary prompt at session end",
+        "fields": [
+          {
+            "name": "event",
+            "what": "one numbered sentence the LLM writes about a speaker (facts deducible from what they said)",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "code dialogue-summarization.txt L1-L3; summarize.py L54-L60",
+            "url": "https://github.com/kimnamssya/Theanine/blob/650797962eacd28f07b34a351b655303f1c8533d/resources/prompts/dialogue-summarization.txt#L1-L3"
+          },
+          {
+            "name": "time",
+            "what": "session number, kept only in the key 's<session>-m<i>'; it orders edges but is not shown to any LLM",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "paper Eq. 3; code summarize.py L39-L44, theanine.py L57-L64",
+            "url": "https://github.com/kimnamssya/Theanine/blob/650797962eacd28f07b34a351b655303f1c8533d/src/summarize.py#L39-L44"
+          }
+        ]
+      },
+      {
+        "name": "Edge",
+        "role": "link from an older memory to a newer one",
+        "made_by": "LLM relation classifier",
+        "fields": [
+          {
+            "name": "relation",
+            "what": "Changed, Cause, Reason, HinderedBy, React, Want or SameTopic; None means no link. Reaches the answer only through the refinement rewrite.",
+            "kept_as": "extracted",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper App. B.1, Fig. 22; code memory_constructor.py L86-L88",
+            "url": "https://github.com/kimnamssya/Theanine/blob/650797962eacd28f07b34a351b655303f1c8533d/src/memory_constructor.py#L86-L88"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Summarize",
+        "how": "LLM turns the finished session into numbered fact sentences about the speakers",
+        "out": "90% of memories have no faulty statement, 95% miss nothing important (human check of 100 sessions)",
+        "src": "paper App. I, Table 6; code summarize.py L54-L69",
+        "url": "https://github.com/kimnamssya/Theanine/blob/650797962eacd28f07b34a351b655303f1c8533d/src/summarize.py#L54-L69"
+      },
+      {
+        "step": "Find associative memories",
+        "how": "cosine similarity of the new memory to every memory from earlier sessions",
+        "params": {
+          "j": "3"
+        },
+        "src": "paper §2.1, §3.3; code retriever.py L57-L72",
+        "url": "https://github.com/kimnamssya/Theanine/blob/650797962eacd28f07b34a351b655303f1c8533d/src/retriever.py#L57-L72"
+      },
+      {
+        "step": "Label relation",
+        "how": "LLM reads both sentences and both source dialogues and picks one of 7 relations or None",
+        "out": "92% of links judged appropriate by crowd workers (Fig. 7)",
+        "src": "paper §2.1, Fig. 22; code memory_constructor.py L53-L90",
+        "url": "https://github.com/kimnamssya/Theanine/blob/650797962eacd28f07b34a351b655303f1c8533d/src/memory_constructor.py#L53-L90"
+      },
+      {
+        "step": "Link",
+        "how": "paper: link to the most recent related memory in each connected component; code: link to every related one",
+        "note": "footnote 5: linking all related memories cost 25% more API without better responses",
+        "src": "paper Eq. 7-8, Alg. 1; code memory_constructor.py L86-L88",
+        "url": "https://github.com/kimnamssya/Theanine/blob/650797962eacd28f07b34a351b655303f1c8533d/src/memory_constructor.py#L86-L88"
+      }
+    ],
+    "read": [
+      {
+        "step": "Match",
+        "round": 1,
+        "input": "current dialogue so far",
+        "scores": "memory sentences",
+        "how": "text-embedding-3-small cosine",
+        "params": {
+          "k": "3"
+        },
+        "src": "paper §2.2, §3.3; code retriever.py L21-L29, theanine.py L174-L185",
+        "url": "https://github.com/kimnamssya/Theanine/blob/650797962eacd28f07b34a351b655303f1c8533d/src/retriever.py#L21-L29"
+      },
+      {
+        "step": "Collect timelines",
+        "round": 1,
+        "how": "list linear paths through the hit: paper from the oldest memory of its component to an end with no outgoing edge; code joins every backward path with every forward path",
+        "src": "paper Eq. 9-10, Fig. 4; code theanine.py L66-L130",
+        "url": "https://github.com/kimnamssya/Theanine/blob/650797962eacd28f07b34a351b655303f1c8533d/src/theanine.py#L66-L130"
+      },
+      {
+        "step": "Pick one",
+        "round": 1,
+        "how": "one path per hit sampled at random, skipping duplicates",
+        "params": {
+          "n": "1"
+        },
+        "src": "paper footnote 6; code theanine.py L138-L152",
+        "url": "https://github.com/kimnamssya/Theanine/blob/650797962eacd28f07b34a351b655303f1c8533d/src/theanine.py#L138-L152"
+      },
+      {
+        "step": "Refine",
+        "round": 1,
+        "input": "current dialogue + one timeline as '[event] - (relation) - [event]'",
+        "how": "LLM rewrites the timeline into information useful for the next response; one call per timeline",
+        "src": "paper Eq. 11, Fig. 23; code theanine.py L57-L64, L188-L194",
+        "url": "https://github.com/kimnamssya/Theanine/blob/650797962eacd28f07b34a351b655303f1c8533d/src/theanine.py#L188-L194"
+      }
+    ],
+    "answer_context": {
+      "sees": "up to 3 refined timelines + the current dialogue",
+      "format": "\"Memory:\" then \"1: <refined timeline>\" per line, then \"Current conversation:\", then the next speaker tag",
+      "excludes": [
+        "raw memory sentences",
+        "past dialogue",
+        "session numbers",
+        "relation labels as fields"
+      ],
+      "src": "paper Fig. 24; code theanine.py L44-L55, response-generation.txt",
+      "url": "https://github.com/kimnamssya/Theanine/blob/650797962eacd28f07b34a351b655303f1c8533d/src/theanine.py#L44-L55",
+      "includes": [
+        "LLM-rewritten timelines",
+        "all turns of the current session"
+      ]
+    },
+    "compression": [
+      {
+        "what": "answer context vs past dialogue",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported. Only API cost is given: $0.0135 per episode for THEANINE vs $0.0067 for feeding the whole history (App. I, Table 8).",
+        "src": "paper Table 8",
+        "url": "https://arxiv.org/pdf/2406.10996"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Which related memories get a link",
+        "paper": "the most recent related memory in each connected component",
+        "code": "every top-3 memory whose relation is not None",
+        "src": "memory_constructor.py L61-L90",
+        "url": "https://github.com/kimnamssya/Theanine/blob/650797962eacd28f07b34a351b655303f1c8533d/src/memory_constructor.py#L61-L90"
+      },
+      {
+        "topic": "Timeline start",
+        "paper": "the oldest memory of the connected component",
+        "code": "any memory reached by walking back from the hit until no earlier link",
+        "src": "theanine.py L90-L130",
+        "url": "https://github.com/kimnamssya/Theanine/blob/650797962eacd28f07b34a351b655303f1c8533d/src/theanine.py#L90-L130"
+      },
+      {
+        "topic": "Edge direction",
+        "paper": "directed edges",
+        "code": "links stored in both directions; direction rebuilt from session numbers at read time",
+        "src": "memory_constructor.py L87-L88; theanine.py L79-L88",
+        "url": "https://github.com/kimnamssya/Theanine/blob/650797962eacd28f07b34a351b655303f1c8533d/src/theanine.py#L79-L88"
+      },
+      {
+        "topic": "Sampling",
+        "paper": "gpt-3.5-turbo-0125, temperature 0.75 everywhere",
+        "code": "gpt-3.5-turbo; temperature 0.7 (summary, response) and 0.5 (linking)",
+        "src": "scripts/theanine.sh L4-L30",
+        "url": "https://github.com/kimnamssya/Theanine/blob/650797962eacd28f07b34a351b655303f1c8533d/scripts/theanine.sh#L4-L30"
+      }
+    ],
+    "open_questions": [
+      "Refinement both removes noise and adds an extra LLM pass; 'w/o refinement' changes the answer input format too, so its small drop does not isolate the timeline content.",
+      "Table 5 (matched memory count) THEANINE row equals the session-3 row of Table 9, so that comparison may cover one session only; the paper does not say."
+    ],
+    "glance": [
+      {
+        "q": "What is one memory item?",
+        "a": "One LLM-written fact sentence from a finished session, tagged with the session number.",
+        "src": "paper Eq. 3; code summarize.py",
+        "url": "https://github.com/kimnamssya/Theanine/blob/650797962eacd28f07b34a351b655303f1c8533d/src/summarize.py#L54-L69"
+      },
+      {
+        "q": "How is memory organised?",
+        "a": "As a graph: each new memory is linked to related older ones with a relation label such as Cause or Changed.",
+        "src": "paper §2.1",
+        "url": "https://arxiv.org/pdf/2406.10996"
+      },
+      {
+        "q": "Is anything forgotten or updated?",
+        "a": "No. The paper argues outdated memories carry useful context and keeps all of them.",
+        "src": "paper §1, §2.1",
+        "url": "https://arxiv.org/pdf/2406.10996"
+      },
+      {
+        "q": "Is there reranking?",
+        "a": "No. Top-3 by embedding similarity, then graph paths; one path per hit is picked at random.",
+        "src": "code theanine.py L132-L156",
+        "url": "https://github.com/kimnamssya/Theanine/blob/650797962eacd28f07b34a351b655303f1c8533d/src/theanine.py#L132-L156"
+      },
+      {
+        "q": "What does the response model read?",
+        "a": "Up to 3 timelines rewritten by an LLM for the current dialogue, plus that dialogue.",
+        "src": "paper Fig. 24; code theanine.py L44-L55",
+        "url": "https://github.com/kimnamssya/Theanine/blob/650797962eacd28f07b34a351b655303f1c8533d/src/theanine.py#L44-L55"
+      }
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 256",
+        "body": "<text class=\"fig-t\" x=\"54\" y=\"20\" text-anchor=\"middle\">Session t ends</text><rect class=\"gi-ev\" x=\"8\" y=\"30\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"16\" y1=\"39\" x2=\"64\" y2=\"39\"/><rect class=\"gi-ev\" x=\"26\" y=\"54\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"34\" y1=\"63\" x2=\"82\" y2=\"63\"/><rect class=\"gi-ev\" x=\"8\" y=\"78\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"16\" y1=\"87\" x2=\"64\" y2=\"87\"/><rect class=\"gi-ev\" x=\"26\" y=\"102\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"34\" y1=\"111\" x2=\"82\" y2=\"111\"/><rect class=\"gi-ev\" x=\"8\" y=\"126\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"16\" y1=\"135\" x2=\"64\" y2=\"135\"/><text class=\"fig-s\" x=\"54\" y=\"162\" text-anchor=\"middle\">whole session</text><path class=\"gi-a\" d=\"M104.0 90.0 L141.0 90.0\"/><polygon class=\"gi-ah\" points=\"148.0,90.0 141.0,94.0 141.0,86.0\"/><rect class=\"gi-llm\" x=\"110\" y=\"70\" width=\"32\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"126.0\" y=\"80\" text-anchor=\"middle\">LLM</text><text class=\"fig-s\" x=\"126\" y=\"60\" text-anchor=\"middle\">summarize</text><text class=\"fig-t\" x=\"196\" y=\"16\" text-anchor=\"middle\">New memories</text><rect class=\"gi-hi\" x=\"152\" y=\"30\" width=\"88\" height=\"22\" rx=\"6\"/><line class=\"gi-t\" x1=\"160\" y1=\"41\" x2=\"206\" y2=\"41\"/><text class=\"fig-s\" x=\"234\" y=\"45\" text-anchor=\"end\">st</text><rect class=\"gi-hi\" x=\"152\" y=\"60\" width=\"88\" height=\"22\" rx=\"6\"/><line class=\"gi-t\" x1=\"160\" y1=\"71\" x2=\"206\" y2=\"71\"/><text class=\"fig-s\" x=\"234\" y=\"75\" text-anchor=\"end\">st</text><rect class=\"gi-hi\" x=\"152\" y=\"90\" width=\"88\" height=\"22\" rx=\"6\"/><line class=\"gi-t\" x1=\"160\" y1=\"101\" x2=\"206\" y2=\"101\"/><text class=\"fig-s\" x=\"234\" y=\"105\" text-anchor=\"end\">st</text><text class=\"fig-s\" x=\"196\" y=\"136\" text-anchor=\"middle\">fact sentences</text><text class=\"fig-s\" x=\"196\" y=\"148\" text-anchor=\"middle\">+ session number</text><path class=\"gi-a\" d=\"M196.0 154.0 L196.0 165.0\"/><polygon class=\"gi-ah\" points=\"196.0,172.0 192.0,165.0 200.0,165.0\"/><rect class=\"gi-v fig-soft\" x=\"150\" y=\"172\" width=\"92\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"196.0\" y=\"190.0\" text-anchor=\"middle\">top-3 similar</text><text class=\"fig-s\" x=\"196.0\" y=\"203.0\" text-anchor=\"middle\">past memories</text><text class=\"fig-s\" x=\"196\" y=\"226\" text-anchor=\"middle\">embedding cosine</text><path class=\"gi-a\" d=\"M242.0 192.0 L255.0 192.0\"/><polygon class=\"gi-ah\" points=\"262.0,192.0 255.0,196.0 255.0,188.0\"/><polygon class=\"gi-llm\" points=\"304,164 346,192 304,220 262,192\"/><text class=\"fig-t\" x=\"304\" y=\"190\" text-anchor=\"middle\">Relation?</text><text class=\"fig-s\" x=\"304\" y=\"203\" text-anchor=\"middle\">LLM</text><text class=\"fig-s\" x=\"304\" y=\"236\" text-anchor=\"middle\">reads both memories</text><text class=\"fig-s\" x=\"304\" y=\"248\" text-anchor=\"middle\">and their dialogues</text><text class=\"fig-no\" x=\"348\" y=\"212\" text-anchor=\"start\">None</text><text class=\"fig-s\" x=\"356\" y=\"226\" text-anchor=\"start\">no link</text><text class=\"fig-t\" x=\"452\" y=\"16\" text-anchor=\"middle\">Memory graph</text><rect class=\"gi-l\" x=\"346\" y=\"26\" width=\"208\" height=\"128\" rx=\"10\"/><text class=\"fig-s\" x=\"372\" y=\"146\" text-anchor=\"middle\">s1</text><text class=\"fig-s\" x=\"420\" y=\"146\" text-anchor=\"middle\">s2</text><text class=\"fig-s\" x=\"468\" y=\"146\" text-anchor=\"middle\">s3</text><text class=\"fig-s\" x=\"520\" y=\"146\" text-anchor=\"middle\">st</text><path class=\"gi-a\" d=\"M378.0 48.0 L407.0 48.0\"/><polygon class=\"gi-ah\" points=\"414.0,48.0 407.0,52.0 407.0,44.0\"/><path class=\"gi-a\" d=\"M426.0 48.0 L455.0 48.0\"/><polygon class=\"gi-ah\" points=\"462.0,48.0 455.0,52.0 455.0,44.0\"/><circle class=\"gi-n\" cx=\"372\" cy=\"48\" r=\"6\"/><circle class=\"gi-n\" cx=\"420\" cy=\"48\" r=\"6\"/><circle class=\"gi-n\" cx=\"468\" cy=\"48\" r=\"6\"/><text class=\"fig-s\" x=\"396\" y=\"40\" text-anchor=\"middle\">Cause</text><text class=\"fig-s\" x=\"444\" y=\"40\" text-anchor=\"middle\">Changed</text><path class=\"gi-a\" d=\"M378.0 104.0 L455.0 104.0\"/><polygon class=\"gi-ah\" points=\"462.0,104.0 455.0,108.0 455.0,100.0\"/><circle class=\"gi-n\" cx=\"372\" cy=\"104\" r=\"6\"/><circle class=\"gi-n\" cx=\"468\" cy=\"104\" r=\"6\"/><text class=\"fig-s\" x=\"420\" y=\"98\" text-anchor=\"middle\">SameTopic</text><circle class=\"gi-n\" cx=\"420\" cy=\"128\" r=\"5\"/><circle class=\"gi-hi\" cx=\"520\" cy=\"76\" r=\"7\"/><path class=\"gi-a\" d=\"M474.0 52.0 L507.7 68.9\"/><polygon class=\"gi-ah\" points=\"514.0,72.0 506.0,72.4 509.5,65.3\"/><path class=\"gi-a\" d=\"M474.0 100.0 L507.7 83.1\"/><polygon class=\"gi-ah\" points=\"514.0,80.0 509.5,86.7 506.0,79.6\"/><text class=\"fig-s\" x=\"500\" y=\"50\" text-anchor=\"start\">Want</text><text class=\"fig-s\" x=\"500\" y=\"110\" text-anchor=\"start\">React</text><path class=\"gi-a\" d=\"M346.0 192.0 L372.0 192.0 L372.0 168.0 L546.0 168.0 L546.0 76.0 L535.0 76.0\"/><polygon class=\"gi-ah\" points=\"528.0,76.0 535.0,72.0 535.0,80.0\"/><text class=\"fig-s\" x=\"460\" y=\"190\" text-anchor=\"middle\">link to the latest related</text><text class=\"fig-s\" x=\"460\" y=\"202\" text-anchor=\"middle\">memory in each component</text><text class=\"fig-s\" x=\"456\" y=\"222\" text-anchor=\"middle\">nothing is updated or deleted</text>",
+        "text": [
+          "When a session ends, an LLM summarizes it into fact sentences; each is compared with its 3 most similar older memories and an LLM names their relation.",
+          "The new memory is linked to the latest related memory in each connected part of the graph; nothing is updated or removed."
+        ],
+        "src": "paper §2.1, Alg. 1, Fig. 3; code memory_constructor.py, retriever.py",
+        "url": "https://arxiv.org/pdf/2406.10996"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 246",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"30\" width=\"74\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"41.0\" y=\"50.0\" text-anchor=\"middle\">Dialogue</text><text class=\"fig-s\" x=\"41.0\" y=\"63.0\" text-anchor=\"middle\">so far</text><path class=\"gi-a\" d=\"M78.0 52.0 L83.0 52.0\"/><polygon class=\"gi-ah\" points=\"90.0,52.0 83.0,56.0 83.0,48.0\"/><rect class=\"gi-v fig-soft\" x=\"90\" y=\"30\" width=\"84\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"132.0\" y=\"50.0\" text-anchor=\"middle\">Top-3</text><text class=\"fig-s\" x=\"132.0\" y=\"63.0\" text-anchor=\"middle\">memories</text><text class=\"fig-s\" x=\"132\" y=\"88\" text-anchor=\"middle\">dense cosine</text><path class=\"gi-a\" d=\"M174.0 52.0 L179.0 52.0\"/><polygon class=\"gi-ah\" points=\"186.0,52.0 179.0,56.0 179.0,48.0\"/><rect class=\"gi-f\" x=\"186\" y=\"30\" width=\"108\" height=\"44\" rx=\"8\"/><path class=\"gi-a\" d=\"M202.0 42.0 L215.0 42.0\"/><polygon class=\"gi-ah\" points=\"222.0,42.0 215.0,46.0 215.0,38.0\"/><path class=\"gi-a\" d=\"M234.0 42.0 L247.0 42.0\"/><polygon class=\"gi-ah\" points=\"254.0,42.0 247.0,46.0 247.0,38.0\"/><path class=\"gi-a\" d=\"M234.0 42.0 L249.1 57.1\"/><polygon class=\"gi-ah\" points=\"254.0,62.0 246.2,59.9 251.9,54.2\"/><path class=\"gi-a\" d=\"M266.0 42.0 L275.0 42.0\"/><polygon class=\"gi-ah\" points=\"282.0,42.0 275.0,46.0 275.0,38.0\"/><circle class=\"gi-n\" cx=\"196\" cy=\"42\" r=\"5\"/><circle class=\"gi-hi\" cx=\"228\" cy=\"42\" r=\"6\"/><circle class=\"gi-n\" cx=\"260\" cy=\"42\" r=\"5\"/><circle class=\"gi-n\" cx=\"260\" cy=\"64\" r=\"5\"/><circle class=\"gi-n\" cx=\"288\" cy=\"42\" r=\"5\"/><text class=\"fig-s\" x=\"240\" y=\"88\" text-anchor=\"middle\">its connected component</text><path class=\"gi-a\" d=\"M294.0 52.0 L299.0 52.0\"/><polygon class=\"gi-ah\" points=\"306.0,52.0 299.0,56.0 299.0,48.0\"/><rect class=\"gi-f\" x=\"306\" y=\"30\" width=\"104\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"358.0\" y=\"50.0\" text-anchor=\"middle\">Timelines</text><text class=\"fig-s\" x=\"358.0\" y=\"63.0\" text-anchor=\"middle\">oldest → hit → end</text><path class=\"gi-a\" d=\"M410.0 52.0 L415.0 52.0\"/><polygon class=\"gi-ah\" points=\"422.0,52.0 415.0,56.0 415.0,48.0\"/><rect class=\"gi-f\" x=\"422\" y=\"30\" width=\"76\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"460.0\" y=\"50.0\" text-anchor=\"middle\">Pick 1</text><text class=\"fig-s\" x=\"460.0\" y=\"63.0\" text-anchor=\"middle\">at random</text><text class=\"fig-s\" x=\"460\" y=\"88\" text-anchor=\"middle\">n = 1 per hit</text><path class=\"gi-a\" d=\"M498.0 52.0 L540.0 52.0 L540.0 118.0 L40.0 118.0 L40.0 139.0\"/><polygon class=\"gi-ah\" points=\"40.0,146.0 36.0,139.0 44.0,139.0\"/><text class=\"fig-s\" x=\"290\" y=\"112\" text-anchor=\"middle\">up to 3 timelines, e.g. [event] - (Cause) - [event] - (Changed) - [event]</text><rect class=\"gi-llm\" x=\"4\" y=\"146\" width=\"120\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"64.0\" y=\"166.0\" text-anchor=\"middle\">Refine</text><text class=\"fig-s\" x=\"64.0\" y=\"179.0\" text-anchor=\"middle\">1 LLM call per timeline</text><text class=\"fig-s\" x=\"64\" y=\"206\" text-anchor=\"middle\">reads the dialogue too</text><path class=\"gi-a\" d=\"M124.0 168.0 L135.0 168.0\"/><polygon class=\"gi-ah\" points=\"142.0,168.0 135.0,172.0 135.0,164.0\"/><rect class=\"gi-f\" x=\"142\" y=\"146\" width=\"120\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"202.0\" y=\"166.0\" text-anchor=\"middle\">≤ 3 refined</text><text class=\"fig-s\" x=\"202.0\" y=\"179.0\" text-anchor=\"middle\">timelines, numbered</text><path class=\"gi-a\" d=\"M262.0 168.0 L273.0 168.0\"/><polygon class=\"gi-ah\" points=\"280.0,168.0 273.0,172.0 273.0,164.0\"/><rect class=\"gi-hi\" x=\"280\" y=\"146\" width=\"120\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"340.0\" y=\"166.0\" text-anchor=\"middle\">Response</text><text class=\"fig-s\" x=\"340.0\" y=\"179.0\" text-anchor=\"middle\">LLM, next utterance</text><text class=\"fig-s\" x=\"340\" y=\"206\" text-anchor=\"middle\">+ current dialogue</text><text class=\"fig-s\" x=\"478\" y=\"160\" text-anchor=\"middle\">The response model</text><text class=\"fig-s\" x=\"478\" y=\"172\" text-anchor=\"middle\">never sees raw memories,</text><text class=\"fig-s\" x=\"478\" y=\"184\" text-anchor=\"middle\">past dialogue or</text><text class=\"fig-s\" x=\"478\" y=\"196\" text-anchor=\"middle\">session dates</text><text class=\"fig-s\" x=\"280\" y=\"236\" text-anchor=\"middle\">retrieval runs again before every response in the session</text>",
+        "text": [
+          "Before each response the dialogue so far retrieves 3 memories; for each, one timeline through it is taken from the graph.",
+          "An LLM rewrites each timeline for the current conversation, and the response model reads those rewrites with the dialogue."
+        ],
+        "src": "paper §2.2-2.3, Alg. 2; code theanine.py L132-L213",
+        "url": "https://github.com/kimnamssya/Theanine/blob/650797962eacd28f07b34a351b655303f1c8533d/src/theanine.py#L132-L213"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Memory written",
+        "value": "once per session, at its end",
+        "src": "paper §2.1",
+        "section": "construction"
+      },
+      {
+        "label": "Past memories checked per new memory",
+        "value": "top-3 (j = 3)",
+        "src": "paper §3.3",
+        "section": "construction"
+      },
+      {
+        "label": "Relation types",
+        "value": "7, plus None",
+        "src": "paper App. B.1",
+        "section": "construction"
+      },
+      {
+        "label": "Memories retrieved",
+        "value": "top-3 (k = 3); baseline uses k = 6",
+        "src": "paper §3.3",
+        "section": "method"
+      },
+      {
+        "label": "Timelines per hit",
+        "value": "1 (n = 1), picked at random",
+        "src": "paper footnote 6",
+        "section": "method"
+      },
+      {
+        "label": "LLM calls per response",
+        "value": "up to 3 refinements + 1 response",
+        "src": "code theanine.py L188-L199",
+        "section": "method"
+      },
+      {
+        "label": "API cost per episode",
+        "value": "$0.0135, vs $0.0023 memory retrieval, $0.0067 whole history",
+        "src": "paper Table 8",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "BLEU-4",
+        "ROUGE-L",
+        "MAUVE",
+        "BERTScore"
+      ],
+      "rows": [
+        [
+          "Full THEANINE",
+          "4.32",
+          "19.03",
+          "41.52",
+          "87.64"
+        ],
+        [
+          "w/o relation-aware linking",
+          "4.07",
+          "18.58",
+          "39.69",
+          "87.57"
+        ],
+        [
+          "w/o timeline refinement",
+          "4.03",
+          "18.82",
+          "41.34",
+          "87.66"
+        ],
+        [
+          "timeline broken into shuffled memories",
+          "4.15",
+          "18.70",
+          "38.49",
+          "87.61"
+        ],
+        [
+          "Memory Retrieval baseline (k = 6)",
+          "3.43",
+          "18.06",
+          "22.11",
+          "87.27"
+        ]
+      ],
+      "src": "paper Table 2 (average of MSC and CC, sessions 3-5)"
+    },
+    "components": [
+      {
+        "role": "Summarize, label relations, refine timelines, respond",
+        "model": "gpt-3.5-turbo-0125, temperature 0.75",
+        "kind": "llm",
+        "src": "paper §3.3"
+      },
+      {
+        "role": "Similarity for linking and retrieval",
+        "model": "text-embedding-3-small, cosine",
+        "kind": "retriever",
+        "src": "paper §3.3; code retriever.py L13-L29",
+        "url": "https://github.com/kimnamssya/Theanine/blob/650797962eacd28f07b34a351b655303f1c8533d/src/retriever.py#L13-L29"
+      },
+      {
+        "role": "Timeline extraction and choice",
+        "model": "graph path enumeration + random pick",
+        "kind": "rule",
+        "src": "code theanine.py L66-L156",
+        "url": "https://github.com/kimnamssya/Theanine/blob/650797962eacd28f07b34a351b655303f1c8533d/src/theanine.py#L66-L156"
+      },
+      {
+        "role": "TeaFarm question writer and grader",
+        "model": "GPT-4 (gpt-4, temperature 0.75)",
+        "kind": "llm",
+        "src": "paper §5.1, footnote 9, Fig. 11"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Instead of updating or deleting stale memories, keep them all and link them by time and cause; retrieving whole timelines and letting an LLM tailor them gives better responses on MSC and CC than retrieval or update baselines.",
+      "claims": [
+        {
+          "claim": "THEANINE generates better responses than the baselines.",
+          "evidence": "MAUVE 18.62 vs 13.71 best baseline on MSC, 64.41 vs 38.16 on CC; BERTScore highest on both. Table 1"
+        },
+        {
+          "claim": "Methods without memory update generally score higher, supporting removal-free memory.",
+          "evidence": "e.g. Memory Retrieval 15.49 vs 15.30 ROUGE-L with update on MSC. Table 1, §4"
+        },
+        {
+          "claim": "Every phase helps; relation-aware linking helps most, then whole-timeline retrieval, then refinement.",
+          "evidence": "MAUVE 41.52 full vs 39.69 / 38.49 / 41.34. Table 2"
+        },
+        {
+          "claim": "Retrieved memories are more helpful and more often correct.",
+          "evidence": "golden memory retrieved 72% vs 68% Memory Retrieval (50 instances, human). Table 3, Fig. 5"
+        },
+        {
+          "claim": "Responses entail past conversations more often.",
+          "evidence": "68% entail, 4% contradict (100 turns, human). Fig. 6"
+        },
+        {
+          "claim": "Harder to fool with counterfactual questions.",
+          "evidence": "TeaFarm success rate 0.21 avg vs 0.18 Memory Retrieval. Table 4"
+        }
+      ],
+      "limits": [
+        "Only five sessions per conversation, for lack of longer English open-domain datasets.",
+        "No comparison with MemoryBank, whose forgetting curve needs day-level time gaps the datasets lack.",
+        "API-based LLMs raise privacy concerns; distilling into small local models is left open."
+      ],
+      "limits_src": "paper, Limitations",
+      "reading": [
+        "Automatic metrics compare to the reference next utterance; on MSC Memory Retrieval has higher BLEU-4 (1.92 vs 1.80) and ROUGE-L (15.49 vs 15.37), so the headline gain rests mostly on MAUVE.",
+        "THEANINE costs about 5.9× the Memory Retrieval baseline per episode ($0.0135 vs $0.0023), mainly from linking and one refinement call per timeline.",
+        "Each response uses one randomly chosen timeline per hit; the paper does not report variance across runs.",
+        "Automatic results use 50 sampled episodes per dataset and sessions 3-5; TeaFarm uses 200 questions graded by GPT-4, and all success rates are low (at most 0.24).",
+        "The released code links a new memory to every related top-3 memory, whereas the paper links only the latest per component (footnote 5 says the two gave similar responses).",
+        "Session numbers order the graph but are never shown to the LLM; the timeline's order is the only time signal the response model gets."
+      ]
+    },
+    "abstract": {
+      "text": "THEANINE is a memory framework for dialogue agents that talk to a user over many sessions. Rather than updating or deleting outdated memories, it keeps all of them and links each new memory to related older ones with a temporal order and a cause-effect relation chosen by an LLM. When responding, it retrieves the timelines of linked memories around the best matches and has an LLM refine them for the current conversation before generation. The paper also introduces TeaFarm, which tests memory by asking the agent counterfactual questions about past sessions.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2406.10996"
+    },
+    "sections": {
+      "Memory architecture": "§2",
+      "Results": "§4, §5.2",
+      "Ablation": "§4 (Table 2)",
+      "Discussion": "§6, Limitations",
+      "Details": "§3.3, App. B, E, H, I"
+    }
+  }
+}

@@ -1,0 +1,439 @@
+{
+  "id": "prime",
+  "name": "PRIME",
+  "paper": {
+    "title": "PRIME: Large Language Model Personalization with Cognitive Dual-Memory and Personalized Thought Process",
+    "arxiv": "2507.04607",
+    "url": "https://arxiv.org/abs/2507.04607",
+    "venue": "EMNLP 2025",
+    "venue_short": "EMNLP",
+    "track": "main",
+    "year": 2025,
+    "code": "https://github.com/launchnlp/LM_Personalization"
+  },
+  "design": {
+    "construction": {
+      "unit": "per-user LoRA adapter (semantic memory); raw past threads (episodic memory, variants only)",
+      "kept_as": "parametric: the user's history is trained into LoRA weights; episodic threads stored verbatim",
+      "processing": "LoRA task fine-tuning on the user's past CMV threads (query -> delta-awarded reply), then self-distilled personalized thinking (profile, replay, rejection sampling, proxy-written thoughts, 1-epoch fine-tune)",
+      "trigger": "offline-batch",
+      "writer": "LoRA training of the base model (Llama, Qwen, Ministral or Phi, 3B-14B)"
+    },
+    "organization": {
+      "structure": "one LoRA adapter per user (+ raw thread list in EM variants)",
+      "stores": "semantic memory: LoRA weights ΔH(a); episodic memory: past engagements (dropped in final PRIME)",
+      "index": null
+    },
+    "management": {
+      "operations": "none after instantiation: both memories are frozen",
+      "conflicts": null,
+      "forgetting": null,
+      "timing": "none"
+    },
+    "retrieval": {
+      "query": "the new query (OP and candidate replies)",
+      "candidates": "final PRIME: none, the user's LoRA is merged into the model; EM variants: 3 most recent threads (CMV) or 4 (LaMP)",
+      "selection": "recency in EM variants; relevance retrieval tested in §4 (retriever not named)",
+      "budget": "3 threads (CMV) / 4 (LaMP) in EM variants"
+    },
+    "use": {
+      "context": "the query only; the model with the user's LoRA writes a thinking trace that restates the user profile before answering",
+      "reasoning": "one generation of up to 2,048 tokens: user experience, OP summary, outline, per-candidate analysis, reflection, answer"
+    },
+    "control": {
+      "construction": "learned-sft",
+      "management": "none",
+      "retrieval": "none"
+    }
+  },
+  "classify": {
+    "structure": "none",
+    "index": "none",
+    "management": "append-only",
+    "candidates": "read everything",
+    "decides": "reads everything",
+    "note": "Final PRIME keeps each user's history only as LoRA weights: no stored text is searched, and the memory is trained once and frozen (placed under append-only as the nearest value: nothing is edited or deleted). The episodic store of raw threads exists only in the EM, DUAL and EM-included variants."
+  },
+  "tags": {
+    "fidelity": "compressed",
+    "structure": [
+      "parametric"
+    ],
+    "write_time": [
+      "learned"
+    ],
+    "selection": [
+      "model-reads"
+    ],
+    "memory_type": [
+      "episodic",
+      "semantic",
+      "profile"
+    ],
+    "learning": "sft",
+    "domain": [
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "A user's history is their past engagements: for CMV, single-turn Reddit threads (OP plus direct replies, one marked by the OP's delta); for LaMP, the benchmark's user profiles.",
+    "construction": "Semantic memory: a LoRA adapter per user trained with task-oriented fine-tuning (query with candidates -> the delta-awarded reply's option ID) for 3 epochs (2 on LaMP). Episodic memory: the raw engagements, stored as is.",
+    "organization": "",
+    "update": "",
+    "retrieval": "At test time the user's LoRA is merged into the base model. EM variants also prepend the 3 (CMV) or 4 (LaMP) most recent engagements; the final PRIME drops this because it lowered scores.",
+    "answer": "The model generates a personalized thinking trace (user-experience summary, OP summary, outline, analysis of each candidate, reflection) and then the ranked top-3 option IDs, up to 2,048 tokens.",
+    "learning": "Personalized thinking is self-distilled: the LoRA model writes a user profile, replays the user's past threads as queries and keeps those it gets right; a proxy model (base model + profile text) writes structured thoughts given query and gold answer; thoughts reaching the gold answer are kept and the LoRA model is fine-tuned on them for one epoch."
+  },
+  "summary": "Cognitive dual-memory framing of LLM personalization: episodic memory as recalled past engagements and semantic memory as a per-user LoRA, plus self-distilled personalized thinking; the final system keeps only the LoRA and the thinking, evaluated on a new Reddit ChangeMyView ranking dataset and LaMP.",
+  "verified": false,
+  "notes": "Venue verified on ACL Anthology: EMNLP 2025 main, pages 33707-33736 (2025.emnlp-main.1711). PDF read: arXiv v3 (26 Sep 2025). The linked repository (launchnlp/LM_Personalization, HEAD 14e4adbd80b75148bcb23e3080256e5b769a7e8b, 2025-06-25) contains only the CMV data and a README saying the code is still being refactored, so nothing here comes from code. New benchmark ids proposed in .cache/annot/new_benchmarks_prime.json ('cmv-persuasion', 'lamp'); new baselines in .cache/annot/new_extra_prime.json ('r1-distill', 'oppu'). Final PRIME excludes episodic memory (§6 Implementation Details, Table A3), so 'dual memory' applies to the DUAL and EM-included PRIME variants. The paper uses 'episodic memory' in two ways: recalled raw engagements (§4) and, in the profile-replacement study, the textual profile summary (App. D). Footnote 18 gives the Qwen2.5-14B model card as Qwen/Qwen2.5-7B-Instruct, apparently a typo.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2507.04607v3 (PDF read 2026-09-30); ACL Anthology 2025.emnlp-main.1711 checked for venue",
+      "code": null,
+      "code_note": "The paper links https://github.com/launchnlp/LM_Personalization; at commit 14e4adbd80b75148bcb23e3080256e5b769a7e8b (latest, 2025-06-25) it holds only the CMV dataset (history, evaluation, target authors) and states that the code is still being refactored. No method code, so everything below is from the paper."
+    },
+    "sections": {
+      "Memory architecture": "§4-§5",
+      "Results": "§7.1, Tables 3-4, Table A3",
+      "Ablation": "§4 (Tables 1-2, A2), §7.1",
+      "Discussion": "§7.2, Limitations",
+      "Details": "§3, §6, App. A, C, D"
+    },
+    "abstract": {
+      "text": "PRIME frames LLM personalization with the cognitive split between episodic memory (specific past engagements of a user) and semantic memory (lasting beliefs and preferences). The authors first compare many ways to build each memory, finding that recency beats relevance for recall and that per-user LoRA fine-tuning on the task is the strongest semantic memory. PRIME combines these and adds personalized thinking, learned by self-distilling reasoning traces from the user's own history. They also release a Reddit ChangeMyView dataset where the model must rank the reply that changed a user's view, and report gains over non-personalized and generic-reasoning baselines on it and on LaMP.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2507.04607"
+    },
+    "headline": [
+      "In the final PRIME a user's history lives only in a per-user LoRA adapter; no stored text is retrieved at test time.",
+      "The episodic part (recent past threads in the prompt) was dropped from the final system because it lowered scores; the dual memory survives only in the DUAL and EM-included variants.",
+      "The model restates a user profile at the start of its own thinking, a behaviour learned by self-distillation on the user's past threads."
+    ],
+    "units": [
+      {
+        "name": "Semantic memory",
+        "role": "the user's preferences and beliefs, trained into weights",
+        "made_by": "LoRA task fine-tuning on the user's history, then fine-tuning on self-distilled thoughts",
+        "fields": [
+          {
+            "name": "LoRA weights ΔH(a)",
+            "what": "one adapter per user, merged into the base model at test time (θ + ΔH(a))",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §4 Eq. 2, §5.1",
+            "url": "https://arxiv.org/pdf/2507.04607"
+          },
+          {
+            "name": "profile summary",
+            "what": "text summary of the user written by the LoRA model (Parametric Knowledge Reification); used to build the proxy model for thought synthesis, and regenerated by PRIME inside its thinking",
+            "kept_as": "summarized",
+            "used_for": [
+              "profile"
+            ],
+            "src": "paper §4, §5.2 Steps 1 and 4, Fig. A10",
+            "url": "https://arxiv.org/pdf/2507.04607"
+          }
+        ]
+      },
+      {
+        "name": "Episodic memory",
+        "role": "specific past engagements of the user",
+        "made_by": "none: raw threads stored as is",
+        "fields": [
+          {
+            "name": "past threads",
+            "what": "the user's single-turn CMV threads (OP and replies) or LaMP profile items; 3 (CMV) or 4 (LaMP) most recent are prepended in EM and DUAL variants; not used by final PRIME",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "paper §4, §6 Implementation Details, Fig. A7",
+            "url": "https://arxiv.org/pdf/2507.04607"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Train LoRA",
+        "how": "task-oriented fine-tuning per user: input is a past OP with candidate replies, target is the delta-awarded reply's option ID",
+        "params": {
+          "epochs": "3 (2 on LaMP)"
+        },
+        "src": "paper §4, §6, Table A4",
+        "url": "https://arxiv.org/pdf/2507.04607"
+      },
+      {
+        "step": "Write profile",
+        "how": "the LoRA model summarises the user (PKR)",
+        "src": "paper §5.2 Step 1",
+        "url": "https://arxiv.org/pdf/2507.04607"
+      },
+      {
+        "step": "Replay and filter",
+        "how": "each past engagement is turned into a query; keep those the LoRA model answers correctly",
+        "src": "paper §5.2 Steps 2-3",
+        "url": "https://arxiv.org/pdf/2507.04607"
+      },
+      {
+        "step": "Synthesize thoughts",
+        "how": "a proxy model (base model + profile text) is given the query and its answer and writes structured thoughts that restate the profile; keep those whose answer matches",
+        "src": "paper §5.2 Steps 4-5, Figs. A10, A12",
+        "url": "https://arxiv.org/pdf/2507.04607"
+      },
+      {
+        "step": "Fine-tune on thoughts",
+        "how": "train the LoRA model 1 epoch with cross-entropy: plain query in, thinking trace + answer out",
+        "params": {
+          "epochs": "1"
+        },
+        "src": "paper §5.2 Training",
+        "url": "https://arxiv.org/pdf/2507.04607"
+      }
+    ],
+    "read": [
+      {
+        "step": "Load adapter",
+        "round": 1,
+        "input": "user id",
+        "how": "merge the user's LoRA into the base model",
+        "src": "paper §5.1",
+        "url": "https://arxiv.org/pdf/2507.04607"
+      },
+      {
+        "step": "Recall recent threads (variants only)",
+        "round": 1,
+        "input": "user history",
+        "how": "prepend the 3 most recent engagements (CMV) before the new OP; not in final PRIME",
+        "params": {
+          "k": "3 CMV / 4 LaMP"
+        },
+        "src": "paper §5.1, §6, Fig. A7",
+        "url": "https://arxiv.org/pdf/2507.04607"
+      },
+      {
+        "step": "Think and answer",
+        "round": 1,
+        "input": "query (OP + candidate replies)",
+        "how": "one generation: user experience, OP summary, outline, per-candidate analysis, reflection, ranked answer",
+        "params": {
+          "max tokens": "2,048"
+        },
+        "src": "paper §6, Fig. A10",
+        "url": "https://arxiv.org/pdf/2507.04607"
+      }
+    ],
+    "answer_context": {
+      "sees": "the query only (author name, OP title and body, candidate replies as JSON); personalization comes from the merged LoRA weights",
+      "format": "standard CMV template (Fig. A7) followed by the personalized-thinking output instructions (Fig. A10)",
+      "excludes": [
+        "past threads (final PRIME)",
+        "any retrieved text"
+      ],
+      "includes": [
+        "the new OP",
+        "candidate replies with option IDs"
+      ],
+      "src": "paper Figs. A7, A10; §6",
+      "url": "https://arxiv.org/pdf/2507.04607"
+    },
+    "compression": [
+      {
+        "what": "user history vs what the answer model reads",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not comparable in tokens: final PRIME reads no history text; the history (183.2 engagements per CMV user on average, Table A1) is held in LoRA weights whose rank and size are not reported.",
+        "src": "paper Table A1, §5.1",
+        "url": "https://arxiv.org/pdf/2507.04607"
+      }
+    ],
+    "paper_vs_code": [],
+    "open_questions": [
+      "The LoRA rank, learning rate and adapter size are not reported, so the memory capacity per user is unknown.",
+      "PRIME vs SM mixes two changes (thought fine-tuning and a longer generation with a structured prompt); a SM + thinking-prompt-without-training variant is not reported for the trained models.",
+      "Only 133 CMV queries from 41 users; results average 10 runs but no variance is given."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 228",
+        "body": "<text class=\"fig-t\" x=\"52\" y=\"16\" text-anchor=\"middle\">User history</text><rect class=\"gi-ev\" x=\"10\" y=\"24\" width=\"74\" height=\"12\" rx=\"6\"/><line class=\"gi-t\" x1=\"18\" y1=\"30.0\" x2=\"70\" y2=\"30.0\"/><rect class=\"gi-ev\" x=\"22\" y=\"39\" width=\"74\" height=\"12\" rx=\"6\"/><line class=\"gi-t\" x1=\"30\" y1=\"45.0\" x2=\"82\" y2=\"45.0\"/><rect class=\"gi-ev\" x=\"10\" y=\"54\" width=\"74\" height=\"12\" rx=\"6\"/><line class=\"gi-t\" x1=\"18\" y1=\"60.0\" x2=\"70\" y2=\"60.0\"/><rect class=\"gi-ev\" x=\"22\" y=\"69\" width=\"74\" height=\"12\" rx=\"6\"/><line class=\"gi-t\" x1=\"30\" y1=\"75.0\" x2=\"82\" y2=\"75.0\"/><rect class=\"gi-ev\" x=\"10\" y=\"84\" width=\"74\" height=\"12\" rx=\"6\"/><line class=\"gi-t\" x1=\"18\" y1=\"90.0\" x2=\"70\" y2=\"90.0\"/><text class=\"fig-s\" x=\"52\" y=\"110\" text-anchor=\"middle\">past CMV threads</text><text class=\"fig-s\" x=\"52\" y=\"122\" text-anchor=\"middle\">(OP, reply, delta)</text><text class=\"fig-s\" x=\"52\" y=\"134\" text-anchor=\"middle\">183 per user (avg)</text><path class=\"gi-a d\" d=\"M100 40 L130 40 L130 34 L143 34\"/><polygon class=\"gi-ah\" points=\"150,34 143,30 143,38\"/><rect class=\"gi-ev d\" x=\"150\" y=\"18\" width=\"150\" height=\"34\" rx=\"6\"/><text class=\"fig-t\" x=\"158\" y=\"32\" text-anchor=\"start\">Episodic: raw threads</text><text class=\"fig-s\" x=\"158\" y=\"45\" text-anchor=\"start\">stored as is; no LLM, no training</text><text class=\"fig-no\" x=\"308\" y=\"32\" text-anchor=\"start\">dropped in final PRIME</text><text class=\"fig-s\" x=\"308\" y=\"45\" text-anchor=\"start\">(it lowered scores)</text><path class=\"gi-a\" d=\"M100 92 L143 92\"/><polygon class=\"gi-ah\" points=\"150,92 143,88 143,96\"/><rect class=\"gi-llm\" x=\"150\" y=\"70\" width=\"110\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"205.0\" y=\"84.0\" text-anchor=\"middle\">LoRA task FT</text><text class=\"fig-s\" x=\"205.0\" y=\"97.0\" text-anchor=\"middle\">per user, 3 epochs</text><text class=\"fig-s\" x=\"205.0\" y=\"109.0\" text-anchor=\"middle\">query → best reply</text><path class=\"gi-a\" d=\"M260 92 L293 92\"/><polygon class=\"gi-ah\" points=\"300,92 293,88 293,96\"/><text class=\"fig-t\" x=\"308\" y=\"70\" text-anchor=\"start\">Semantic memory</text><rect class=\"gi-w\" x=\"310\" y=\"78\" width=\"12\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"324\" y=\"78\" width=\"12\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"338\" y=\"78\" width=\"12\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"352\" y=\"78\" width=\"12\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"366\" y=\"78\" width=\"12\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"310\" y=\"90\" width=\"12\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"324\" y=\"90\" width=\"12\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"338\" y=\"90\" width=\"12\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"352\" y=\"90\" width=\"12\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"366\" y=\"90\" width=\"12\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"310\" y=\"102\" width=\"12\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"324\" y=\"102\" width=\"12\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"338\" y=\"102\" width=\"12\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"352\" y=\"102\" width=\"12\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"366\" y=\"102\" width=\"12\" height=\"10\" rx=\"2\"/><text class=\"fig-s\" x=\"390\" y=\"88\" text-anchor=\"start\">ΔH(a): the user's</text><text class=\"fig-s\" x=\"390\" y=\"100\" text-anchor=\"start\">LoRA weights</text><text class=\"fig-t\" x=\"280\" y=\"140\" text-anchor=\"middle\">Personalized thinking: self-distillation on the user's own history</text><rect class=\"gi-llm\" x=\"8\" y=\"152\" width=\"84\" height=\"50\" rx=\"8\"/><text class=\"fig-t\" x=\"50.0\" y=\"169.0\" text-anchor=\"middle\">1 Profile</text><text class=\"fig-s\" x=\"50.0\" y=\"182.0\" text-anchor=\"middle\">SM model writes</text><text class=\"fig-s\" x=\"50.0\" y=\"194.0\" text-anchor=\"middle\">user summary</text><path class=\"gi-a\" d=\"M92 177 L92 177\"/><polygon class=\"gi-ah\" points=\"99,177 92,173 92,181\"/><rect class=\"gi-f\" x=\"99\" y=\"152\" width=\"84\" height=\"50\" rx=\"8\"/><text class=\"fig-t\" x=\"141.0\" y=\"169.0\" text-anchor=\"middle\">2 Replay</text><text class=\"fig-s\" x=\"141.0\" y=\"182.0\" text-anchor=\"middle\">history threads</text><text class=\"fig-s\" x=\"141.0\" y=\"194.0\" text-anchor=\"middle\">as test queries</text><path class=\"gi-a\" d=\"M183 177 L183 177\"/><polygon class=\"gi-ah\" points=\"190,177 183,173 183,181\"/><rect class=\"gi-f\" x=\"190\" y=\"152\" width=\"84\" height=\"50\" rx=\"8\"/><text class=\"fig-t\" x=\"232.0\" y=\"169.0\" text-anchor=\"middle\">3 Keep right</text><text class=\"fig-s\" x=\"232.0\" y=\"182.0\" text-anchor=\"middle\">SM model's</text><text class=\"fig-s\" x=\"232.0\" y=\"194.0\" text-anchor=\"middle\">correct answers</text><path class=\"gi-a\" d=\"M274 177 L274 177\"/><polygon class=\"gi-ah\" points=\"281,177 274,173 274,181\"/><rect class=\"gi-llm\" x=\"281\" y=\"152\" width=\"84\" height=\"50\" rx=\"8\"/><text class=\"fig-t\" x=\"323.0\" y=\"169.0\" text-anchor=\"middle\">4 Proxy LLM</text><text class=\"fig-s\" x=\"323.0\" y=\"182.0\" text-anchor=\"middle\">base + profile</text><text class=\"fig-s\" x=\"323.0\" y=\"194.0\" text-anchor=\"middle\">writes thoughts</text><path class=\"gi-a\" d=\"M365 177 L365 177\"/><polygon class=\"gi-ah\" points=\"372,177 365,173 365,181\"/><rect class=\"gi-f\" x=\"372\" y=\"152\" width=\"84\" height=\"50\" rx=\"8\"/><text class=\"fig-t\" x=\"414.0\" y=\"169.0\" text-anchor=\"middle\">5 Keep right</text><text class=\"fig-s\" x=\"414.0\" y=\"182.0\" text-anchor=\"middle\">thoughts whose</text><text class=\"fig-s\" x=\"414.0\" y=\"194.0\" text-anchor=\"middle\">answer matches</text><path class=\"gi-a\" d=\"M456 177 L456 177\"/><polygon class=\"gi-ah\" points=\"463,177 456,173 456,181\"/><rect class=\"gi-hi\" x=\"463\" y=\"152\" width=\"84\" height=\"50\" rx=\"8\"/><text class=\"fig-t\" x=\"505.0\" y=\"169.0\" text-anchor=\"middle\">Fine-tune</text><text class=\"fig-s\" x=\"505.0\" y=\"182.0\" text-anchor=\"middle\">1 epoch on</text><text class=\"fig-s\" x=\"505.0\" y=\"194.0\" text-anchor=\"middle\">the thoughts</text><path class=\"gi-a\" d=\"M505 152 L505 128 L345 128 L345 121\"/><polygon class=\"gi-ah\" points=\"345,114 341,121 349,121\"/><text class=\"fig-s\" x=\"498\" y=\"122\" text-anchor=\"end\">updates the weights</text><text class=\"fig-s\" x=\"280\" y=\"220\" text-anchor=\"middle\">rejection sampling twice; the input stays a plain query, the target is thoughts + answer</text>",
+        "text": [
+          "Each user's past threads train a LoRA adapter (semantic memory); the raw threads can also be kept as episodic memory, but the final PRIME drops them.",
+          "The adapter then learns to think in a personalized way from its own filtered answers and proxy-written thoughts, fine-tuned for one epoch."
+        ],
+        "src": "paper §4, §5.2, §6, Table A1",
+        "url": "https://arxiv.org/pdf/2507.04607"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 200",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"40\" width=\"84\" height=\"56\" rx=\"8\"/><text class=\"fig-t\" x=\"46.0\" y=\"60.0\" text-anchor=\"middle\">New query</text><text class=\"fig-s\" x=\"46.0\" y=\"73.0\" text-anchor=\"middle\">OP + candidate</text><text class=\"fig-s\" x=\"46.0\" y=\"85.0\" text-anchor=\"middle\">replies</text><path class=\"gi-a\" d=\"M88 68 L97 68\"/><polygon class=\"gi-ah\" points=\"104,68 97,64 97,72\"/><rect class=\"gi-f\" x=\"104\" y=\"40\" width=\"92\" height=\"56\" rx=\"8\"/><text class=\"fig-t\" x=\"150\" y=\"54\" text-anchor=\"middle\">Load user's LoRA</text><rect class=\"gi-w\" x=\"118\" y=\"62\" width=\"11\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"131\" y=\"62\" width=\"11\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"144\" y=\"62\" width=\"11\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"157\" y=\"62\" width=\"11\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"170\" y=\"62\" width=\"11\" height=\"10\" rx=\"2\"/><text class=\"fig-s\" x=\"150\" y=\"88\" text-anchor=\"middle\">θ + ΔH(a)</text><path class=\"gi-a\" d=\"M196 68 L205 68\"/><polygon class=\"gi-ah\" points=\"212,68 205,64 205,72\"/><rect class=\"gi-llm\" x=\"212\" y=\"18\" width=\"208\" height=\"150\" rx=\"8\"/><text class=\"fig-t\" x=\"316\" y=\"34\" text-anchor=\"middle\">Personalized thinking (one pass)</text><rect class=\"gi-ev\" x=\"222\" y=\"46\" width=\"188\" height=\"18\" rx=\"4\"/><text class=\"fig-s\" x=\"230\" y=\"59\" text-anchor=\"start\">1. user experience: profile recalled</text><rect class=\"gi-ev\" x=\"222\" y=\"68\" width=\"188\" height=\"18\" rx=\"4\"/><text class=\"fig-s\" x=\"230\" y=\"81\" text-anchor=\"start\">2. OP summary</text><rect class=\"gi-ev\" x=\"222\" y=\"90\" width=\"188\" height=\"18\" rx=\"4\"/><text class=\"fig-s\" x=\"230\" y=\"103\" text-anchor=\"start\">3. outline for challenging the OP</text><rect class=\"gi-ev\" x=\"222\" y=\"112\" width=\"188\" height=\"18\" rx=\"4\"/><text class=\"fig-s\" x=\"230\" y=\"125\" text-anchor=\"start\">4. analysis of every candidate</text><rect class=\"gi-ev\" x=\"222\" y=\"134\" width=\"188\" height=\"18\" rx=\"4\"/><text class=\"fig-s\" x=\"230\" y=\"147\" text-anchor=\"start\">5. reflection</text><text class=\"fig-s\" x=\"316\" y=\"162\" text-anchor=\"middle\">up to 2,048 generated tokens</text><path class=\"gi-a\" d=\"M420 68 L433 68\"/><polygon class=\"gi-ah\" points=\"440,68 433,64 433,72\"/><rect class=\"gi-hi\" x=\"440\" y=\"40\" width=\"116\" height=\"56\" rx=\"8\"/><text class=\"fig-t\" x=\"498.0\" y=\"60.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"498.0\" y=\"73.0\" text-anchor=\"middle\">top-3 option IDs,</text><text class=\"fig-s\" x=\"498.0\" y=\"85.0\" text-anchor=\"middle\">ranked</text><rect class=\"gi-ev d\" x=\"4\" y=\"150\" width=\"192\" height=\"40\" rx=\"6\"/><text class=\"fig-t\" x=\"12\" y=\"166\" text-anchor=\"start\">3 most recent threads (EM)</text><text class=\"fig-s\" x=\"12\" y=\"180\" text-anchor=\"start\">only in EM / DUAL variants</text><path class=\"gi-a d\" d=\"M196 170 L204 170 L204 120 L205 120\"/><polygon class=\"gi-ah\" points=\"212,120 205,116 205,124\"/><text class=\"fig-s\" x=\"390\" y=\"190\" text-anchor=\"middle\">no search: the profile comes from the weights, not stored text</text>",
+        "text": [
+          "There is no search: the user's adapter is merged into the model, which writes a thinking trace starting from a recalled user profile and ranks the top 3 replies.",
+          "Only the EM and DUAL variants prepend the 3 most recent threads."
+        ],
+        "src": "paper §5.1, §6, Figs. A7, A10",
+        "url": "https://arxiv.org/pdf/2507.04607"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "CMV evaluation",
+        "value": "133 queries from 41 users (2023-2024)",
+        "src": "paper §3",
+        "section": "construction"
+      },
+      {
+        "label": "CMV history",
+        "value": "7,514 threads (2013-2022); 183.2 per user",
+        "src": "paper §1, Table A1",
+        "section": "construction"
+      },
+      {
+        "label": "Negatives per positive reply",
+        "value": "47.5 on average in the data; 9 sampled per query in §4 and filtering",
+        "src": "paper §3, App. C",
+        "section": "construction"
+      },
+      {
+        "label": "LoRA training",
+        "value": "3 epochs task FT (2 on LaMP); thoughts 1 epoch",
+        "src": "paper §6, §5.2",
+        "section": "construction"
+      },
+      {
+        "label": "Recent threads (EM variants)",
+        "value": "3 CMV · 4 LaMP",
+        "src": "paper §6",
+        "section": "method"
+      },
+      {
+        "label": "Generation budget",
+        "value": "up to 2,048 tokens",
+        "src": "paper §6",
+        "section": "method"
+      },
+      {
+        "label": "Inference time",
+        "value": "10-20 h per model for the three benchmarks, one A40 or L40",
+        "src": "paper Limitations",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Semantic memory",
+        "model": "per-user LoRA on the base model (Llama-3.2-3B, Llama-3.1-8B, Ministral-8B, Qwen2.5-7B/14B, Phi-4; instruct versions)",
+        "kind": "llm",
+        "src": "paper §4, App. A.1"
+      },
+      {
+        "role": "Episodic recall (variants)",
+        "model": "recency rule: last 3 (CMV) or 4 (LaMP) engagements",
+        "kind": "rule",
+        "src": "paper §6"
+      },
+      {
+        "role": "Thought synthesis",
+        "model": "proxy: same base model + textual profile",
+        "kind": "llm",
+        "src": "paper §5.2 Step 4"
+      },
+      {
+        "role": "Answer with personalized thinking",
+        "model": "base model + user's LoRA",
+        "kind": "llm",
+        "src": "paper §5.1-5.2"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "Llama-3.1-8B",
+        "Qwen2.5-7B",
+        "Qwen2.5-14B"
+      ],
+      "rows": [
+        [
+          "No personalization",
+          "26.58",
+          "27.89",
+          "30.24"
+        ],
+        [
+          "EM only (3 recent threads)",
+          "26.88",
+          "25.51",
+          "30.65"
+        ],
+        [
+          "SM only (LoRA)",
+          "31.24",
+          "30.20",
+          "37.22"
+        ],
+        [
+          "DUAL (EM + SM)",
+          "32.24",
+          "28.71",
+          "37.68"
+        ],
+        [
+          "EM-included PRIME",
+          "32.79",
+          "28.12",
+          "37.10"
+        ],
+        [
+          "PRIME (SM + thinking)",
+          "34.13",
+          "32.29",
+          "38.15"
+        ]
+      ],
+      "src": "paper Table A3 (CMV, Avg of Hit@1, Hit@3, DCG@3, MRR; 10 runs)"
+    },
+    "discussion": {
+      "takeaway": "For personalization, a per-user LoRA trained on the task beats recalling past engagements, and teaching that adapter to reason from a recalled profile adds more; the recalled engagements themselves were left out of the final system.",
+      "claims": [
+        {
+          "claim": "Semantic memory beats episodic memory.",
+          "evidence": "SM vs EM Avg on CMV: 31.24 vs 26.88 (Llama-3.1-8B), 37.22 vs 30.65 (Qwen2.5-14B); same trend on LaMP (Tables 3-4, A3)."
+        },
+        {
+          "claim": "Recency recall beats relevance retrieval for episodic memory.",
+          "evidence": "Llama-3.1-8B 26.88 vs 25.68 (Table 1, A2)."
+        },
+        {
+          "claim": "Personalized thinking is crucial and PRIME is model-agnostic.",
+          "evidence": "PRIME best Avg for all 6 base models on CMV, e.g. 34.13 vs 32.24 DUAL on Llama-3.1-8B (Table 3)."
+        },
+        {
+          "claim": "Generic reasoning hurts personalization.",
+          "evidence": "R1-distilled models below non-personalized base on CMV for Llama-8B (25.18 vs 26.58) and Qwen-7B (23.36 vs 27.89) (Table A3)."
+        },
+        {
+          "claim": "PRIME uses the specific user's history rather than popularity.",
+          "evidence": "Swapping in another user's LoRA and profile lowers scores, most for the most similar users (Fig. 2, App. D)."
+        }
+      ],
+      "limits": [
+        "Two benchmarks cannot cover the range of personalization tasks, e.g. long-form personalization.",
+        "Models only up to 14B parameters, for budget reasons.",
+        "Inference is costly: 10-20 hours per model on one A40 or L40 GPU."
+      ],
+      "limits_src": "paper, Limitations",
+      "reading": [
+        "Combining both memories is not consistently better: DUAL is below SM alone for Qwen2.5-7B (28.71 vs 30.20) and Llama-3.2-3B (28.87 vs 30.25), which is why the final PRIME drops episodic memory (§6, §7.1).",
+        "On LaMP, PRIME is below DUAL on LaMP-3 (MAE .223 vs .188) and LaMP-5 (ROUGE-1 47.3 vs 52.2), and all non-OPPU methods trail OPPU, which trains on other users' data and uses Llama-2-7B, so that comparison differs in both data and base model.",
+        "The CMV test set was filtered to queries the base Llama-3.1-8B and Qwen2.5-7B get wrong without history (Hit@1 ≤ 0.3, Hit@3 ≤ 0.5), which removes 194 queries and lowers the non-personalized baseline for those two models by construction.",
+        "Every trained variant fits one adapter per user on the same task format it is tested on (task-oriented FT), so SM is closer to per-user supervised training than to a memory read at test time.",
+        "The main text reports Hit@3 and Avg; Table A3 shows Ministral-8B PRIME's Hit@3 (40.75) slightly below SM and DUAL (40.83)."
+      ]
+    }
+  }
+}

@@ -1,0 +1,654 @@
+{
+  "id": "hipporag-v2",
+  "name": "HippoRAG 2",
+  "paper": {
+    "title": "From RAG to Memory: Non-Parametric Continual Learning for Large Language Models",
+    "arxiv": "2502.14802",
+    "url": "https://arxiv.org/abs/2502.14802",
+    "venue": "ICML 2025",
+    "venue_short": "ICML",
+    "track": "main",
+    "year": 2025,
+    "code": "https://github.com/OSU-NLP-Group/HippoRAG"
+  },
+  "design": {
+    "construction": {
+      "unit": "passage node + phrase nodes from the passage's OpenIE triples",
+      "kept_as": "passages verbatim; LLM-extracted (subject, predicate, object) triples as an index",
+      "processing": "LLM NER, then NER-conditioned triple extraction per passage; phrases, triples and passages embedded; synonym edges for phrase pairs with similarity >= 0.8",
+      "trigger": "offline-batch",
+      "writer": "Llama-3.3-70B-Instruct (GPT-4o-mini in App. C)"
+    },
+    "organization": {
+      "structure": "open knowledge graph: phrase nodes and passage nodes; relation, synonym and 'contains' edges",
+      "stores": "igraph KG + three embedding stores (passages, phrases, triples)",
+      "index": "NV-Embed-v2 dense over passages and triple strings; phrase embeddings only for synonym edges"
+    },
+    "management": {
+      "operations": "new passages add nodes and edges (corpus-expansion test in §6.3); code also has a delete call",
+      "conflicts": null,
+      "forgetting": null,
+      "timing": "offline"
+    },
+    "retrieval": {
+      "query": "question embedded twice (query-to-triple and query-to-passage instructions)",
+      "candidates": "top-5 triples by dense similarity; dense scores for every passage",
+      "selection": "LLM filter keeps <= 4 triples; Personalized PageRank seeded by <= 5 phrases and all passages (x 0.05); passages ranked by PageRank",
+      "budget": "5 passages to the reader"
+    },
+    "use": {
+      "context": "top-5 passages as 'Wikipedia Title: ...' blocks after a one-shot example",
+      "reasoning": "single reader call: thought, then 'Answer:'"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "fixed-rule",
+      "retrieval": "prompted-llm"
+    }
+  },
+  "classify": {
+    "structure": "graph",
+    "index": "vector",
+    "management": "append-only",
+    "candidates": "graph walk",
+    "decides": "top-k rule",
+    "note": "Dense triple matching and the LLM filter only set the PPR seeds; the PageRank ranking over the whole graph decides the 5 passages."
+  },
+  "tags": {
+    "fidelity": "verbatim+derived",
+    "structure": [
+      "graph"
+    ],
+    "write_time": [
+      "extract",
+      "link"
+    ],
+    "selection": [
+      "dense",
+      "graph-expansion"
+    ],
+    "memory_type": [
+      "semantic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "general",
+      "long-document"
+    ]
+  },
+  "stages": {
+    "ingestion": "The corpus is a fixed set of passages (e.g. 11,656 for MuSiQue); each passage becomes a node as is.",
+    "construction": "An LLM runs NER on each passage and then extracts schema-free (subject, predicate, object) triples conditioned on those entities; subjects and objects become phrase nodes.",
+    "organization": "Phrase nodes are joined by relation edges (same triple) and synonym edges (embedding similarity >= 0.8); each passage node gets a 'contains' edge to every phrase from its triples.",
+    "update": "New passages are indexed into the same graph (the paper grows the corpus in four segments, §6.3); nothing is edited or merged beyond synonym links.",
+    "retrieval": "The question is matched to triple embeddings (top 5), an LLM keeps the relevant ones (at most 4), and their phrases (up to 5) plus every passage (dense score x 0.05) seed Personalized PageRank; passages are ranked by PageRank. With no triples left, plain dense retrieval is used.",
+    "answer": "The reader LLM gets the top 5 passages and answers after a short chain of thought.",
+    "learning": ""
+  },
+  "summary": "Adds passages as nodes to HippoRAG's LLM-built phrase graph, links the question to whole triples, and filters those triples with an LLM before Personalized PageRank ranks passages.",
+  "verified": false,
+  "notes": "Venue: ICML 2025 poster (PMLR 267; the arXiv v2 PDF carries the ICML proceedings footer; OpenReview LWH8yn4HS2, venueid ICML.cc/2025/Conference). Text from arXiv v2 PDF (2025-06-19). Code: official OSU-NLP-Group/HippoRAG at 5c28f92 (last commit before v2). id kept from data/extra_systems.json, where hipporag-v2 is already a baseline entry.\nDESIGN: §3, §4.4, App. A, G.1, Table 13; code HippoRAG.py index/retrieve/graph_search_with_fact_entities. control.retrieval = prompted-llm because the LLM triple filter decides the phrase seeds (the ranking itself is PPR). classify.management append-only: no update, merge or forgetting of stored items.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2502.14802 v2 (PDF read 2026-09-30)",
+      "code": "https://github.com/OSU-NLP-Group/HippoRAG/tree/5c28f9220946199358fc0bd61142b48b2da2025c/",
+      "code_note": "Official repository named in the abstract. Commit 5c28f92 (2025-06-02) is the last one before arXiv v2 (2025-06-19); the HippoRAG 2 code was released on 2025-02-27 (191f281). On 2025-06-24 (242abfb) the phrase-seed weighting was changed to an average, so later commits differ from what is described here. main.py at this commit sets the experiment settings (retrieval_top_k 200, linking_top_k 5, qa_top_k 5, the Llama-3.3-70B DSPy filter prompt)."
+    },
+    "headline": [
+      "The reader only ever sees 5 raw passages; triples and phrases decide the ranking but never reach the answer model.",
+      "Every passage is a PageRank seed weighted by its dense score (x 0.05), so the dense retriever still anchors the result; phrase seeds come from at most 5 phrases in LLM-kept triples.",
+      "If the LLM filter keeps no triple, the graph is skipped and plain dense retrieval answers (18 of 100 failure cases in App. E)."
+    ],
+    "units": [
+      {
+        "name": "Passage node",
+        "role": "one corpus passage; the unit that is retrieved and read",
+        "made_by": "corpus as given (title line + text)",
+        "fields": [
+          {
+            "name": "passage text",
+            "what": "the passage as given, title on the first line",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code HippoRAG.py L425, L688-L693",
+            "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/HippoRAG.py#L688-L693"
+          },
+          {
+            "name": "passage embedding",
+            "what": "NV-Embed-v2 vector; its min-max normalised score sets the passage's PPR seed weight (x 0.05)",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code HippoRAG.py L1321-L1356, L1466-L1475",
+            "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/HippoRAG.py#L1466-L1475"
+          }
+        ]
+      },
+      {
+        "name": "Phrase node",
+        "role": "subject or object of an extracted triple",
+        "made_by": "LLM OpenIE, lowercased and stripped of punctuation",
+        "fields": [
+          {
+            "name": "phrase",
+            "what": "entity or concept string; a PPR node",
+            "kept_as": "extracted",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §3.1; code HippoRAG.py L250-L262",
+            "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/HippoRAG.py#L250-L262"
+          },
+          {
+            "name": "phrase embedding",
+            "what": "used only to add synonym edges at build time (default linking does not match the question to phrases)",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code HippoRAG.py L818-L879",
+            "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/HippoRAG.py#L818-L879"
+          }
+        ]
+      },
+      {
+        "name": "Triple (fact)",
+        "role": "(subject, predicate, object) from one passage; the query-linking unit",
+        "made_by": "LLM OpenIE conditioned on the passage's NER output",
+        "fields": [
+          {
+            "name": "triple text",
+            "what": "embedded as the string of the tuple; matched to the question and read by the filter LLM",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "verifier"
+            ],
+            "src": "paper §3.3-3.4; code HippoRAG.py L1281-L1319",
+            "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/HippoRAG.py#L1281-L1319"
+          },
+          {
+            "name": "predicate on the graph",
+            "what": "not stored: the graph edge between subject and object carries only a co-occurrence count",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "code HippoRAG.py L726-L772",
+            "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/HippoRAG.py#L726-L772"
+          }
+        ]
+      },
+      {
+        "name": "Edges",
+        "role": "what PageRank walks over (undirected, weighted)",
+        "made_by": "rules at build time",
+        "fields": [
+          {
+            "name": "relation edge",
+            "what": "subject-object pair from a triple, weight = number of times seen",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code HippoRAG.py L726-L772",
+            "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/HippoRAG.py#L726-L772"
+          },
+          {
+            "name": "synonym edge",
+            "what": "phrase pair with embedding similarity >= 0.8, weight = similarity",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper Table 13; code HippoRAG.py L866",
+            "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/HippoRAG.py#L866"
+          },
+          {
+            "name": "context edge",
+            "what": "passage 'contains' each phrase of its triples, weight 1.0",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §3.2; code HippoRAG.py L774-L816",
+            "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/HippoRAG.py#L774-L816"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Extract",
+        "how": "LLM runs NER on each passage, then extracts triples that should contain those entities",
+        "src": "paper §3.1; code openie_openai.py L130-L133",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/information_extraction/openie_openai.py#L130-L133"
+      },
+      {
+        "step": "Embed",
+        "how": "phrases, triples and passages go into three NV-Embed-v2 stores",
+        "src": "code HippoRAG.py L250-L262",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/HippoRAG.py#L250-L262"
+      },
+      {
+        "step": "Link",
+        "how": "relation edges between each triple's subject and object; 'contains' edges from each passage to its phrases",
+        "out": "on MuSiQue 140,830 extracted and 132,586 context edges (Llama-3.3-70B)",
+        "src": "paper Table 10; code HippoRAG.py L726-L816",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/HippoRAG.py#L726-L816"
+      },
+      {
+        "step": "Synonyms",
+        "how": "nearest-neighbour search over phrase embeddings; pairs above the threshold are linked (at most about 100 per phrase, phrases need 3+ alphanumeric characters)",
+        "params": {
+          "threshold": "0.8"
+        },
+        "out": "1,125,951 synonym edges on MuSiQue, about 80% of all edges",
+        "src": "paper Tables 10, 13; code HippoRAG.py L818-L879",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/HippoRAG.py#L818-L879"
+      }
+    ],
+    "read": [
+      {
+        "step": "Match triples",
+        "round": 1,
+        "input": "question (query-to-fact instruction)",
+        "scores": "each triple's string",
+        "how": "NV-Embed-v2 dot product, min-max normalised over all triples",
+        "params": {
+          "top": "5 triples"
+        },
+        "src": "paper §3.3, §4.4; code HippoRAG.py L1281-L1319, L1499-L1530",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/HippoRAG.py#L1499-L1530"
+      },
+      {
+        "step": "Filter (recognition memory)",
+        "round": 1,
+        "input": "question + 5 triples",
+        "how": "LLM with a DSPy-MIPROv2-tuned prompt keeps relevant triples; outputs are mapped back to the closest candidate string",
+        "params": {
+          "keep": "up to 4 (prompt)"
+        },
+        "out": "no triple left in 18% of 100 failure cases",
+        "src": "paper §3.4, Fig. 4, App. E; code rerank.py L108-L131",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/rerank.py#L108-L131"
+      },
+      {
+        "step": "Fallback",
+        "round": 1,
+        "how": "if no triple survives, rank passages by dense similarity only",
+        "src": "paper App. G.1; code HippoRAG.py L414-L416",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/HippoRAG.py#L414-L416"
+      },
+      {
+        "step": "Seed",
+        "round": 1,
+        "how": "phrases of kept triples (top 5 by average triple score) get weight = triple score / number of passages containing the phrase; every passage gets its normalised dense score x 0.05",
+        "params": {
+          "phrases": "<= 5",
+          "passage weight": "0.05"
+        },
+        "src": "paper App. G.1, Table 5; code HippoRAG.py L1427-L1475",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/HippoRAG.py#L1427-L1475"
+      },
+      {
+        "step": "PageRank",
+        "round": 1,
+        "how": "Personalized PageRank (python-igraph, undirected, edge-weighted) from those reset probabilities; passages ordered by their PageRank score",
+        "params": {
+          "damping": "0.5"
+        },
+        "src": "paper App. G.1, Table 13; code HippoRAG.py L1549-L1590",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/HippoRAG.py#L1549-L1590"
+      },
+      {
+        "step": "Read",
+        "round": 1,
+        "how": "top 200 passages are kept as the ranking; the reader gets the first 5",
+        "params": {
+          "reader": "5 passages"
+        },
+        "src": "paper §4.4; code main.py L121-L124, HippoRAG.py L688",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/main.py#L121-L124"
+      }
+    ],
+    "answer_context": {
+      "sees": "5 retrieved passages, verbatim",
+      "format": "system prompt + one-shot example, then \"Wikipedia Title: {passage}\" x5, \"Question: {q}\" and \"Thought: \"; the answer is taken after \"Answer:\"",
+      "excludes": [
+        "triples",
+        "phrase nodes",
+        "PageRank scores",
+        "filtered facts"
+      ],
+      "includes": [
+        "5 passages, each a title line plus text"
+      ],
+      "note": "The same QA prompt is used to re-phrase GraphRAG and LightRAG outputs (App. G.2).",
+      "src": "code HippoRAG.py L667-L724; templates/rag_qa_musique.py",
+      "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/HippoRAG.py#L667-L724"
+    },
+    "compression": [
+      {
+        "what": "passages read vs corpus (MuSiQue)",
+        "kept": 5,
+        "of": 11656,
+        "unit": "passages",
+        "basis": "qa_top_k 5 (§4.4) over the 11,656-passage MuSiQue corpus (Table 1)",
+        "src": "paper §4.4, Table 1",
+        "url": "https://arxiv.org/pdf/2502.14802"
+      },
+      {
+        "what": "reader context in tokens",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported; passages are stored and read verbatim, so no text is shortened.",
+        "src": "paper §4.4",
+        "url": "https://arxiv.org/pdf/2502.14802"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Average F1, 7 benchmarks (Llama-3.3-70B reader)",
+        "value": "59.8 vs 57.0 NV-Embed-v2, 53.1 HippoRAG",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "Average recall@5, 5 benchmarks",
+        "value": "78.2 vs 73.4 NV-Embed-v2",
+        "src": "paper Table 3"
+      },
+      {
+        "label": "Multi-hop recall@5 average (MuSiQue, 2Wiki, HotpotQA)",
+        "value": "87.1 vs 80.2 NV-Embed-v2",
+        "src": "paper Tables 3-4"
+      },
+      {
+        "label": "Indexing tokens on MuSiQue",
+        "value": "9.2M in / 3.0M out (GraphRAG 115.5M / 36.1M)",
+        "src": "paper Table 12"
+      },
+      {
+        "label": "QA time per query",
+        "value": "1.2 s (NV-Embed-v2 0.3 s)",
+        "src": "paper Table 12"
+      },
+      {
+        "label": "QA GPU memory beyond weights",
+        "value": "9.9 GB (NV-Embed-v2 1.7 GB)",
+        "src": "paper Table 12"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Phrase seed weight",
+        "paper": "average score of the filtered triples the phrase appears in",
+        "code": "score of the last kept triple containing the phrase (the average only picks the top 5); changed to an average in 242abfb (2025-06-24)",
+        "src": "HippoRAG.py L1433-L1458",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/HippoRAG.py#L1433-L1458"
+      },
+      {
+        "topic": "Phrase weight normalisation",
+        "paper": "phrase nodes take their ranking score directly as reset probability",
+        "code": "the score is divided by the number of passages that contain the phrase (kept after the 2025-06 change)",
+        "src": "HippoRAG.py L1447-L1450",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/HippoRAG.py#L1447-L1450"
+      }
+    ],
+    "open_questions": [
+      "'w/o Passage Node' removes the passage nodes and the dense passage seeds together, so the ablation cannot say whether the graph edges or simply mixing dense scores into the ranking carry the gain.",
+      "No run replaces PageRank with a direct rerank of dense results by the kept triples' phrases, so how much the graph walk adds beyond recognition is not measured.",
+      "The dense passage weight is set on MuSiQue and NQ dev sets (Table 5) and then used for all benchmarks."
+    ],
+    "glance": [
+      {
+        "q": "What is one memory item?",
+        "a": "A passage, kept whole as a graph node, plus the (subject, predicate, object) triples an LLM extracted from it; their subjects and objects become phrase nodes.",
+        "src": "paper §3.1-3.2",
+        "url": "https://arxiv.org/pdf/2502.14802"
+      },
+      {
+        "q": "Is the text summarised?",
+        "a": "No. Passages are stored and read verbatim; triples are only an index for linking the question to the graph.",
+        "src": "code HippoRAG.py L667-L693",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/HippoRAG.py#L667-L693"
+      },
+      {
+        "q": "How is memory organised?",
+        "a": "One open knowledge graph: phrase nodes joined by triple edges and synonym edges (similarity >= 0.8), and a 'contains' edge from each passage to its phrases.",
+        "src": "paper §3.2, Table 13",
+        "url": "https://arxiv.org/pdf/2502.14802"
+      },
+      {
+        "q": "Is there reranking?",
+        "a": "An LLM filters the 5 best-matching triples down to at most 4, and Personalized PageRank then re-orders all passages. There is no cross-encoder.",
+        "src": "paper §3.4-3.5",
+        "url": "https://arxiv.org/pdf/2502.14802"
+      },
+      {
+        "q": "Is memory reconstructed at question time?",
+        "a": "No second round. If the filter keeps no triple, the system falls back to plain dense passage retrieval.",
+        "src": "code HippoRAG.py L414-L416",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/HippoRAG.py#L414-L416"
+      },
+      {
+        "q": "What does the answer model read?",
+        "a": "The top 5 passages as 'Wikipedia Title: ...' blocks after a one-shot example, then the question.",
+        "src": "code HippoRAG.py L688-L693",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/HippoRAG.py#L688-L693"
+      }
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 252",
+        "body": "<text class=\"fig-t\" x=\"58\" y=\"16\" text-anchor=\"middle\">Passages</text><rect class=\"gi-ev\" x=\"14\" y=\"26\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"22\" y1=\"35.0\" x2=\"70\" y2=\"35.0\"/><rect class=\"gi-ev\" x=\"34\" y=\"50\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"42\" y1=\"59.0\" x2=\"90\" y2=\"59.0\"/><rect class=\"gi-ev\" x=\"14\" y=\"74\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"22\" y1=\"83.0\" x2=\"70\" y2=\"83.0\"/><rect class=\"gi-ev\" x=\"34\" y=\"98\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"42\" y1=\"107.0\" x2=\"90\" y2=\"107.0\"/><rect class=\"gi-ev\" x=\"14\" y=\"122\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"22\" y1=\"131.0\" x2=\"70\" y2=\"131.0\"/><text class=\"fig-s\" x=\"60\" y=\"160\" text-anchor=\"middle\">each passage kept</text><text class=\"fig-s\" x=\"60\" y=\"173\" text-anchor=\"middle\">whole, as a node</text><path class=\"gi-a\" d=\"M112 70 L153 70\"/><polygon class=\"gi-ah\" points=\"160,70 153,66 153,74\"/><rect class=\"gi-llm\" x=\"118\" y=\"52\" width=\"36\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"136\" y=\"62\" text-anchor=\"middle\">LLM</text><text class=\"fig-s\" x=\"136\" y=\"88\" text-anchor=\"middle\">NER, then</text><text class=\"fig-s\" x=\"136\" y=\"100\" text-anchor=\"middle\">triples</text><rect class=\"gi-ev\" x=\"164\" y=\"26\" width=\"128\" height=\"104\" rx=\"10\"/><text class=\"fig-t\" x=\"228\" y=\"44\" text-anchor=\"middle\">triples (s, p, o)</text><line class=\"gi-e\" x1=\"184\" y1=\"62\" x2=\"250\" y2=\"62\"/><circle class=\"gi-n\" cx=\"184\" cy=\"62\" r=\"5\"/><circle class=\"gi-n\" cx=\"250\" cy=\"62\" r=\"5\"/><text class=\"fig-s\" x=\"217\" y=\"58\" text-anchor=\"middle\">p</text><line class=\"gi-e\" x1=\"184\" y1=\"84\" x2=\"250\" y2=\"84\"/><circle class=\"gi-n\" cx=\"184\" cy=\"84\" r=\"5\"/><circle class=\"gi-n\" cx=\"250\" cy=\"84\" r=\"5\"/><text class=\"fig-s\" x=\"217\" y=\"80\" text-anchor=\"middle\">p</text><line class=\"gi-e\" x1=\"184\" y1=\"106\" x2=\"250\" y2=\"106\"/><circle class=\"gi-n\" cx=\"184\" cy=\"106\" r=\"5\"/><circle class=\"gi-n\" cx=\"250\" cy=\"106\" r=\"5\"/><text class=\"fig-s\" x=\"217\" y=\"102\" text-anchor=\"middle\">p</text><text class=\"fig-s\" x=\"228\" y=\"152\" text-anchor=\"middle\">each triple is also</text><text class=\"fig-s\" x=\"228\" y=\"165\" text-anchor=\"middle\">embedded: the fact index</text><rect class=\"gi-v\" x=\"192\" y=\"174\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"204\" y=\"174\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"216\" y=\"174\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"228\" y=\"174\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"240\" y=\"174\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"252\" y=\"174\" width=\"10\" height=\"10\" rx=\"2\"/><path class=\"gi-a\" d=\"M296 70 L327 70\"/><polygon class=\"gi-ah\" points=\"334,70 327,66 327,74\"/><text class=\"fig-t\" x=\"446\" y=\"14\" text-anchor=\"middle\">Open knowledge graph</text><rect class=\"gi-r\" x=\"340\" y=\"34\" width=\"26\" height=\"20\" rx=\"3\"/><text class=\"gi-lbl\" x=\"353\" y=\"48\" text-anchor=\"middle\">P1</text><rect class=\"gi-r\" x=\"340\" y=\"138\" width=\"26\" height=\"20\" rx=\"3\"/><text class=\"gi-lbl\" x=\"353\" y=\"152\" text-anchor=\"middle\">P2</text><line class=\"gi-e\" x1=\"366\" y1=\"44\" x2=\"430\" y2=\"34\"/><line class=\"gi-e\" x1=\"366\" y1=\"44\" x2=\"510\" y2=\"44\"/><line class=\"gi-e\" x1=\"366\" y1=\"44\" x2=\"446\" y2=\"92\"/><line class=\"gi-e\" x1=\"366\" y1=\"148\" x2=\"520\" y2=\"118\"/><line class=\"gi-e\" x1=\"366\" y1=\"148\" x2=\"440\" y2=\"160\"/><line class=\"gi-e\" x1=\"430\" y1=\"34\" x2=\"510\" y2=\"44\"/><line class=\"gi-e\" x1=\"430\" y1=\"34\" x2=\"446\" y2=\"92\"/><line class=\"gi-e\" x1=\"440\" y1=\"160\" x2=\"520\" y2=\"118\"/><line class=\"gi-e d\" x1=\"446\" y1=\"92\" x2=\"520\" y2=\"118\"/><circle class=\"gi-n\" cx=\"430\" cy=\"34\" r=\"6\"/><circle class=\"gi-n\" cx=\"510\" cy=\"44\" r=\"6\"/><circle class=\"gi-n\" cx=\"446\" cy=\"92\" r=\"6\"/><circle class=\"gi-n\" cx=\"520\" cy=\"118\" r=\"6\"/><circle class=\"gi-n\" cx=\"440\" cy=\"160\" r=\"6\"/><text class=\"fig-s\" x=\"482\" y=\"30\" text-anchor=\"middle\">relation</text><text class=\"fig-s\" x=\"500\" y=\"98\" text-anchor=\"start\">synonym</text><text class=\"fig-s\" x=\"372\" y=\"86\" text-anchor=\"start\">contains</text><text class=\"fig-s\" x=\"353\" y=\"70\" text-anchor=\"middle\">passage</text><text class=\"fig-s\" x=\"353\" y=\"81\" text-anchor=\"middle\">node</text><text class=\"fig-s\" x=\"452\" y=\"180\" text-anchor=\"start\">phrase node</text><text class=\"fig-s\" x=\"446\" y=\"206\" text-anchor=\"middle\">synonym edge if phrase similarity ≥ 0.8;</text><text class=\"fig-s\" x=\"446\" y=\"219\" text-anchor=\"middle\">graph edges carry no predicate</text><text class=\"fig-s\" x=\"280\" y=\"244\" text-anchor=\"middle\">MuSiQue: 85k phrase nodes, 11.7k passage nodes, 1.4M edges (Llama-3.3-70B OpenIE)</text>",
+        "text": [
+          "An LLM extracts triples from each passage; their subjects and objects become phrase nodes, and each passage stays in the graph as its own node.",
+          "Phrases from the same triple, similar phrases (similarity >= 0.8) and a passage and its phrases are linked; triples are also embedded as a separate index."
+        ],
+        "src": "paper §3.1-3.2, Tables 10, 13; code HippoRAG.py L215-L275, L726-L879",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/HippoRAG.py#L726-L879"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 250",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"34\" width=\"60\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"34.0\" y=\"60.0\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M64 56 L71 56\"/><polygon class=\"gi-ah\" points=\"78,56 71,52 71,60\"/><rect class=\"gi-v fig-soft\" x=\"78\" y=\"34\" width=\"92\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"124.0\" y=\"54.0\" text-anchor=\"middle\">Match triples</text><text class=\"fig-s\" x=\"124.0\" y=\"67.0\" text-anchor=\"middle\">dense, top 5</text><path class=\"gi-a\" d=\"M170 56 L177 56\"/><polygon class=\"gi-ah\" points=\"184,56 177,52 177,60\"/><rect class=\"gi-llm\" x=\"184\" y=\"34\" width=\"86\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"227.0\" y=\"54.0\" text-anchor=\"middle\">Filter</text><text class=\"fig-s\" x=\"227.0\" y=\"67.0\" text-anchor=\"middle\">LLM keeps ≤ 4</text><path class=\"gi-a\" d=\"M270 56 L275 56\"/><polygon class=\"gi-ah\" points=\"282,56 275,52 275,60\"/><polygon class=\"gi-f\" points=\"324,28 366,56 324,84 282,56\"/><text class=\"fig-t\" x=\"324\" y=\"54\" text-anchor=\"middle\">Triples</text><text class=\"fig-s\" x=\"324\" y=\"66\" text-anchor=\"middle\">left?</text><path class=\"gi-a\" d=\"M366 56 L377 56\"/><polygon class=\"gi-ah\" points=\"384,56 377,52 377,60\"/><text class=\"fig-no\" x=\"375\" y=\"72\" text-anchor=\"middle\">No</text><rect class=\"gi-v fig-soft\" x=\"384\" y=\"34\" width=\"84\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"426.0\" y=\"54.0\" text-anchor=\"middle\">Dense only</text><text class=\"fig-s\" x=\"426.0\" y=\"67.0\" text-anchor=\"middle\">no graph</text><path class=\"gi-a\" d=\"M468 56 L508 56 L508 143\"/><polygon class=\"gi-ah\" points=\"508,150 504,143 512,143\"/><path class=\"gi-a\" d=\"M324 84 L324 118 L52 118 L52 143\"/><polygon class=\"gi-ah\" points=\"52,150 48,143 56,143\"/><text class=\"fig-yes\" x=\"332\" y=\"104\" text-anchor=\"start\">Yes</text><rect class=\"gi-f\" x=\"4\" y=\"150\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"52.0\" y=\"170.0\" text-anchor=\"middle\">Seed phrases</text><text class=\"fig-s\" x=\"52.0\" y=\"183.0\" text-anchor=\"middle\">≤ 5, triple score</text><text class=\"fig-t\" x=\"108\" y=\"176\" text-anchor=\"middle\">+</text><rect class=\"gi-f\" x=\"116\" y=\"150\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"164.0\" y=\"170.0\" text-anchor=\"middle\">Seed passages</text><text class=\"fig-s\" x=\"164.0\" y=\"183.0\" text-anchor=\"middle\">all, dense × 0.05</text><path class=\"gi-a\" d=\"M212 172 L221 172\"/><polygon class=\"gi-ah\" points=\"228,172 221,168 221,176\"/><rect class=\"gi-v fig-soft\" x=\"228\" y=\"150\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"276.0\" y=\"170.0\" text-anchor=\"middle\">PPR on graph</text><text class=\"fig-s\" x=\"276.0\" y=\"183.0\" text-anchor=\"middle\">damping 0.5</text><path class=\"gi-a\" d=\"M324 172 L333 172\"/><polygon class=\"gi-ah\" points=\"340,172 333,168 333,176\"/><rect class=\"gi-f\" x=\"340\" y=\"150\" width=\"104\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"392.0\" y=\"170.0\" text-anchor=\"middle\">Rank passages</text><text class=\"fig-s\" x=\"392.0\" y=\"183.0\" text-anchor=\"middle\">by PageRank</text><path class=\"gi-a\" d=\"M444 172 L455 172\"/><polygon class=\"gi-ah\" points=\"462,172 455,168 455,176\"/><rect class=\"gi-hi\" x=\"462\" y=\"150\" width=\"92\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"508.0\" y=\"170.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"508.0\" y=\"183.0\" text-anchor=\"middle\">top 5 passages</text><text class=\"fig-s\" x=\"280\" y=\"222\" text-anchor=\"middle\">phrase seed weight = triple score ÷ passages containing the phrase (code)</text><text class=\"fig-s\" x=\"280\" y=\"237\" text-anchor=\"middle\">the reader never sees triples or phrases, only the 5 passage texts</text>",
+        "text": [
+          "The question is matched to triples; an LLM keeps the relevant ones, whose phrases and all passages seed Personalized PageRank over the graph.",
+          "Passages are ranked by PageRank and the reader gets the top 5; with no triples left, dense retrieval ranks passages instead."
+        ],
+        "src": "paper §3.3-3.5, App. G.1; code HippoRAG.py L360-L446, L1398-L1590",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/HippoRAG.py#L1398-L1590"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Graph size, MuSiQue",
+        "value": "85,288 phrase + 11,656 passage nodes, 1.40M edges",
+        "src": "paper Table 10",
+        "section": "construction"
+      },
+      {
+        "label": "Synonym link if",
+        "value": "phrase similarity >= 0.8",
+        "src": "paper Table 13",
+        "section": "construction"
+      },
+      {
+        "label": "Tokens to index MuSiQue",
+        "value": "9.2M in, 3.0M out (99.5 min)",
+        "src": "paper Table 12",
+        "section": "construction"
+      },
+      {
+        "label": "Triples matched, then kept",
+        "value": "top 5, LLM keeps <= 4",
+        "src": "paper §4.4, Fig. 4",
+        "section": "method"
+      },
+      {
+        "label": "PPR seeds",
+        "value": "<= 5 phrases + all passages (x 0.05)",
+        "src": "paper App. G.1, §6.2",
+        "section": "method"
+      },
+      {
+        "label": "PPR damping",
+        "value": "0.5",
+        "src": "paper Table 13",
+        "section": "method"
+      },
+      {
+        "label": "Passages to the reader",
+        "value": "5",
+        "src": "paper §4.4",
+        "section": "method"
+      },
+      {
+        "label": "Time per query",
+        "value": "1.2 s (dense retrieval 0.3 s)",
+        "src": "paper Table 12",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "MuSiQue",
+        "2Wiki",
+        "HotpotQA",
+        "Avg"
+      ],
+      "rows": [
+        [
+          "HippoRAG 2 (query to triple + filter)",
+          "74.7",
+          "90.4",
+          "96.3",
+          "87.1"
+        ],
+        [
+          "NER to node",
+          "53.8",
+          "91.2",
+          "78.8",
+          "74.6"
+        ],
+        [
+          "query to node",
+          "44.9",
+          "65.5",
+          "68.3",
+          "59.6"
+        ],
+        [
+          "without passage nodes",
+          "63.7",
+          "90.3",
+          "88.9",
+          "81.0"
+        ],
+        [
+          "without triple filter",
+          "73.0",
+          "90.7",
+          "95.4",
+          "86.4"
+        ]
+      ],
+      "src": "paper Table 4 (passage recall@5)"
+    },
+    "components": [
+      {
+        "role": "NER and triple extraction",
+        "model": "Llama-3.3-70B-Instruct (GPT-4o-mini in App. C)",
+        "kind": "llm",
+        "src": "paper §4.4"
+      },
+      {
+        "role": "Embeds passages, triples, phrases and the question",
+        "model": "NV-Embed-v2 (7B)",
+        "kind": "retriever",
+        "src": "paper §4.4"
+      },
+      {
+        "role": "Triple filter (recognition memory)",
+        "model": "Llama-3.3-70B-Instruct, DSPy MIPROv2-tuned prompt",
+        "kind": "llm",
+        "src": "paper §4.4, Fig. 4; code rerank.py L108-L131",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/rerank.py#L108-L131"
+      },
+      {
+        "role": "Graph search",
+        "model": "Personalized PageRank (python-igraph), damping 0.5",
+        "kind": "rule",
+        "src": "paper App. G.1; code HippoRAG.py L1549-L1590",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/5c28f9220946199358fc0bd61142b48b2da2025c/src/hipporag/HippoRAG.py#L1549-L1590"
+      },
+      {
+        "role": "Answer",
+        "model": "Llama-3.3-70B-Instruct or GPT-4o-mini",
+        "kind": "llm",
+        "src": "paper §4.4, Table 8"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Putting passages into HippoRAG's graph and linking the question to whole triples lets a PageRank retriever keep its multi-hop gains without losing to a strong 7B dense retriever on simple QA: 59.8 vs 57.0 average F1.",
+      "claims": [
+        {
+          "claim": "Earlier structure-augmented RAG falls below strong dense retrieval once simple factual QA is included; HippoRAG 2 does not.",
+          "evidence": "Average F1: NV-Embed-v2 57.0, RAPTOR 48.8, GraphRAG 49.6, LightRAG 6.6, HippoRAG 53.1, HippoRAG 2 59.8; NQ 63.3 vs 61.9. Table 2, §5"
+        },
+        {
+          "claim": "The largest gains are on associative (multi-hop) tasks.",
+          "evidence": "2Wiki F1 71.0 vs 61.5, LV-Eval 12.9 vs 9.8; recall@5 MuSiQue 74.7 vs 69.7, 2Wiki 90.4 vs 76.5. Tables 2-3"
+        },
+        {
+          "claim": "Each design change helps, linking the question to triples most of all.",
+          "evidence": "Recall@5 average 87.1 vs 74.6 with NER-to-node, 59.6 with query-to-node, 81.0 without passage nodes, 86.4 without the filter. Table 4, §6.1"
+        },
+        {
+          "claim": "The gain holds with other dense retrievers.",
+          "evidence": "MuSiQue recall@5 +5.2 (GTE-Qwen2-7B), +5.6 (GritLM-7B), +5.0 (NV-Embed-v2). Table 7, §6.4"
+        },
+        {
+          "claim": "Indexing is far cheaper than GraphRAG or LightRAG.",
+          "evidence": "MuSiQue: 9.2M input tokens vs 115.5M (GraphRAG) and 68.5M (LightRAG); 1.2 s per query vs 10.7 s and 13.3 s. Table 12, App. F"
+        }
+      ],
+      "limits": [
+        "The triple filter is a main error source: in 26% of 100 failed MuSiQue questions no supporting phrase survives filtering, and 18% end with no triple at all.",
+        "Graph search can still miss supporting passages when the right phrases are linked.",
+        "QA needs more GPU memory than the baselines (9.9 GB vs 1.7 GB for NV-Embed-v2) because of the fact embeddings.",
+        "Associative QA degrades as the corpus grows, at about the same rate as dense retrieval.",
+        "Episodic memory for long conversations is left for future work."
+      ],
+      "limits_src": "paper App. E, App. F, §6.3, §7 (no separate limitations section)",
+      "reading": [
+        "The reader always gets 5 verbatim passages; the graph only re-orders them, so HippoRAG 2 is best read as a graph-based reranker over a passage corpus rather than a store the model reads from.",
+        "Every passage is a PageRank seed with its dense score, so dense retrieval stays in the loop; Table 5 shows the result is sensitive to that weight (MuSiQue recall@5 77.9 to 80.5).",
+        "The abstract's 7% associativity gain matches recall@5 averaged over MuSiQue, 2Wiki and HotpotQA (87.1 vs 80.2); in QA F1 the average gain over NV-Embed-v2 on the four multi-hop sets is about 4 points, and on HotpotQA it is 0.2.",
+        "At the pinned commit a phrase's seed weight is the last kept triple's score divided by how many passages contain the phrase; the paper describes an average, and the division is not described.",
+        "GraphRAG and LightRAG answers are re-phrased with HippoRAG's QA prompt (App. G.2), and LightRAG averages 6.6 F1 with Llama (13.9 with GPT-4o-mini), so part of the gap to these baselines reflects how they were ported.",
+        "LV-Eval (124 questions) and NarrativeQA (293 questions over 10 documents) are small samples; the other five sets use 1,000 sampled questions each.",
+        "Continual learning is tested only by adding corpus segments (Fig. 3); no experiment updates or corrects stored facts."
+      ]
+    },
+    "abstract": {
+      "text": "HippoRAG 2 treats retrieval-augmented generation as non-parametric continual learning and asks whether structure-augmented RAG can match strong dense retrievers on simple factual questions while keeping its advantage on multi-hop and long-narrative ones. It keeps HippoRAG's LLM-built open knowledge graph and Personalized PageRank search, but adds the passages themselves as graph nodes, links the whole question to triples instead of to extracted entities, and lets an LLM filter those triples before they seed the search. On seven QA benchmarks it reports the best average F1 against large embedding models and graph- or summary-based RAG, with the largest gains on multi-hop sets.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2502.14802"
+    },
+    "sections": {
+      "Memory architecture": "§3",
+      "Results": "§5",
+      "Ablation": "§6.1",
+      "Discussion": "§6.2-6.5, §7, App. E",
+      "Details": "§4, App. A, B, F, G"
+    }
+  }
+}

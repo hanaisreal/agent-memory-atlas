@@ -1,0 +1,585 @@
+{
+  "id": "memotime",
+  "name": "MemoTime",
+  "paper": {
+    "title": "MemoTime: Memory-Augmented Temporal Knowledge Graph Enhanced Large Language Model Reasoning",
+    "arxiv": "2510.13614",
+    "url": "https://arxiv.org/abs/2510.13614",
+    "venue": "WWW 2026",
+    "venue_short": "WWW",
+    "track": "main",
+    "year": 2026,
+    "code": "https://github.com/SteveTANTAN/MemoTime"
+  },
+  "design": {
+    "construction": {
+      "unit": "experience record: a question decomposition, a seed choice, a toolkit choice, or a solved sub-question with its evidence path",
+      "kept_as": "structured JSON of the LLM's own reasoning outputs, keyed by the (sub-)question text",
+      "processing": "after the final LLM sufficiency check says the answer is supported, the decomposition and every freshly retrieved step are written",
+      "trigger": "other",
+      "writer": "rule, gated by an LLM sufficiency check (no gold answer)"
+    },
+    "organization": {
+      "structure": "flat pool of records typed by record kind and temporal question type",
+      "stores": "one SQLite experience pool + a numpy vector index; the temporal KG is a separate read-only source",
+      "index": "MiniLM sentence embedding of the query text (paraphrase-multilingual-MiniLM-L12-v2)"
+    },
+    "management": {
+      "operations": "insert, or overwrite the record with the same normalized text; hit counts increase on lookup",
+      "conflicts": null,
+      "forgetting": "paper: low-value traces pruned and decayed; code: the cleanup function is never called",
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "question or sub-question text",
+      "candidates": "cosine similarity over records of the same kind (and temporal type)",
+      "selection": "top 10 records for decomposition and toolkit prompts, top 3 for seed choice, similarity threshold 0.1",
+      "budget": "≤ 10 examples per prompt"
+    },
+    "use": {
+      "context": "retrieved records appear as few-shot examples in the decomposition, seed and toolkit prompts; the answer LLM reads step-by-step evidence from the temporal KG",
+      "reasoning": "Tree of Time: recursive decomposition (depth ≤ 3), toolkit retrieval per sub-question, LLM path choice, debate-vote, sufficiency checks, one final answer call"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "fixed-rule",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "flat",
+    "index": "vector",
+    "management": "append-only",
+    "candidates": "dense",
+    "decides": "top-k rule",
+    "note": "The memory is the experience pool of past reasoning traces. The facts come from a fixed temporal KG, which LLM-chosen toolkits search; that search is not the memory."
+  },
+  "tags": {
+    "fidelity": "extracted",
+    "structure": [
+      "flat"
+    ],
+    "write_time": [
+      "filter",
+      "extract"
+    ],
+    "selection": [
+      "dense"
+    ],
+    "memory_type": [
+      "procedural"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "Test questions arrive one at a time. Question entities are linked to a fixed temporal knowledge graph (MultiTQ: ICEWS05-15; TimeQuestions: Wikidata).",
+    "construction": "Once the final LLM check accepts an answer, MemoTime writes the question's decomposition and, for each freshly retrieved step, the seed choice, the toolkit choice and the sub-question with its answer and evidence path.",
+    "organization": "Records form one flat pool typed by record kind and temporal question type, with a sentence-embedding index over the query text.",
+    "update": "A record with the same normalized text is overwritten, and hit counts grow on lookup. The paper's pruning, decay and cross-type labels are not in the released code.",
+    "retrieval": "Similar past records (top 10 for decomposition and toolkit choice, top 3 for seeds) become few-shot examples. Evidence itself comes from toolkit searches of the temporal KG, pruned to 80 paths and then to 3 by an LLM.",
+    "answer": "A final LLM call reads every step's sub-question, chosen answer, evidence path and top candidate paths.",
+    "learning": ""
+  },
+  "summary": "Temporal KGQA agent that splits a question into a tree of time-constrained sub-questions, answers each with operator-specific KG toolkits, and keeps verified decompositions and tool choices as few-shot examples for later questions.",
+  "verified": false,
+  "notes": "Venue: WWW 2026 (Proceedings of the ACM Web Conference 2026, DOI 10.1145/3774904.3792581), as printed in the arXiv v3 PDF; arXiv comment agrees. The ACM DL page could not be fetched (HTTP 403). Track taken as main (21-page research paper); the PDF does not name a track. Code: SteveTANTAN/MemoTime, pinned at 84ed588 (2026-06-15); Python files last changed 2026-02-18, five days before arXiv v3. DESIGN: §4.1-4.4, App. A (Alg. 1-4), App. D. The experience pool is a store of reasoning traces, not of dialogue or documents; classified as procedural memory. Results: Tables 1-3 in data/results/memotime-2510.13614.json; all baselines copied from earlier papers (App. D).",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2510.13614v3 (PDF read 2026-09-30)",
+      "code": "https://github.com/SteveTANTAN/MemoTime/tree/84ed5888cc091b1a15ba6c2b2be4477584e972b8/",
+      "code_note": "HEAD of main (2026-06-15). Its Python files were last changed on 2026-02-18, before arXiv v3 (2026-02-23), so this is taken as the code behind the paper. The repo also ships a pre-filled experience pool (Data/unified_knowledge, 222 records dated 2025-10-01 to 2025-10-11)."
+    },
+    "sections": {
+      "Memory architecture": "§4, Fig. 2",
+      "Results": "§5.1, Tables 1-3",
+      "Ablation": "§5.2, Table 4",
+      "Discussion": "§6 (no limitations section)",
+      "Details": "§4.1-4.4, App. A-D"
+    },
+    "abstract": {
+      "text": "MemoTime answers time-sensitive questions over a temporal knowledge graph with an LLM. It breaks a question into a tree of sub-questions whose time constraints must stay consistent, and answers each with toolkits built for specific temporal operators such as 'first after' or 'last before'. Retrieved paths are filtered by time, reranked and narrowed by the LLM. Verified decompositions and tool choices are kept in an experience memory and shown as examples on later questions. The authors report the best results on MultiTQ and TimeQuestions, and say small models such as Qwen3-4B come close to GPT-4-Turbo.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2510.13614"
+    },
+    "headline": [
+      "The memory holds the system's own past reasoning (decompositions, seed and tool choices), not facts. Facts always come from the temporal KG.",
+      "In the released code, stored sub-question answers are never reused: every sub-question searches the KG again, and memory acts only as few-shot examples.",
+      "The pool is filled from test questions as the run goes. An LLM check, not the gold answer, decides what is written."
+    ],
+    "units": [
+      {
+        "name": "Experience record",
+        "role": "one reusable piece of past reasoning",
+        "made_by": "rule, after the LLM's final sufficiency check passes",
+        "fields": [
+          {
+            "name": "query text",
+            "what": "the question or sub-question, embedded for lookup",
+            "kept_as": "verbatim",
+            "used_for": [
+              "index"
+            ],
+            "src": "code unified_knowledge_store.py L159-L190",
+            "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/unified_knowledge_store.py#L159-L190"
+          },
+          {
+            "name": "decomposition",
+            "what": "sub-questions, indicators, time constraints; shown as an example in the decomposition prompt",
+            "kept_as": "extracted",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code decompose.py L715-L735",
+            "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/decompose.py#L715-L735"
+          },
+          {
+            "name": "seed choice",
+            "what": "sub-question → chosen seed entities; example in the seed prompt (top 3)",
+            "kept_as": "extracted",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code stepwise.py L2166-L2185",
+            "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/stepwise.py#L2166-L2185"
+          },
+          {
+            "name": "toolkit choice",
+            "what": "toolkit, parameters, time hints, reason; example in the toolkit prompt (top 10)",
+            "kept_as": "extracted",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code stepwise.py L2568-L2590",
+            "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/stepwise.py#L2568-L2590"
+          },
+          {
+            "name": "sub-question answer",
+            "what": "entity, time and evidence path of a solved step; written but not read back (reuse branch disabled)",
+            "kept_as": "extracted",
+            "used_for": [],
+            "src": "code stepwise.py L1097, L4629-L4641",
+            "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/stepwise.py#L1097"
+          },
+          {
+            "name": "type label, hit count",
+            "what": "temporal question type filter; lookup counter",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code unified_knowledge_store.py L159-L190, L726-L731",
+            "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/unified_knowledge_store.py#L726-L731"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Final check",
+        "how": "LLM (temperature 0) reads all step evidence and says whether the answer is supported",
+        "out": "sufficient or not",
+        "src": "code stepwise.py L4376-L4657; paper §4.2",
+        "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/stepwise.py#L4376-L4657"
+      },
+      {
+        "step": "Write decomposition",
+        "how": "store the question and its sub-question plan",
+        "src": "code stepwise.py L4456-L4462",
+        "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/stepwise.py#L4456-L4462"
+      },
+      {
+        "step": "Write steps",
+        "how": "for each step answered by new retrieval, store seed choice, toolkit choice and the sub-question record",
+        "params": {
+          "success_rate": "1.0 always"
+        },
+        "src": "code stepwise.py L4474-L4641",
+        "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/stepwise.py#L4474-L4641"
+      },
+      {
+        "step": "Upsert",
+        "how": "a record with the same hash of type + normalized text is overwritten",
+        "src": "code unified_knowledge_store.py L486-L560",
+        "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/unified_knowledge_store.py#L486-L560"
+      }
+    ],
+    "read": [
+      {
+        "step": "Classify type",
+        "round": 1,
+        "input": "question",
+        "how": "keyword rules (after+first, before+last, ...) with an LLM fallback; no memory examples",
+        "src": "code decompose.py L116-L145",
+        "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/decompose.py#L116-L145",
+        "note": "paper §4.1 says exemplars from memory guide this step"
+      },
+      {
+        "step": "Decompose",
+        "round": 1,
+        "input": "question",
+        "scores": "question text vs stored decomposition questions",
+        "how": "LLM writes sub-questions with indicators, given up to 10 similar past decompositions",
+        "params": {
+          "top": "10",
+          "threshold": "0.1"
+        },
+        "src": "code decompose.py L715-L773",
+        "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/decompose.py#L715-L773"
+      },
+      {
+        "step": "Pick seeds and toolkits",
+        "round": 1,
+        "input": "sub-question",
+        "how": "LLM picks ≤ 3 seed entities (3 examples) and one or more of 8 toolkits (10 examples)",
+        "params": {
+          "seeds": "≤ 3",
+          "toolkits": "8 kinds"
+        },
+        "src": "code stepwise.py L2166-L2590; intelligent_toolkit_selector.py L72-L130",
+        "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/intelligent_toolkit_selector.py#L72-L130"
+      },
+      {
+        "step": "Search the KG",
+        "round": 1,
+        "how": "each toolkit expands 1 hop from the seeds under time filters; BGE-M3 dense search adds top 50 facts",
+        "params": {
+          "dense": "top 50",
+          "hops": "1"
+        },
+        "src": "code intelligent_retrieval.py L1906-L1911, L2522-L2530",
+        "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/intelligent_retrieval.py#L2522-L2530"
+      },
+      {
+        "step": "Prune",
+        "round": 1,
+        "how": "sort by time (first/last questions keep the earliest/latest per triple group) or filter by similarity, keep 80",
+        "params": {
+          "W1": "80"
+        },
+        "src": "code intelligent_retrieval.py L2700-L2733",
+        "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/intelligent_retrieval.py#L2700-L2733"
+      },
+      {
+        "step": "LLM path choice",
+        "round": 1,
+        "how": "batches of 30 paths; LLM keeps 3 per batch until ≤ 3 remain",
+        "params": {
+          "W_max": "3"
+        },
+        "src": "code intelligent_retrieval.py L2204-L2280",
+        "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/intelligent_retrieval.py#L2204-L2280"
+      },
+      {
+        "step": "Vote and check",
+        "round": 1,
+        "how": "debate-vote across toolkit results, then an LLM sufficiency check; if not sufficient: refine, retry or split (depth ≤ 3)",
+        "src": "code stepwise.py L2760-L2809, L3722-L3777, L943-L1032",
+        "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/stepwise.py#L3722-L3777"
+      }
+    ],
+    "answer_context": {
+      "sees": "step-by-step evidence for every sub-question",
+      "format": "\"Original question\" + per step: sub-question, step answer (entity at time), LLM-selected answer and reason, evidence path [heads] - relation - [tails] at time, top 3 candidate paths, toolkit and vote reason",
+      "excludes": [
+        "experience records",
+        "raw KG neighbourhood beyond the chosen paths"
+      ],
+      "note": "The returned answer string joins the final LLM answer, the last step's answer and the last chosen entity with ', or ' (stepwise.py L4354-L4364); it is scored by a lenient matcher (substring and word-overlap strategies, answer_verifier.py L466-L532).",
+      "src": "code stepwise.py L4210-L4321; prompts.py L575-L608",
+      "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/stepwise.py#L4210-L4321"
+    },
+    "compression": [
+      {
+        "what": "answer context vs the question's KG neighbourhood",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported. The paper gives LLM calls and time per question, not tokens.",
+        "src": "paper Table 6",
+        "url": "https://arxiv.org/pdf/2510.13614"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "MultiTQ Hits@1, GPT-4-Turbo",
+        "value": "77.9",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "TimeQuestions Hits@1, GPT-4-Turbo",
+        "value": "71.4",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "w/o experience memory (MultiTQ, GPT-4o-mini)",
+        "value": "59.8 vs 64.2",
+        "src": "paper Table 4"
+      },
+      {
+        "label": "LLM calls / seconds per question (MultiTQ)",
+        "value": "8.75 / 43.11",
+        "src": "paper Table 6"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Memory-first answering",
+        "paper": "each node first reuses a matching trace from the pool",
+        "code": "pool_result is hard-coded to None, so every sub-question retrieves anew; stored answers are never read",
+        "src": "stepwise.py L1097",
+        "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/stepwise.py#L1097"
+      },
+      {
+        "topic": "Type classification",
+        "paper": "LLM prompt with exemplars retrieved from memory",
+        "code": "keyword rules with an LLM fallback, no memory",
+        "src": "decompose.py L116-L145",
+        "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/decompose.py#L116-L145"
+      },
+      {
+        "topic": "Experience ranking",
+        "paper": "0.6·cosine + 0.4·hit count; buffer of 200; question and indicator embeddings",
+        "code": "cosine on question text only; hit count only as a SQL sort in a fallback; buffer 100 and never filled",
+        "src": "unified_knowledge_store.py L107, L726-L775; vector_index.py L24",
+        "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/unified_knowledge_store.py#L726-L775"
+      },
+      {
+        "topic": "Graph retrieval",
+        "paper": "bidirectional BFS up to D_max = 3 hops; semantic-temporal rerank (λ_sem 0.6, exp decay σ)",
+        "code": "1-hop expansion per toolkit; MAX_DEPTH = 3 is decomposition depth; no BiBFS or σ found; dense rerank disabled",
+        "src": "intelligent_retrieval.py L1906-L1911, L2522-L2530; config.py L97-L99",
+        "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/intelligent_retrieval.py#L1906-L1911"
+      },
+      {
+        "topic": "Entity linking model",
+        "paper": "SentenceBERT dense retriever",
+        "code": "OpenAI text-embedding-3-large, offline, keep score > 0.65",
+        "src": "Data/new.py L50",
+        "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/Data/new.py#L50"
+      },
+      {
+        "topic": "Pruning and cross-type labels",
+        "paper": "obsolete traces pruned; records get secondary type labels",
+        "code": "cleanup_old_entries never called; no secondary labels",
+        "src": "unified_knowledge_store.py L904-L921",
+        "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/unified_knowledge_store.py#L904-L921"
+      },
+      {
+        "topic": "Max generation length",
+        "paper": "256 tokens",
+        "code": "max_tokens 2048",
+        "src": "llm.py L50",
+        "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/llm.py#L50"
+      }
+    ],
+    "open_questions": [
+      "The w/o-experience-memory ablation (64.2 → 59.8) cannot separate the value of past examples from the order in which test questions filled the pool.",
+      "No run compares MemoTime and the baselines with the same backbone except the IO rows in Table 3."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 232",
+        "body": "<text class=\"fig-t\" x=\"66\" y=\"16\" text-anchor=\"middle\">Solved question</text><rect class=\"gi-ev\" x=\"10\" y=\"26\" width=\"112\" height=\"118\" rx=\"10\"/><line class=\"gi-e\" x1=\"66\" y1=\"50\" x2=\"36\" y2=\"84\"/><line class=\"gi-e\" x1=\"66\" y1=\"50\" x2=\"66\" y2=\"84\"/><line class=\"gi-e\" x1=\"66\" y1=\"50\" x2=\"96\" y2=\"84\"/><line class=\"gi-e\" x1=\"96\" y1=\"84\" x2=\"96\" y2=\"114\"/><circle class=\"gi-n\" cx=\"66\" cy=\"50\" r=\"7\"/><circle class=\"gi-n\" cx=\"36\" cy=\"84\" r=\"7\"/><circle class=\"gi-n\" cx=\"66\" cy=\"84\" r=\"7\"/><circle class=\"gi-n\" cx=\"96\" cy=\"84\" r=\"7\"/><circle class=\"gi-n\" cx=\"96\" cy=\"114\" r=\"7\"/><text class=\"fig-s\" x=\"66\" y=\"136\" text-anchor=\"middle\">trace + evidence</text><text class=\"fig-s\" x=\"66\" y=\"164\" text-anchor=\"middle\">the TKG itself is never</text><text class=\"fig-s\" x=\"66\" y=\"177\" text-anchor=\"middle\">written: only traces are</text><path class=\"gi-a\" d=\"M122.0 85.0 L133.0 85.0\"/><polygon class=\"gi-ah\" points=\"140.0,85.0 133.0,89.0 133.0,81.0\"/><polygon class=\"gi-llm\" points=\"186,53 232,85 186,117 140,85\"/><text class=\"fig-t\" x=\"186\" y=\"84\" text-anchor=\"middle\">Enough?</text><text class=\"fig-s\" x=\"186\" y=\"96\" text-anchor=\"middle\">LLM, final</text><path class=\"gi-a\" d=\"M232.0 85.0 L255.0 85.0\"/><polygon class=\"gi-ah\" points=\"262.0,85.0 255.0,89.0 255.0,81.0\"/><text class=\"fig-yes\" x=\"247\" y=\"78\" text-anchor=\"middle\">yes</text><path class=\"gi-a\" d=\"M186.0 117.0 L186.0 143.0\"/><polygon class=\"gi-ah\" points=\"186.0,150.0 182.0,143.0 190.0,143.0\"/><text class=\"fig-no\" x=\"194\" y=\"138\" text-anchor=\"start\">no</text><text class=\"fig-s\" x=\"186\" y=\"164\" text-anchor=\"middle\">nothing stored</text><text class=\"fig-s\" x=\"186\" y=\"184\" text-anchor=\"middle\">no gold answer</text><text class=\"fig-s\" x=\"186\" y=\"196\" text-anchor=\"middle\">is checked</text><rect class=\"gi-ev\" x=\"266\" y=\"12\" width=\"284\" height=\"196\" rx=\"10\"/><text class=\"fig-t\" x=\"276\" y=\"30\" text-anchor=\"start\">Experience pool (SQLite)</text><text class=\"fig-s\" x=\"540\" y=\"30\" text-anchor=\"end\">key: question text</text><rect class=\"gi-f\" x=\"276\" y=\"40\" width=\"264\" height=\"34\" rx=\"6\"/><text class=\"fig-t\" x=\"286\" y=\"54\" text-anchor=\"start\">decomposition</text><text class=\"fig-s\" x=\"286\" y=\"67\" text-anchor=\"start\">question → sub-questions</text><text class=\"fig-s\" x=\"530\" y=\"67\" text-anchor=\"end\">→ examples</text><rect class=\"gi-f\" x=\"276\" y=\"80\" width=\"264\" height=\"34\" rx=\"6\"/><text class=\"fig-t\" x=\"286\" y=\"94\" text-anchor=\"start\">seed choice</text><text class=\"fig-s\" x=\"286\" y=\"107\" text-anchor=\"start\">sub-question → ≤ 3 seeds</text><text class=\"fig-s\" x=\"530\" y=\"107\" text-anchor=\"end\">→ examples</text><rect class=\"gi-f\" x=\"276\" y=\"120\" width=\"264\" height=\"34\" rx=\"6\"/><text class=\"fig-t\" x=\"286\" y=\"134\" text-anchor=\"start\">toolkit choice</text><text class=\"fig-s\" x=\"286\" y=\"147\" text-anchor=\"start\">tool + parameters</text><text class=\"fig-s\" x=\"530\" y=\"147\" text-anchor=\"end\">→ examples</text><rect class=\"gi-ev d\" x=\"276\" y=\"160\" width=\"264\" height=\"34\" rx=\"6\"/><text class=\"fig-t\" x=\"286\" y=\"174\" text-anchor=\"start\">sub-question answer</text><text class=\"fig-s\" x=\"286\" y=\"187\" text-anchor=\"start\">entity, time, evidence path</text><text class=\"fig-s\" x=\"530\" y=\"187\" text-anchor=\"end\">never read</text><text class=\"fig-s\" x=\"280\" y=\"224\" text-anchor=\"middle\">one pool for the whole test run; it grows question by question</text>",
+        "text": [
+          "After a question is solved, an LLM checks whether the evidence supports the answer; if so, the plan, seed choices and toolkit choices are saved.",
+          "The pool fills from test questions during the run. Sub-question answers are saved too but never read back."
+        ],
+        "src": "paper §4.4, Alg. 4; code stepwise.py L4376-L4657",
+        "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/stepwise.py#L4376-L4657"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 252",
+        "body": "<rect class=\"gi-ev d\" x=\"164\" y=\"2\" width=\"284\" height=\"22\" rx=\"6\"/><text class=\"fig-s\" x=\"306\" y=\"17\" text-anchor=\"middle\">experience pool: similar past records as examples</text><rect class=\"gi-f\" x=\"4\" y=\"40\" width=\"58\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"33.0\" y=\"66.0\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M62.0 62.0 L69.0 62.0\"/><polygon class=\"gi-ah\" points=\"76.0,62.0 69.0,66.0 69.0,58.0\"/><rect class=\"gi-f\" x=\"76\" y=\"40\" width=\"74\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"113.0\" y=\"60.0\" text-anchor=\"middle\">Type</text><text class=\"fig-s\" x=\"113.0\" y=\"73.0\" text-anchor=\"middle\">rule-based</text><path class=\"gi-a\" d=\"M150.0 62.0 L157.0 62.0\"/><polygon class=\"gi-ah\" points=\"164.0,62.0 157.0,66.0 157.0,58.0\"/><rect class=\"gi-llm\" x=\"164\" y=\"40\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"208.0\" y=\"60.0\" text-anchor=\"middle\">Decompose</text><text class=\"fig-s\" x=\"208.0\" y=\"73.0\" text-anchor=\"middle\">sub-questions</text><path class=\"gi-a\" d=\"M252.0 62.0 L259.0 62.0\"/><polygon class=\"gi-ah\" points=\"266.0,62.0 259.0,66.0 259.0,58.0\"/><rect class=\"gi-llm\" x=\"266\" y=\"40\" width=\"80\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"306.0\" y=\"60.0\" text-anchor=\"middle\">Pick seeds</text><text class=\"fig-s\" x=\"306.0\" y=\"73.0\" text-anchor=\"middle\">≤ 3 entities</text><path class=\"gi-a\" d=\"M346.0 62.0 L353.0 62.0\"/><polygon class=\"gi-ah\" points=\"360.0,62.0 353.0,66.0 353.0,58.0\"/><rect class=\"gi-llm\" x=\"360\" y=\"40\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"404.0\" y=\"60.0\" text-anchor=\"middle\">Pick toolkits</text><text class=\"fig-s\" x=\"404.0\" y=\"73.0\" text-anchor=\"middle\">of 8 kinds</text><path class=\"gi-a\" d=\"M448.0 62.0 L455.0 62.0\"/><polygon class=\"gi-ah\" points=\"462.0,62.0 455.0,66.0 455.0,58.0\"/><rect class=\"gi-v fig-soft\" x=\"462\" y=\"40\" width=\"94\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"509.0\" y=\"60.0\" text-anchor=\"middle\">Search TKG</text><text class=\"fig-s\" x=\"509.0\" y=\"73.0\" text-anchor=\"middle\">1-hop + dense 50</text><path class=\"gi-a d\" d=\"M208.0 24.0 L208.0 33.0\"/><polygon class=\"gi-ah\" points=\"208.0,40.0 204.0,33.0 212.0,33.0\"/><text class=\"fig-s\" x=\"213\" y=\"34\" text-anchor=\"start\">top 10</text><path class=\"gi-a d\" d=\"M306.0 24.0 L306.0 33.0\"/><polygon class=\"gi-ah\" points=\"306.0,40.0 302.0,33.0 310.0,33.0\"/><text class=\"fig-s\" x=\"311\" y=\"34\" text-anchor=\"start\">top 3</text><path class=\"gi-a d\" d=\"M404.0 24.0 L404.0 33.0\"/><polygon class=\"gi-ah\" points=\"404.0,40.0 400.0,33.0 408.0,33.0\"/><text class=\"fig-s\" x=\"409\" y=\"34\" text-anchor=\"start\">top 10</text><path class=\"gi-a\" d=\"M509.0 84.0 L509.0 133.0\"/><polygon class=\"gi-ah\" points=\"509.0,140.0 505.0,133.0 513.0,133.0\"/><rect class=\"gi-f\" x=\"462\" y=\"140\" width=\"94\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"509.0\" y=\"160.0\" text-anchor=\"middle\">Keep 80</text><text class=\"fig-s\" x=\"509.0\" y=\"173.0\" text-anchor=\"middle\">by time or match</text><path class=\"gi-a\" d=\"M462.0 162.0 L455.0 162.0\"/><polygon class=\"gi-ah\" points=\"448.0,162.0 455.0,158.0 455.0,166.0\"/><rect class=\"gi-llm\" x=\"354\" y=\"140\" width=\"94\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"401.0\" y=\"160.0\" text-anchor=\"middle\">Pick paths</text><text class=\"fig-s\" x=\"401.0\" y=\"173.0\" text-anchor=\"middle\">LLM → top 3</text><path class=\"gi-a\" d=\"M354.0 162.0 L347.0 162.0\"/><polygon class=\"gi-ah\" points=\"340.0,162.0 347.0,158.0 347.0,166.0\"/><rect class=\"gi-llm\" x=\"246\" y=\"140\" width=\"94\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"293.0\" y=\"160.0\" text-anchor=\"middle\">Debate-vote</text><text class=\"fig-s\" x=\"293.0\" y=\"173.0\" text-anchor=\"middle\">across toolkits</text><path class=\"gi-a\" d=\"M246.0 162.0 L239.0 162.0\"/><polygon class=\"gi-ah\" points=\"232.0,162.0 239.0,158.0 239.0,166.0\"/><polygon class=\"gi-llm\" points=\"188,134 232,162 188,190 144,162\"/><text class=\"fig-t\" x=\"188\" y=\"161\" text-anchor=\"middle\">Enough?</text><text class=\"fig-s\" x=\"188\" y=\"173\" text-anchor=\"middle\">LLM</text><path class=\"gi-a\" d=\"M188.0 190.0 L188.0 199.0\"/><polygon class=\"gi-ah\" points=\"188.0,206.0 184.0,199.0 192.0,199.0\"/><text class=\"fig-yes\" x=\"196\" y=\"202\" text-anchor=\"start\">yes, all solved</text><rect class=\"gi-hi\" x=\"128\" y=\"206\" width=\"120\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"188.0\" y=\"226.0\" text-anchor=\"middle\">Final answer</text><text class=\"fig-s\" x=\"188.0\" y=\"239.0\" text-anchor=\"middle\">reads all step evidence</text><path class=\"gi-a\" d=\"M144 162 L20 162 L20 110 L208 110\"/><path class=\"gi-a\" d=\"M208.0 110.0 L208.0 91.0\"/><polygon class=\"gi-ah\" points=\"208.0,84.0 212.0,91.0 204.0,91.0\"/><text class=\"fig-no\" x=\"24\" y=\"178\" text-anchor=\"start\">no: refine, retry</text><text class=\"fig-no\" x=\"24\" y=\"191\" text-anchor=\"start\">or split (depth ≤ 3)</text><text class=\"fig-s\" x=\"402\" y=\"214\" text-anchor=\"middle\">stored answers are never reused:</text><text class=\"fig-s\" x=\"402\" y=\"227\" text-anchor=\"middle\">every sub-question searches</text><text class=\"fig-s\" x=\"402\" y=\"240\" text-anchor=\"middle\">the TKG again (released code)</text>",
+        "text": [
+          "Similar past records guide how the question is split and which seeds and toolkits each sub-question uses; the toolkits then search the temporal KG.",
+          "Paths are cut to 80 and then 3, voted on and checked; a failed check refines or splits the sub-question, and the final LLM reads every step's evidence."
+        ],
+        "src": "paper §4.2-4.3; code decompose.py, stepwise.py, intelligent_retrieval.py",
+        "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/stepwise.py#L943-L1155"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Examples per prompt",
+        "value": "10 (decomposition, toolkit) · 3 (seeds)",
+        "src": "code decompose.py L720, stepwise.py L2166-L2574",
+        "section": "method"
+      },
+      {
+        "label": "Cold-start exemplars",
+        "value": "5 (paper); repo ships a 222-record pool",
+        "src": "paper App. D; repo Data/unified_knowledge",
+        "section": "construction"
+      },
+      {
+        "label": "Paths kept",
+        "value": "80 → LLM → 3",
+        "src": "paper App. D; code intelligent_retrieval.py L2722-L2732",
+        "section": "method"
+      },
+      {
+        "label": "Toolkits",
+        "value": "8",
+        "src": "paper Table 7",
+        "section": "method"
+      },
+      {
+        "label": "Decomposition depth",
+        "value": "≤ 3 (avg 1.37, branching 2.64)",
+        "src": "paper Table 6, App. D",
+        "section": "method"
+      },
+      {
+        "label": "LLM calls per question",
+        "value": "8.75 avg (7.3-11.6 by type)",
+        "src": "paper Table 6",
+        "section": "results"
+      },
+      {
+        "label": "Time per question",
+        "value": "43.11 s avg",
+        "src": "paper Table 6",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Decompose, pick seeds and toolkits, choose paths, check, answer",
+        "model": "backbone LLM (GPT-4-Turbo main; GPT-4o-mini, DeepSeek-V3, Qwen3 4B-80B)",
+        "kind": "llm",
+        "src": "paper App. D"
+      },
+      {
+        "role": "Entity linking",
+        "model": "OpenAI text-embedding-3-large (code); SentenceBERT (paper)",
+        "kind": "retriever",
+        "src": "code Data/new.py L50; paper App. D",
+        "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/Data/new.py#L50"
+      },
+      {
+        "role": "Experience lookup",
+        "model": "paraphrase-multilingual-MiniLM-L12-v2, cosine",
+        "kind": "retriever",
+        "src": "code vector_index.py L24",
+        "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/vector_index.py#L24"
+      },
+      {
+        "role": "Dense KG fact search",
+        "model": "BGE-M3 + FAISS, top 50",
+        "kind": "retriever",
+        "src": "code hybrid_retrieval.py L20-L28; intelligent_retrieval.py L2522-L2530",
+        "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/hybrid_retrieval.py#L20-L28"
+      },
+      {
+        "role": "Temporal toolkits (OneHop, AfterFirst, BeforeLast, ...)",
+        "model": "rule-based KG queries",
+        "kind": "rule",
+        "src": "paper Table 7; code intelligent_toolkit_selector.py L72-L130",
+        "url": "https://github.com/SteveTANTAN/MemoTime/blob/84ed5888cc091b1a15ba6c2b2be4477584e972b8/memotime/kg_agent/intelligent_toolkit_selector.py#L72-L130"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "Overall",
+        "Multiple",
+        "Single",
+        "Entity",
+        "Time"
+      ],
+      "rows": [
+        [
+          "Full (GPT-4o-mini)",
+          "64.2",
+          "40.3",
+          "73.0",
+          "61.5",
+          "70.8"
+        ],
+        [
+          "w/o graph retrieval",
+          "52.9",
+          "23.5",
+          "65.0",
+          "48.2",
+          "64.2"
+        ],
+        [
+          "w/o embedding retrieval",
+          "60.1",
+          "38.6",
+          "68.0",
+          "57.4",
+          "66.8"
+        ],
+        [
+          "w/o any KG retrieval",
+          "11.2",
+          "8.0",
+          "12.4",
+          "11.5",
+          "12.0"
+        ],
+        [
+          "w/o question tree",
+          "58.3",
+          "19.3",
+          "72.6",
+          "54.6",
+          "70.1"
+        ],
+        [
+          "w/o experience memory",
+          "59.8",
+          "26.1",
+          "72.2",
+          "55.8",
+          "69.6"
+        ]
+      ],
+      "src": "paper Table 4 (MultiTQ, Hits@1)"
+    },
+    "discussion": {
+      "takeaway": "Time-consistent decomposition plus operator-specific KG toolkits carry most of the gain; the experience memory adds about 4 points on MultiTQ by supplying past plans and tool choices as examples.",
+      "claims": [
+        {
+          "claim": "State of the art on temporal KGQA, up to 24.0% over the strongest baseline.",
+          "evidence": "MultiTQ 77.9 vs TempAgent 53.9; TimeQuestions 71.4 vs TimeR4 64.8 (GPT-4-Turbo). Tables 1-2, §5.1"
+        },
+        {
+          "claim": "Small models approach GPT-4-Turbo with MemoTime.",
+          "evidence": "Qwen3-4B 55.3 vs IO 3.5 on MultiTQ (Table 3), against GPT-4-Turbo 76.3. §5.2"
+        },
+        {
+          "claim": "Graph retrieval matters most for multi-entity questions.",
+          "evidence": "Multiple 40.3 → 23.5 without it. Table 4"
+        },
+        {
+          "claim": "The question tree is needed for multi-constraint questions.",
+          "evidence": "Multiple 40.3 → 19.3 without it; overall 64.2 → 58.3. Table 4"
+        },
+        {
+          "claim": "Experience memory improves stability.",
+          "evidence": "Overall 64.2 → 59.8, Multiple 40.3 → 26.1 without it. Table 4"
+        }
+      ],
+      "limits": [],
+      "limits_src": "The paper has no limitations section.",
+      "reading": [
+        "Every baseline number is copied from earlier papers (App. D), mostly with GPT-3.5-Turbo backbones, while MemoTime runs GPT-4o-mini to GPT-4-Turbo; only Table 3's IO rows share a backbone with MemoTime.",
+        "Table 3 gives different MemoTime scores than Tables 1-2 for the same backbone (GPT-4-Turbo 76.3 vs 77.9 on MultiTQ, 68.1 vs 71.4 on TimeQuestions); the paper does not explain the gap.",
+        "On TimeQuestions the GPT-4o-mini (60.9) and Qwen3-32B (60.6) runs are below the fine-tuned TimeR4 (64.8), so the best result there needs DeepSeek-V3 or GPT-4-Turbo.",
+        "In the released code the experience pool only supplies few-shot examples: stored sub-question answers are never reused (stepwise.py L1097), and type classification uses rules, not memory.",
+        "The pool is written from test questions during evaluation, gated by an LLM check; results can depend on question order, which the paper does not report.",
+        "The code's answer string joins up to three candidate answers with ', or ' and is scored by a lenient matcher, while baselines' Hits@1 comes from their own papers' scoring.",
+        "The code skips questions already marked correct for the same configuration on reruns (main.py L252-L260); the paper does not say how many runs produced the tables."
+      ]
+    }
+  }
+}

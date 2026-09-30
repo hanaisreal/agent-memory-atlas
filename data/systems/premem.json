@@ -1,0 +1,651 @@
+{
+  "id": "premem",
+  "name": "PREMem",
+  "paper": {
+    "title": "Pre-Storage Reasoning for Episodic Memory: Shifting Inference Burden to Memory for Personalized Dialogue",
+    "arxiv": "2509.10852",
+    "url": "https://arxiv.org/abs/2509.10852",
+    "venue": "EMNLP 2025 Findings",
+    "venue_short": "EMNLP",
+    "track": "findings",
+    "year": 2025,
+    "code": "https://github.com/sangyeop-kim/PREMem"
+  },
+  "design": {
+    "construction": {
+      "unit": "memory fragment (key, value, date, message id) typed factual / experiential / subjective; plus reasoning fragments",
+      "kept_as": "LLM-extracted present-tense phrases; LLM-inferred cross-session insights",
+      "processing": "LLM extracts typed fragments per session with normalised dates; fragments are clustered per session and matched to earlier clusters; an LLM writes insights for each matched pair under five evolution patterns",
+      "trigger": "session-end",
+      "writer": "same LLM family as the answer model, largest size (Qwen2.5-72B, Gemma3-27B or GPT-4.1)"
+    },
+    "organization": {
+      "structure": "two flat stores: fragments M and reasoning fragments R; session clusters exist only while building",
+      "stores": "M (extracted fragments), R (reasoning fragments)",
+      "index": "Stella_en_400M_v5 dense embeddings of 'key: value'"
+    },
+    "management": {
+      "operations": "append new fragments; append reasoning fragments for each earlier cluster that matches a new cluster (cos > 0.6); a matched earlier cluster leaves the persistent pool",
+      "conflicts": "not resolved in place; a 'transformation' insight can record a change, both old and new fragments stay",
+      "forgetting": null,
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "question used as is (Stella s2p query prompt)",
+      "candidates": "cosine similarity over M ∪ R",
+      "selection": "top 102 (token budget / 20), added in rank order until 2,048 tokens, then sorted by session date",
+      "budget": "2,048 tokens in the main tables (1,024 and 4,096 also tested)"
+    },
+    "use": {
+      "context": "retrieved fragments as '[key, date]: value' lines, oldest first; no original messages",
+      "reasoning": "single answer call with a short-phrase prompt"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "fixed-rule",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "flat",
+    "index": "vector",
+    "management": "consolidate",
+    "candidates": "dense",
+    "decides": "top-k rule",
+    "note": "Session clusters and the persistent pool only decide which fragment groups the LLM reasons over at write time; the read side is one flat dense search over fragments and derived insights. 'consolidate' because new cross-session insight items are written; nothing is edited or deleted."
+  },
+  "tags": {
+    "fidelity": "extracted",
+    "structure": [
+      "flat"
+    ],
+    "write_time": [
+      "extract",
+      "consolidate"
+    ],
+    "selection": [
+      "dense"
+    ],
+    "memory_type": [
+      "episodic",
+      "semantic",
+      "profile"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "conversation"
+    ]
+  },
+  "stages": {
+    "ingestion": "Each session is processed after it ends; in LoCoMo each speaker's messages are sent to the extractor separately, in LongMemEval the whole session at once (code).",
+    "construction": "An LLM pulls out every personal statement as a fragment with a key, a present-tense value, the source message id and a date written as the message date, an absolute date, 'Before [date]' or 'After [date]', typed as factual, experiential or subjective.",
+    "organization": "Fragments go to a flat store M. For building only, each session's fragments are k-means clustered (k chosen by silhouette) and compared with a pool of earlier clusters.",
+    "update": "For every earlier cluster whose centroid similarity with a new cluster exceeds 0.6, the LLM reads both groups and writes short insights (extension, accumulation, specification, transformation, connection) into store R; matched earlier clusters leave the pool.",
+    "retrieval": "The question is embedded with Stella_en_400M_v5 and compared by cosine with every item in M and R; the top items are added until 2,048 tokens and then ordered by date.",
+    "answer": "One answer call reads the '[key, date]: value' lines and the question and returns a short phrase.",
+    "learning": ""
+  },
+  "summary": "Moves cross-session reasoning to write time: an LLM extracts typed, dated fragments per session and writes explicit insights (extension, accumulation, specification, transformation, connection) for clusters that match earlier ones, so a plain dense search over fragments and insights serves the answer model.",
+  "verified": false,
+  "notes": "Venue: Findings of EMNLP 2025 (aclanthology 2025.findings-emnlp.1204, pp. 22096-22113); arXiv comment 'Accepted by EMNLP 2025 (Findings)'. Code: github.com/sangyeop-kim/PREMem, single commit 723000b0 (2025-09-10, 'first init'), which also ships the evaluated outputs (output/*/ours_final/*/results_evaluation_gpt-4.1-mini.json).\nDESIGN: §3.1-3.3, §4.1, App. A (prompts Figs. 3-7), App. E (θ = 0.6, Stella embedding, judge GPT-4.1-mini), App. F (Algorithm 1). Retrieval k and the chronological ordering follow the code (experiment_baseline.py L220-L231, model/utils.py L10-L55). trigger 'session-end': Algorithm 1 processes session by session; the released scripts run it in one batch over the whole history. control.management 'fixed-rule': the cosine threshold decides which cluster pairs are reasoned over; the reasoning itself is a prompted LLM (counted under construction).",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2509.10852v1 (PDF read 2026-09-30); ACL Anthology page checked for venue and pages",
+      "code": "https://github.com/sangyeop-kim/PREMem/tree/723000b01dbf6509463c2f3a84027f5d3136c195/",
+      "code_note": "The repository has one commit (723000b0, 2025-09-10, three days before arXiv v1) and ships the scored outputs for the main table, so it is taken as the code behind the paper. The README runs experiments with src/experiment.py, which is not in the repository; src/experiment_baseline.py accepts the 'ours_final' mode and is the runner used here."
+    },
+    "headline": [
+      "Memory is LLM-extracted fragments plus LLM-written cross-session insights; the answer model never sees the original messages.",
+      "The reasoning happens at write time, only for clusters of fragments whose centroids match an earlier session's cluster (similarity > 0.6).",
+      "Reading is a plain dense top-k over fragments and insights, filled to 2,048 tokens and sorted by date."
+    ],
+    "units": [
+      {
+        "name": "Memory fragment",
+        "role": "one personal statement from a session (store M)",
+        "made_by": "extraction LLM (Step 1), temperature 0, JSON output",
+        "fields": [
+          {
+            "name": "key",
+            "what": "short topic label, e.g. 'current residence'",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper Fig. 3; code save_episodic_embedding.py L115, L155-L162",
+            "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/premem/save_episodic_embedding.py#L102-L115"
+          },
+          {
+            "name": "value",
+            "what": "present-tense verb phrase without pronouns, e.g. 'Lives in Rome with girlfriend Hana'",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper Fig. 3; code save_episodic_embedding.py L115",
+            "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/premem/save_episodic_embedding.py#L115"
+          },
+          {
+            "name": "category",
+            "what": "factual, experiential or subjective",
+            "kept_as": "extracted",
+            "used_for": [],
+            "src": "stored as information_type; not in the embedded or answer text (save_episodic_embedding.py L86, L115, L157-L162)",
+            "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/premem/save_episodic_embedding.py#L83-L92"
+          },
+          {
+            "name": "date",
+            "what": "message date, absolute date, 'Before [date]' or 'After [date]'",
+            "kept_as": "extracted",
+            "used_for": [],
+            "src": "paper §3.1, Fig. 3; code feeds it only to the Step-2 reasoning input (run_reasoning.py L89-L101); the answer text shows the session date instead (save_episodic_embedding.py L157-L162)",
+            "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/premem/run_reasoning.py#L89-L101"
+          },
+          {
+            "name": "session date",
+            "what": "date of the session the fragment came from",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code save_episodic_embedding.py L157-L165; sorting in model/utils.py L43-L46",
+            "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/premem/save_episodic_embedding.py#L155-L168"
+          },
+          {
+            "name": "speaker",
+            "what": "LoCoMo speaker whose messages produced the fragment",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code save_episodic_embedding.py L144-L152: used to filter candidates when the question names a speaker; not shown to the answer model",
+            "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/premem/save_episodic_embedding.py#L143-L152"
+          },
+          {
+            "name": "message id",
+            "what": "id of the source message",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "paper §3.1; stored, not read at answer time",
+            "url": "https://arxiv.org/pdf/2509.10852"
+          }
+        ]
+      },
+      {
+        "name": "Reasoning fragment",
+        "role": "insight linking an earlier cluster with a matching cluster of a new session (store R)",
+        "made_by": "reasoning LLM (Step 2), temperature 0",
+        "fields": [
+          {
+            "name": "inference type",
+            "what": "extension/generalization, accumulation, specification/refinement, transformation or connection/implication",
+            "kept_as": "extracted",
+            "used_for": [],
+            "src": "paper §3.2.2, Fig. 4; stored but not in the embedded or answer text (save_reasoning.py L167, L178-L188)",
+            "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/premem/save_reasoning.py#L160-L188"
+          },
+          {
+            "name": "key",
+            "what": "brief description of the insight",
+            "kept_as": "rewritten",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper Fig. 4; code save_reasoning.py L178-L188",
+            "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/premem/save_reasoning.py#L178-L188"
+          },
+          {
+            "name": "value",
+            "what": "the insight, 12 words or less",
+            "kept_as": "rewritten",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper Fig. 4; code save_reasoning.py L178-L188",
+            "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/premem/save_reasoning.py#L178-L188"
+          },
+          {
+            "name": "date",
+            "what": "date or date range written by the LLM",
+            "kept_as": "rewritten",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code save_reasoning.py L178-L187",
+            "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/premem/save_reasoning.py#L178-L187"
+          }
+        ]
+      },
+      {
+        "name": "Session cluster",
+        "role": "group of one session's fragments, used only while building",
+        "made_by": "k-means on fragment embeddings, k by silhouette score",
+        "fields": [
+          {
+            "name": "centroid",
+            "what": "mean of member embeddings; matched against the persistent pool",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "paper §3.2.1; code run_reasoning.py L104-L119, L261-L270",
+            "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/premem/run_reasoning.py#L104-L119"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Extract",
+        "how": "LLM reads a session (per speaker in LoCoMo) with message ids and dates and returns typed fragments with normalised dates",
+        "src": "paper §3.1, Fig. 3; code run_extract_episodic_memory.py L148-L181",
+        "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/premem/run_extract_episodic_memory.py#L148-L181"
+      },
+      {
+        "step": "Embed",
+        "how": "Stella_en_400M_v5 embeds 'key: value' of each fragment (normalised)",
+        "src": "paper App. E; code save_episodic_embedding.py L115-L136",
+        "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/premem/save_episodic_embedding.py#L115-L136"
+      },
+      {
+        "step": "Cluster",
+        "how": "k-means per session, k from 2 to 9 chosen by silhouette score",
+        "params": {
+          "k": "2-9 (fewer if the session has fewer fragments)"
+        },
+        "src": "paper §3.2.1; code run_reasoning.py L104-L119, L261",
+        "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/premem/run_reasoning.py#L104-L119"
+      },
+      {
+        "step": "Match",
+        "how": "compare each earlier cluster in the pool with each new cluster by centroid dot product; pairs above the threshold are linked",
+        "params": {
+          "θ": "0.6"
+        },
+        "src": "paper §3.2.1, App. E; code run_reasoning.py L314-L329",
+        "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/premem/run_reasoning.py#L314-L329"
+      },
+      {
+        "step": "Reason",
+        "how": "for each linked pair, the LLM reads both groups of fragments ('[key, date]: speaker value' lines) and writes insights under the five patterns",
+        "out": "reasoning fragments, 12 words or less each",
+        "src": "paper §3.2.2, Fig. 4; code run_reasoning.py L330-L354",
+        "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/premem/run_reasoning.py#L330-L354"
+      },
+      {
+        "step": "Update pool",
+        "how": "matched earlier clusters leave the pool; the code adds only the new clusters that matched nothing (the paper adds all new clusters)",
+        "src": "paper §3.2.1; code run_reasoning.py L355-L370",
+        "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/premem/run_reasoning.py#L355-L370"
+      }
+    ],
+    "read": [
+      {
+        "step": "Filter by speaker",
+        "round": 1,
+        "input": "question",
+        "how": "LoCoMo only: if a speaker's name appears in the question, keep only that speaker's fragments",
+        "src": "code save_episodic_embedding.py L144-L152",
+        "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/premem/save_episodic_embedding.py#L143-L152"
+      },
+      {
+        "step": "Search",
+        "round": 1,
+        "input": "question",
+        "scores": "'key: value' of fragments and reasoning fragments",
+        "how": "Stella_en_400M_v5 (s2p query prompt), cosine similarity",
+        "params": {
+          "k": "102 (token budget / 20)"
+        },
+        "src": "code db.py L400-L420; experiment_baseline.py L220-L224",
+        "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/db.py#L400-L420"
+      },
+      {
+        "step": "Fill budget",
+        "round": 1,
+        "how": "add items in rank order until the 2,048-token budget is passed, then truncate to 2,048 tokens",
+        "params": {
+          "budget": "2,048 tokens"
+        },
+        "src": "code model/utils.py L10-L30",
+        "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/model/utils.py#L10-L30"
+      },
+      {
+        "step": "Order",
+        "round": 1,
+        "how": "sort the kept items by session date, oldest first",
+        "src": "paper §3.3; code model/utils.py L33-L55",
+        "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/model/utils.py#L33-L55"
+      }
+    ],
+    "answer_context": {
+      "sees": "fragments and reasoning fragments as dated lines, up to 2,048 tokens",
+      "format": "\"[key, date]: value\" lines separated by blank lines, oldest first, under 'Context:' in a short-answer prompt",
+      "excludes": [
+        "original messages",
+        "fragment category",
+        "inference type",
+        "speaker name (Step-1 fragments)",
+        "extracted date of Step-1 fragments (session date shown instead)"
+      ],
+      "includes": [
+        "Step-1 fragments",
+        "Step-2 reasoning fragments"
+      ],
+      "src": "code save_episodic_embedding.py L155-L162, save_reasoning.py L178-L187, model/utils.py L33-L55; prompts/chat_locomo.yaml",
+      "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/model/utils.py#L33-L55"
+    },
+    "compression": [
+      {
+        "what": "answer context vs one LongMemEval-S history",
+        "kept": 2.03,
+        "of": 115,
+        "unit": "k tokens",
+        "basis": "Table 6 token length 2,032 (Qwen2.5) over the ~115K-token average history (§4.1)",
+        "src": "paper Table 6, §4.1",
+        "url": "https://arxiv.org/pdf/2509.10852"
+      },
+      {
+        "what": "answer context vs the Full-history baseline on LoCoMo",
+        "kept": 2.03,
+        "of": 19.6,
+        "unit": "k tokens",
+        "basis": "Table 6 token length: PREMem 2,034, Full 19,644 (Qwen2.5)",
+        "src": "paper Table 6",
+        "url": "https://arxiv.org/pdf/2509.10852"
+      },
+      {
+        "what": "stored fragments vs source messages",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported: the paper gives no fragment counts or store sizes.",
+        "src": "paper",
+        "url": "https://arxiv.org/pdf/2509.10852"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "PREMem, LongMemEval (GPT-4.1)",
+        "value": "71.4",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "PREMem, LoCoMo (GPT-4.1)",
+        "value": "67.7",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "Best baseline, same model",
+        "value": "A-Mem 55.9 (LongMemEval); HippoRAG-2 57.3 (LoCoMo)",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "Without Step 2, GPT-4.1",
+        "value": "69.8 LongMemEval, 64.7 LoCoMo",
+        "src": "paper Table 4"
+      },
+      {
+        "label": "PREMem with Qwen2.5-3B",
+        "value": "50.8 LongMemEval, 53.8 LoCoMo",
+        "src": "paper Table 3"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Persistent pool update",
+        "paper": "all clusters of the new session join the pool (P_i = P_{i-1} minus matched ∪ C_i)",
+        "code": "only new clusters that matched no earlier cluster join; matched new clusters are dropped from the pool",
+        "src": "run_reasoning.py L355-L370",
+        "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/premem/run_reasoning.py#L355-L370"
+      },
+      {
+        "topic": "Cluster similarity",
+        "paper": "cosine similarity of centroids",
+        "code": "dot product of centroids of normalised vectors, which are not renormalised, so scores sit below the cosine",
+        "src": "run_reasoning.py L265-L270, L327",
+        "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/premem/run_reasoning.py#L265-L329"
+      },
+      {
+        "topic": "Dates in the answer context",
+        "paper": "each retrieved item includes its full key, content and time",
+        "code": "Step-1 fragments show the session date; the extracted 'Before/After' date only reaches the Step-2 reasoner",
+        "src": "save_episodic_embedding.py L155-L162",
+        "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/premem/save_episodic_embedding.py#L155-L162"
+      },
+      {
+        "topic": "Speaker handling (LoCoMo)",
+        "paper": "not described",
+        "code": "extraction runs per speaker; if the question names a speaker, only that speaker's fragments are searched",
+        "src": "run_extract_episodic_memory.py L151-L173; save_episodic_embedding.py L144-L152",
+        "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/premem/save_episodic_embedding.py#L143-L152"
+      },
+      {
+        "topic": "Top-k",
+        "paper": "top-k, k not stated",
+        "code": "k = token budget / 20 = 102, then filled to 2,048 tokens",
+        "src": "experiment_baseline.py L220-L224",
+        "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/experiment_baseline.py#L220-L224"
+      }
+    ],
+    "open_questions": [
+      "On LongMemEval, removing Step 2 raises the score for three of six answer models (e.g. Qwen2.5-72B 67.5 → 69.8), so most of the LongMemEval gain comes from Step-1 extraction, not from pre-storage reasoning.",
+      "The paper does not say what the 'w/o Step 1' run stores instead of fragments.",
+      "Baselines are compared at the same nominal 2,048-token budget, but Table 6 reports 3.7-4.0k context tokens for HippoRAG-2 and 5.9-6.3k for A-Mem."
+    ],
+    "sections": {
+      "Memory architecture": "§3",
+      "Results": "§4.2, §4.3",
+      "Ablation": "§4.4",
+      "Discussion": "§5, Limitations",
+      "Details": "§4.1, App. A, C, E, F"
+    },
+    "abstract": {
+      "text": "PREMem argues that long-term conversational memory should do its cross-session reasoning when memories are written, not when a question is answered. For each session an LLM extracts short, dated fragments sorted into factual, experiential and subjective information. Fragment clusters that resemble clusters from earlier sessions are handed to an LLM, which writes explicit insights about how the information evolved (extension, accumulation, specification, transformation, connection). At question time a plain dense search over fragments and insights fills a small context, and the authors report gains on LongMemEval and LoCoMo across model sizes, with small answer models approaching larger baselines.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2509.10852"
+    },
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 256",
+        "body": "<text class=\"fig-t\" x=\"48\" y=\"16\" text-anchor=\"middle\">Session i</text><rect class=\"gi-ev\" x=\"8\" y=\"26\" width=\"70\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"16\" y1=\"35\" x2=\"62\" y2=\"35\"/><rect class=\"gi-ev\" x=\"22\" y=\"50\" width=\"70\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"30\" y1=\"59\" x2=\"76\" y2=\"59\"/><rect class=\"gi-ev\" x=\"8\" y=\"74\" width=\"70\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"16\" y1=\"83\" x2=\"62\" y2=\"83\"/><rect class=\"gi-ev\" x=\"22\" y=\"98\" width=\"70\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"30\" y1=\"107\" x2=\"76\" y2=\"107\"/><rect class=\"gi-ev\" x=\"8\" y=\"122\" width=\"70\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"16\" y1=\"131\" x2=\"62\" y2=\"131\"/><text class=\"fig-s\" x=\"48\" y=\"158\" text-anchor=\"middle\">one call per speaker</text><text class=\"fig-s\" x=\"48\" y=\"170\" text-anchor=\"middle\">(LoCoMo)</text><path class=\"gi-a\" d=\"M94 82 L123 82\"/><polygon class=\"gi-ah\" points=\"130,82 123,78 123,86\"/><rect class=\"gi-llm\" x=\"96\" y=\"62\" width=\"32\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"112\" y=\"72\" text-anchor=\"middle\">LLM</text><rect class=\"gi-ev\" x=\"132\" y=\"22\" width=\"150\" height=\"128\" rx=\"10\"/><text class=\"fig-t\" x=\"207\" y=\"40\" text-anchor=\"middle\">Fragments (Step 1)</text><rect class=\"gi-f\" x=\"142\" y=\"50\" width=\"130\" height=\"24\" rx=\"6\"/><text class=\"fig-t\" x=\"150\" y=\"61\" text-anchor=\"start\">factual</text><text class=\"fig-s\" x=\"150\" y=\"71\" text-anchor=\"start\">what I am / have</text><rect class=\"gi-f\" x=\"142\" y=\"80\" width=\"130\" height=\"24\" rx=\"6\"/><text class=\"fig-t\" x=\"150\" y=\"91\" text-anchor=\"start\">experiential</text><text class=\"fig-s\" x=\"150\" y=\"101\" text-anchor=\"start\">what I did</text><rect class=\"gi-f\" x=\"142\" y=\"110\" width=\"130\" height=\"24\" rx=\"6\"/><text class=\"fig-t\" x=\"150\" y=\"121\" text-anchor=\"start\">subjective</text><text class=\"fig-s\" x=\"150\" y=\"131\" text-anchor=\"start\">what I like / plan</text><text class=\"fig-s\" x=\"215\" y=\"164\" text-anchor=\"middle\">key · value · date · msg id</text><path class=\"gi-a\" d=\"M284 82 L311 82\"/><polygon class=\"gi-ah\" points=\"318,82 311,78 311,86\"/><text class=\"fig-s\" x=\"301\" y=\"72\" text-anchor=\"middle\">embed</text><text class=\"fig-t\" x=\"366\" y=\"16\" text-anchor=\"middle\">Clusters of i</text><path class=\"gi-h\" d=\"M326 52.0 C 326 30, 404 30, 404 52.0 C 404 74, 326 74, 326 52.0 Z\"/><circle class=\"gi-n\" cx=\"346\" cy=\"50\" r=\"6\"/><circle class=\"gi-n\" cx=\"366\" cy=\"46\" r=\"6\"/><circle class=\"gi-n\" cx=\"382\" cy=\"56\" r=\"6\"/><path class=\"gi-h\" d=\"M330 108.0 C 330 88, 400 88, 400 108.0 C 400 128, 330 128, 330 108.0 Z\"/><circle class=\"gi-n\" cx=\"352\" cy=\"106\" r=\"6\"/><circle class=\"gi-n\" cx=\"374\" cy=\"110\" r=\"6\"/><text class=\"fig-s\" x=\"366\" y=\"144\" text-anchor=\"middle\">k-means, k 2-9</text><text class=\"fig-s\" x=\"366\" y=\"156\" text-anchor=\"middle\">best silhouette</text><rect class=\"gi-l\" x=\"440\" y=\"24\" width=\"114\" height=\"128\" rx=\"10\"/><text class=\"fig-t\" x=\"497\" y=\"16\" text-anchor=\"middle\">Pool: earlier clusters</text><path class=\"gi-h\" d=\"M452 54.0 C 452 34, 542 34, 542 54.0 C 542 74, 452 74, 452 54.0 Z\"/><circle class=\"gi-n\" cx=\"474\" cy=\"54\" r=\"6\"/><circle class=\"gi-n\" cx=\"496\" cy=\"50\" r=\"6\"/><circle class=\"gi-n\" cx=\"516\" cy=\"58\" r=\"6\"/><path class=\"gi-h\" d=\"M456 112.0 C 456 92, 540 92, 540 112.0 C 540 132, 456 132, 456 112.0 Z\"/><circle class=\"gi-n\" cx=\"482\" cy=\"112\" r=\"6\"/><circle class=\"gi-n\" cx=\"506\" cy=\"108\" r=\"6\"/><line class=\"gi-e d\" x1=\"390\" y1=\"52\" x2=\"466\" y2=\"56\"/><text class=\"fig-s\" x=\"421\" y=\"86\" text-anchor=\"end\">sim &gt; 0.6</text><path class=\"gi-a\" d=\"M428 55 L428 180\"/><path class=\"gi-a\" d=\"M428 180 L428 179\"/><polygon class=\"gi-ah\" points=\"428,186 424,179 432,179\"/><rect class=\"gi-llm\" x=\"368\" y=\"186\" width=\"120\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"428.0\" y=\"204.0\" text-anchor=\"middle\">LLM reasons</text><text class=\"fig-s\" x=\"428.0\" y=\"217.0\" text-anchor=\"middle\">5 patterns, ≤ 12 words</text><path class=\"gi-a\" d=\"M368 206 L319 206\"/><polygon class=\"gi-ah\" points=\"312,206 319,202 319,210\"/><rect class=\"gi-f\" x=\"182\" y=\"186\" width=\"130\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"247.0\" y=\"204.0\" text-anchor=\"middle\">Store R</text><text class=\"fig-s\" x=\"247.0\" y=\"217.0\" text-anchor=\"middle\">reasoning fragments</text><path class=\"gi-a\" d=\"M140 150 L140 174 L90 174 L90 180\"/><path class=\"gi-a\" d=\"M90 180 L90 179\"/><polygon class=\"gi-ah\" points=\"90,186 86,179 94,179\"/><rect class=\"gi-f\" x=\"22\" y=\"186\" width=\"136\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"90.0\" y=\"204.0\" text-anchor=\"middle\">Store M</text><text class=\"fig-s\" x=\"90.0\" y=\"217.0\" text-anchor=\"middle\">all fragments</text><text class=\"fig-s\" x=\"280\" y=\"246\" text-anchor=\"middle\">a matched pool cluster leaves the pool; unmatched clusters of session i join it</text>",
+        "text": [
+          "An LLM turns each session into short typed fragments with dates; they are embedded and clustered within the session.",
+          "When a new cluster resembles an earlier one (similarity > 0.6), an LLM writes cross-session insights into a second store."
+        ],
+        "src": "paper §3.1-3.2, Figs. 3-4, App. E; code run_reasoning.py L104-L370",
+        "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/premem/run_reasoning.py#L245-L371"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 240",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"30\" width=\"62\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"35.0\" y=\"56.0\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M66 52 L71 52\"/><polygon class=\"gi-ah\" points=\"78,52 71,48 71,56\"/><rect class=\"gi-v fig-soft\" x=\"78\" y=\"30\" width=\"84\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"120.0\" y=\"50.0\" text-anchor=\"middle\">Embed</text><text class=\"fig-s\" x=\"120.0\" y=\"63.0\" text-anchor=\"middle\">Stella 400M</text><path class=\"gi-a\" d=\"M162 52 L167 52\"/><polygon class=\"gi-ah\" points=\"174,52 167,48 167,56\"/><rect class=\"gi-f\" x=\"174\" y=\"30\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"222.0\" y=\"50.0\" text-anchor=\"middle\">Search M ∪ R</text><text class=\"fig-s\" x=\"222.0\" y=\"63.0\" text-anchor=\"middle\">cosine</text><path class=\"gi-a\" d=\"M270 52 L275 52\"/><polygon class=\"gi-ah\" points=\"282,52 275,48 275,56\"/><rect class=\"gi-f\" x=\"282\" y=\"30\" width=\"72\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"318.0\" y=\"50.0\" text-anchor=\"middle\">top 102</text><text class=\"fig-s\" x=\"318.0\" y=\"63.0\" text-anchor=\"middle\">2048 / 20</text><path class=\"gi-a\" d=\"M354 52 L359 52\"/><polygon class=\"gi-ah\" points=\"366,52 359,48 359,56\"/><rect class=\"gi-f\" x=\"366\" y=\"30\" width=\"86\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"409.0\" y=\"50.0\" text-anchor=\"middle\">Fill 2,048</text><text class=\"fig-s\" x=\"409.0\" y=\"63.0\" text-anchor=\"middle\">tokens, by rank</text><path class=\"gi-a\" d=\"M452 52 L457 52\"/><polygon class=\"gi-ah\" points=\"464,52 457,48 457,56\"/><rect class=\"gi-f\" x=\"464\" y=\"30\" width=\"90\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"509.0\" y=\"50.0\" text-anchor=\"middle\">Sort by date</text><text class=\"fig-s\" x=\"509.0\" y=\"63.0\" text-anchor=\"middle\">oldest first</text><path class=\"gi-a\" d=\"M509 74 L509 143\"/><polygon class=\"gi-ah\" points=\"509,150 505,143 513,143\"/><rect class=\"gi-hi\" x=\"462\" y=\"150\" width=\"92\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"508.0\" y=\"172.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"508.0\" y=\"185.0\" text-anchor=\"middle\">one LLM call</text><text class=\"fig-s\" x=\"8\" y=\"98\" text-anchor=\"start\">LoCoMo (code): if the question names a speaker, only that speaker's fragments are searched</text><rect class=\"gi-ev\" x=\"8\" y=\"112\" width=\"330\" height=\"118\" rx=\"10\"/><text class=\"fig-t\" x=\"20\" y=\"130\" text-anchor=\"start\">Context the answer model reads</text><rect class=\"gi-f\" x=\"18\" y=\"140\" width=\"310\" height=\"36\" rx=\"6\"/><text class=\"fig-t\" x=\"26\" y=\"154\" text-anchor=\"start\">[key, session date]: value</text><text class=\"fig-s\" x=\"26\" y=\"168\" text-anchor=\"start\">Step-1 fragment, no speaker name</text><rect class=\"gi-hi\" x=\"18\" y=\"182\" width=\"310\" height=\"36\" rx=\"6\"/><text class=\"fig-t\" x=\"26\" y=\"196\" text-anchor=\"start\">[key, date range]: insight</text><text class=\"fig-s\" x=\"26\" y=\"210\" text-anchor=\"start\">Step-2 reasoning fragment</text><path class=\"gi-a\" d=\"M338 174 L455 174\"/><polygon class=\"gi-ah\" points=\"462,174 455,170 455,178\"/><text class=\"fig-s\" x=\"400\" y=\"166\" text-anchor=\"middle\">no raw turns</text>",
+        "text": [
+          "The question is embedded and compared with every fragment and insight; the best ones fill a 2,048-token context in date order.",
+          "There is no reranking or LLM step before answering, and the original messages are never shown."
+        ],
+        "src": "paper §3.3; code db.py L400-L420, experiment_baseline.py L220-L231, model/utils.py L10-L55",
+        "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/experiment_baseline.py#L220-L231"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Fragment types",
+        "value": "3: factual · experiential · subjective",
+        "src": "paper §3.1",
+        "section": "construction"
+      },
+      {
+        "label": "Clusters per session",
+        "value": "k 2-9, by silhouette",
+        "src": "code run_reasoning.py L104, L261",
+        "section": "construction"
+      },
+      {
+        "label": "Link threshold",
+        "value": "similarity > 0.6",
+        "src": "paper App. E",
+        "section": "construction"
+      },
+      {
+        "label": "Insight patterns",
+        "value": "5, each insight ≤ 12 words",
+        "src": "paper §3.2.2, Fig. 4",
+        "section": "construction"
+      },
+      {
+        "label": "Candidates searched",
+        "value": "top 102 by cosine",
+        "src": "code experiment_baseline.py L223",
+        "section": "method"
+      },
+      {
+        "label": "Answer context",
+        "value": "≤ 2,048 tokens, oldest first",
+        "src": "paper Table 5; code model/utils.py",
+        "section": "method"
+      },
+      {
+        "label": "Context tokens used",
+        "value": "~2.0k vs Full 18.7k (LongMemEval), 19.6k (LoCoMo)",
+        "src": "paper Table 6",
+        "section": "results"
+      },
+      {
+        "label": "Baseline context tokens",
+        "value": "A-Mem 5.9-6.3k, HippoRAG-2 3.7-4.0k",
+        "src": "paper Table 6",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Extract fragments and write insights",
+        "model": "largest model of the answer family: Qwen2.5-72B, Gemma3-27B or GPT-4.1 (PREMem_S: 14B / 12B / nano)",
+        "kind": "llm",
+        "src": "paper §4.1, §5.2"
+      },
+      {
+        "role": "Embed fragments and question",
+        "model": "Stella_en_400M_v5",
+        "kind": "retriever",
+        "src": "paper §4.1, App. E"
+      },
+      {
+        "role": "Cluster and link",
+        "model": "k-means + silhouette; centroid similarity > 0.6",
+        "kind": "rule",
+        "src": "paper §3.2.1; code run_reasoning.py L104-L119",
+        "url": "https://github.com/sangyeop-kim/PREMem/blob/723000b01dbf6509463c2f3a84027f5d3136c195/src/premem/run_reasoning.py#L104-L119"
+      },
+      {
+        "role": "Answer",
+        "model": "Qwen2.5 3B/14B/72B, Gemma3 4B/12B/27B, GPT-4.1 nano/mini/base (temperature 0.7)",
+        "kind": "llm",
+        "src": "paper §4.1"
+      },
+      {
+        "role": "Judge",
+        "model": "GPT-4.1-mini, 0-100 score",
+        "kind": "llm",
+        "src": "paper App. E, Fig. 7"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "LongMemEval GPT-4.1",
+        "LoCoMo GPT-4.1",
+        "LongMemEval Qwen2.5-72B",
+        "LoCoMo Qwen2.5-72B"
+      ],
+      "rows": [
+        [
+          "PREMem",
+          "71.4",
+          "67.7",
+          "67.5",
+          "71.0"
+        ],
+        [
+          "without Step 2 (no pre-storage reasoning)",
+          "69.8",
+          "64.7",
+          "69.8",
+          "68.2"
+        ],
+        [
+          "without Step 1",
+          "34.2",
+          "44.1",
+          "35.9",
+          "47.8"
+        ],
+        [
+          "without Step-1 categories",
+          "69.6",
+          "63.5",
+          "68.9",
+          "68.1"
+        ],
+        [
+          "without temporal normalisation",
+          "69.0",
+          "62.6",
+          "68.4",
+          "65.8"
+        ]
+      ],
+      "src": "paper Table 4 (LLM-judge; six answer models in the paper, two shown)"
+    },
+    "discussion": {
+      "takeaway": "Doing the cross-session synthesis when memory is written lets a plain dense retriever and a small answer model do well; in the paper's own runs PREMem leads on overall LLM-judge score on both benchmarks for every model family.",
+      "claims": [
+        {
+          "claim": "Shifting reasoning to storage time improves long-term dialogue QA across model sizes.",
+          "evidence": "GPT-4.1: 71.4 vs 55.9 (A-Mem) on LongMemEval, 67.7 vs 57.3 (HippoRAG-2) on LoCoMo. Table 2"
+        },
+        {
+          "claim": "Gains are largest on cross-session questions.",
+          "evidence": "LongMemEval multi-hop 83.5 vs 41.4 and knowledge update 93.7 vs 64.7 (A-Mem, GPT-4.1). Table 2, §4.2"
+        },
+        {
+          "claim": "Small answer models with PREMem match larger models with baselines.",
+          "evidence": "GPT-4.1-nano 58.7 / 58.8 vs the best GPT-4.1 baseline 55.9 (LongMemEval) and 57.3 (LoCoMo). Table 3"
+        },
+        {
+          "claim": "Extraction is essential and pre-storage reasoning helps.",
+          "evidence": "Without Step 1 scores drop 32.7-61.0%; without Step 2 LoCoMo drops 3.2-5.4%. Table 4, §4.4"
+        },
+        {
+          "claim": "PREMem holds up at small token budgets.",
+          "evidence": "At 1,024 tokens: 70.2 LongMemEval, 67.3 LoCoMo (GPT-4.1) vs 71.4 / 67.7 at 2,048. Table 5"
+        },
+        {
+          "claim": "BM25 and smaller construction models are workable substitutes.",
+          "evidence": "GPT-4.1: BM25 67.4 vs 71.4 (LongMemEval); PREMem_S 68.1. Fig. 2, Table 6"
+        }
+      ],
+      "limits": [
+        "Single-hop questions score lower than with direct retrieval of messages.",
+        "Original messages are not kept, so conversational style and wording are lost.",
+        "No forgetting or memory-size limit.",
+        "The contribution is empirical rather than theoretical."
+      ],
+      "limits_src": "paper, Limitations",
+      "reading": [
+        "On LongMemEval, removing Step 2 raises the score for Qwen2.5-14B, Qwen2.5-72B and GPT-4.1-mini (Table 4); the consistent Step-2 gain is on LoCoMo (3-5 points).",
+        "The LoCoMo category names follow the code's id map (1 single-hop, 2 multi-hop, 3 temporal, 4 open-domain merged into single-hop; data/preprocess/locomo.py L178-L182). In the released outputs 'When did Caroline go to the LGBTQ support group?' is scored as multi-hop, so the LoCoMo per-category labels are not those most other papers use.",
+        "Totals include the adversarial questions scored by the LLM judge (LoCoMo 1,986 questions: the released GPT-4.1 run gives 67.73, matching Table 2), while the 'Adv Acc' column is a separate safe-refusal rate.",
+        "Baselines are said to run at the same 2,048-token budget, but Table 6 reports 3.7-4.0k context tokens for HippoRAG-2 and 5.9-6.3k for A-Mem.",
+        "The Full-history baseline uses about 18.7k tokens on LongMemEval-S (Table 6), far below the ~115k-token histories (§4.1), so it is a truncated history.",
+        "Every construction step (extraction, reasoning) uses the largest model of the answer model's family, while baselines such as A-Mem and HippoRAG-2 build memory with settings the paper does not state.",
+        "Table 3 lists Gemma3-27B Session at 33.3 on LoCoMo, where Tables 2 and 6 give 43.3."
+      ]
+    }
+  }
+}

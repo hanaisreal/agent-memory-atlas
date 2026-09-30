@@ -1,0 +1,427 @@
+{
+  "id": "reflexion",
+  "name": "Reflexion",
+  "paper": {
+    "title": "Reflexion: Language Agents with Verbal Reinforcement Learning",
+    "arxiv": "2303.11366",
+    "url": "https://arxiv.org/abs/2303.11366",
+    "venue": "NeurIPS 2023",
+    "venue_short": "NeurIPS",
+    "track": "main",
+    "year": 2023,
+    "code": "https://github.com/noahshinn/reflexion"
+  },
+  "design": {
+    "construction": {
+      "unit": "self-reflection: a few sentences of text written after a failed trial",
+      "kept_as": "LLM-written diagnosis of the failure and a plan for the next attempt",
+      "processing": "after a failed trial the reflection LLM reads the trajectory (and, in ALFWorld, earlier reflections) and writes what went wrong and what to do instead",
+      "trigger": "other",
+      "writer": "reflection LLM, prompted with 2 few-shot reflections (same model family as the actor)"
+    },
+    "organization": {
+      "structure": "per-task list of reflections (long-term) next to the current trajectory (short-term)",
+      "stores": "one reflection list per task; the running trajectory",
+      "index": null
+    },
+    "management": {
+      "operations": "append each new reflection; keep only the most recent Ω",
+      "conflicts": null,
+      "forgetting": "sliding window: reflections older than the last Ω drop out (Ω = 3 ALFWorld and HotPotQA, 1 programming)",
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": null,
+      "candidates": "every kept reflection of the current task",
+      "selection": "the last Ω by recency; no search or ranking",
+      "budget": "Ω = 1-3 reflections (§3)"
+    },
+    "use": {
+      "context": "few-shot examples + reflections + task + current trajectory in the actor prompt",
+      "reasoning": "ReAct or CoT actor; the task is retried until solved or the trial budget runs out"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "fixed-rule",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "flat",
+    "index": "none",
+    "management": "evict",
+    "candidates": "read everything",
+    "decides": "reads everything",
+    "note": "Memory is a short list per task; all kept reflections go into the prompt. The only management is the sliding window of Ω entries."
+  },
+  "tags": {
+    "fidelity": "rewritten",
+    "structure": [
+      "flat"
+    ],
+    "write_time": [
+      "summarize"
+    ],
+    "selection": [
+      "full-context"
+    ],
+    "memory_type": [
+      "episodic",
+      "working"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "embodied",
+      "code",
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "Each trial produces a trajectory of actions and observations (short-term memory); an evaluator turns it into a reward: exact match on HotPotQA, a hand-written heuristic or an LLM classifier on ALFWorld, self-written unit tests for code.",
+    "construction": "After a failed trial a reflection LLM, prompted with two example reflections, writes a few sentences diagnosing the failure and proposing a new plan.",
+    "organization": "Reflections are appended to a list kept for that task only; there is no index and no sharing across tasks.",
+    "update": "The list is bounded to the last Ω reflections (Ω = 3 for ALFWorld and HotPotQA, 1 for programming).",
+    "retrieval": "No search: every kept reflection of the task is placed in the actor prompt of the next trial.",
+    "answer": "The actor (ReAct or CoT; for code, an implementation generator) reads few-shot examples, the reflections, the task and its current trajectory.",
+    "learning": "Called 'verbal reinforcement learning': behaviour changes across trials only through the reflection text; no weights are updated."
+  },
+  "summary": "An agent retries a task and, after each failure, writes a short self-reflection that is kept in a per-task sliding-window memory (last 1-3 reflections) and prepended to the next attempt's prompt.",
+  "verified": false,
+  "notes": "Venue: NeurIPS 2023 main track, verified on proceedings.neurips.cc (hash 1b44b878bb782e6954cd888628510e90) and the neurips.cc poster page. The arXiv v4 PDF still carries a 'Preprint. Under review.' footer. Code link in the paper is github.com/noahshinn024/reflexion, which now resolves to github.com/noahshinn/reflexion.\nDESIGN: §3 (Actor, Evaluator, Self-reflection, Memory), §4.1-4.3, Alg. 1. Memory is per task: the paper frames it as trial-and-error on the same task, not cross-task transfer. Retrieval fields describe that the whole bounded buffer is read; there is no query.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2303.11366v4 (PDF read 2026-09-30)",
+      "code": "https://github.com/noahshinn/reflexion/tree/612e616603650397d4060117de4578658626deb1/",
+      "code_note": "Commit 612e6166 (2023-10-11) is the first commit after arXiv v4 (2023-10-10); the only later commits are a user change, formatting and a README link. The repo has separate runners per task: alfworld_runs, hotpotqa_runs, programming_runs, webshop_runs."
+    },
+    "headline": [
+      "Memory is a handful of LLM-written reflections about one task; it is never searched and never shared with other tasks.",
+      "The benefit shows up across repeated attempts at the same task, and each retry is triggered by an evaluator (on HotPotQA, exact match against the gold answer)."
+    ],
+    "units": [
+      {
+        "name": "Reflection",
+        "role": "one entry of long-term memory, written after a failed trial",
+        "made_by": "reflection LLM with 2 few-shot examples",
+        "fields": [
+          {
+            "name": "reflection text",
+            "what": "a few sentences: why the trial failed and a new, concise plan",
+            "kept_as": "rewritten",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code hotpotqa_runs/prompts.py L117-L124",
+            "url": "https://github.com/noahshinn/reflexion/blob/612e616603650397d4060117de4578658626deb1/hotpotqa_runs/prompts.py#L117-L124"
+          },
+          {
+            "name": "trial index",
+            "what": "position in the list, printed as 'Trial i:'",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code alfworld_runs/env_history.py L43-L52",
+            "url": "https://github.com/noahshinn/reflexion/blob/612e616603650397d4060117de4578658626deb1/alfworld_runs/env_history.py#L43-L52"
+          }
+        ]
+      },
+      {
+        "name": "Trajectory",
+        "role": "short-term memory of the current trial",
+        "made_by": "the actor and the environment",
+        "fields": [
+          {
+            "name": "thoughts, actions, observations",
+            "what": "the running trace; the reflection step reads the failed one (HotPotQA truncates it to 1,600 tokens by blanking the longest Wikipedia observations)",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code hotpotqa_runs/agents.py L363-L371",
+            "url": "https://github.com/noahshinn/reflexion/blob/612e616603650397d4060117de4578658626deb1/hotpotqa_runs/agents.py#L363-L371"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Run a trial",
+        "how": "actor acts until done, failure or step cap",
+        "params": {
+          "HotPotQA ReAct steps": "6 (code)",
+          "ALFWorld steps": "49 (code)"
+        },
+        "src": "code agents.py L253, alfworld_trial.py L46-L72",
+        "url": "https://github.com/noahshinn/reflexion/blob/612e616603650397d4060117de4578658626deb1/alfworld_runs/alfworld_trial.py#L46-L72"
+      },
+      {
+        "step": "Evaluate",
+        "how": "exact match to the gold answer (HotPotQA); environment success plus a stuck/too-long heuristic (ALFWorld); self-written unit tests (code)",
+        "src": "paper §3, §4.1-4.3",
+        "url": "https://arxiv.org/pdf/2303.11366"
+      },
+      {
+        "step": "Reflect",
+        "how": "on failure, the reflection LLM reads the trajectory (ALFWorld: plus the last 3 plans) and writes a diagnosis and new plan",
+        "src": "code alfworld_runs/generate_reflections.py L12-L47",
+        "url": "https://github.com/noahshinn/reflexion/blob/612e616603650397d4060117de4578658626deb1/alfworld_runs/generate_reflections.py#L12-L47"
+      },
+      {
+        "step": "Append",
+        "how": "add the reflection to the task's list; the actor later sees only the last Ω",
+        "params": {
+          "Ω": "3 ALFWorld / HotPotQA, 1 programming"
+        },
+        "src": "paper §3, §4.1-4.3",
+        "url": "https://arxiv.org/pdf/2303.11366"
+      }
+    ],
+    "read": [
+      {
+        "step": "Fill the prompt",
+        "round": 1,
+        "input": "task",
+        "scores": "nothing is scored",
+        "how": "the last Ω reflections are printed under a header between the few-shot examples and the task",
+        "params": {
+          "Ω": "3 (ALFWorld)"
+        },
+        "src": "code alfworld_trial.py L46-L50; env_history.py L43-L52",
+        "url": "https://github.com/noahshinn/reflexion/blob/612e616603650397d4060117de4578658626deb1/alfworld_runs/env_history.py#L43-L52"
+      }
+    ],
+    "answer_context": {
+      "sees": "few-shot examples, the task's reflections, the task and the current trajectory",
+      "format": "ALFWorld: \"Your memory for the task below:\" then \"Trial i:\" + reflection for each; HotPotQA: a header saying earlier attempts failed, then \"Reflections:\" as a bulleted list",
+      "excludes": [
+        "reflections from other tasks",
+        "earlier failed trajectories (in the Reflexion setting)"
+      ],
+      "includes": [
+        "up to Ω reflections for this task",
+        "the current trajectory"
+      ],
+      "src": "code env_history.py L43-L52; hotpotqa_runs/agents.py L351-L356; prompts.py L113",
+      "url": "https://github.com/noahshinn/reflexion/blob/612e616603650397d4060117de4578658626deb1/hotpotqa_runs/agents.py#L351-L356"
+    },
+    "compression": [
+      {
+        "what": "reflection vs the failed trajectory it describes",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported. The prompts ask for a few sentences; the reflection LLM in the HotPotQA code is capped at 250 output tokens.",
+        "src": "code hotpotqa_runs/agents.py L278-L282",
+        "url": "https://github.com/noahshinn/reflexion/blob/612e616603650397d4060117de4578658626deb1/hotpotqa_runs/agents.py#L278-L282"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Memory bound on HotPotQA",
+        "paper": "memory size of 3 experiences (§4.2)",
+        "code": "ReactReflectAgent and CoTAgent append every reflection and print all of them; no cap",
+        "src": "hotpotqa_runs/agents.py L304-L306",
+        "url": "https://github.com/noahshinn/reflexion/blob/612e616603650397d4060117de4578658626deb1/hotpotqa_runs/agents.py#L304-L306"
+      },
+      {
+        "topic": "ALFWorld stop heuristic",
+        "paper": "reflect when the same action and response repeat more than 3 cycles or after more than 30 actions",
+        "code": "a trial ends when the same action is issued twice in a row, or after 49 steps",
+        "src": "env_history.py L17-L21; alfworld_trial.py L56",
+        "url": "https://github.com/noahshinn/reflexion/blob/612e616603650397d4060117de4578658626deb1/alfworld_runs/env_history.py#L17-L21"
+      },
+      {
+        "topic": "Unit tests per problem",
+        "paper": "up to 6 self-generated tests sampled into the suite",
+        "code": "internal_tests(..., 1): one sampled test",
+        "src": "programming_runs/reflexion.py L37",
+        "url": "https://github.com/noahshinn/reflexion/blob/612e616603650397d4060117de4578658626deb1/programming_runs/reflexion.py#L37"
+      },
+      {
+        "topic": "ALFWorld model",
+        "paper": "GPT-3 (§4.1)",
+        "code": "run_reflexion.sh passes gpt-3.5-turbo; text-davinci-003 is one of the allowed models",
+        "src": "alfworld_runs/run_reflexion.sh L6; main.py L19",
+        "url": "https://github.com/noahshinn/reflexion/blob/612e616603650397d4060117de4578658626deb1/alfworld_runs/run_reflexion.sh#L6"
+      }
+    ],
+    "open_questions": [
+      "HotPotQA and code gains are 'solved within N trials' with a correctness signal between trials; no single-attempt number isolates what the reflection text adds on a new task.",
+      "The EPM ablation (Fig. 4c) is reported only as a curve and an '8% absolute' gap, on CoT with gold context."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 224",
+        "body": "<text class=\"fig-t\" x=\"52\" y=\"16\" text-anchor=\"middle\">Trial t</text><rect class=\"gi-f\" x=\"6\" y=\"26\" width=\"92\" height=\"92\" rx=\"8\"/><rect class=\"gi-ev\" x=\"14\" y=\"36\" width=\"76\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"22\" y1=\"43\" x2=\"80\" y2=\"43\"/><rect class=\"gi-ev\" x=\"14\" y=\"56\" width=\"76\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"22\" y1=\"63\" x2=\"80\" y2=\"63\"/><rect class=\"gi-ev\" x=\"14\" y=\"76\" width=\"76\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"22\" y1=\"83\" x2=\"80\" y2=\"83\"/><rect class=\"gi-ev\" x=\"14\" y=\"96\" width=\"76\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"22\" y1=\"103\" x2=\"80\" y2=\"103\"/><text class=\"fig-s\" x=\"52\" y=\"134\" text-anchor=\"middle\">actions + observations</text><path class=\"gi-a\" d=\"M98 72 L111 72\"/><polygon class=\"gi-ah\" points=\"118,72 111,68 111,76\"/><rect class=\"gi-f\" x=\"118\" y=\"48\" width=\"86\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"161\" y=\"69\" text-anchor=\"middle\">Evaluator</text><text class=\"fig-s\" x=\"161\" y=\"82\" text-anchor=\"middle\">reward signal</text><text class=\"fig-s\" x=\"161\" y=\"110\" text-anchor=\"middle\">exact match,</text><text class=\"fig-s\" x=\"161\" y=\"122\" text-anchor=\"middle\">heuristic or tests</text><path class=\"gi-a\" d=\"M204 72 L215 72\"/><polygon class=\"gi-ah\" points=\"222,72 215,68 215,76\"/><polygon class=\"gi-f\" points=\"258,40 294,72 258,104 222,72\"/><text class=\"fig-t\" x=\"258\" y=\"76\" text-anchor=\"middle\">Solved?</text><path class=\"gi-a\" d=\"M258 104 L258 141\"/><polygon class=\"gi-ah\" points=\"258,148 254,141 262,141\"/><text class=\"fig-yes\" x=\"266\" y=\"132\" text-anchor=\"start\">Yes: stop</text><path class=\"gi-a\" d=\"M294 72 L311 72\"/><polygon class=\"gi-ah\" points=\"318,72 311,68 311,76\"/><text class=\"fig-no\" x=\"305\" y=\"64\" text-anchor=\"middle\">No</text><rect class=\"gi-llm\" x=\"318\" y=\"48\" width=\"88\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"362\" y=\"69\" text-anchor=\"middle\">Self-reflect</text><text class=\"fig-s\" x=\"362\" y=\"82\" text-anchor=\"middle\">diagnosis + plan</text><path class=\"gi-a\" d=\"M406 72 L417 72\"/><polygon class=\"gi-ah\" points=\"424,72 417,68 417,76\"/><text class=\"fig-t\" x=\"488\" y=\"16\" text-anchor=\"middle\">Memory of this task</text><rect class=\"gi-f\" x=\"424\" y=\"26\" width=\"130\" height=\"118\" rx=\"8\"/><rect class=\"gi-ev d\" x=\"432\" y=\"34\" width=\"114\" height=\"18\" rx=\"5\"/><text class=\"fig-s\" x=\"489\" y=\"47\" text-anchor=\"middle\">older: dropped</text><rect class=\"gi-hi\" x=\"432\" y=\"58\" width=\"114\" height=\"20\" rx=\"5\"/><text class=\"fig-s\" x=\"440\" y=\"72\" text-anchor=\"start\">reflection 1</text><rect class=\"gi-hi\" x=\"432\" y=\"82\" width=\"114\" height=\"20\" rx=\"5\"/><text class=\"fig-s\" x=\"440\" y=\"96\" text-anchor=\"start\">reflection 2</text><rect class=\"gi-hi\" x=\"432\" y=\"106\" width=\"114\" height=\"20\" rx=\"5\"/><text class=\"fig-s\" x=\"440\" y=\"120\" text-anchor=\"start\">reflection 3</text><text class=\"fig-s\" x=\"489\" y=\"160\" text-anchor=\"middle\">keeps the last 3 (1 for code)</text><path class=\"gi-a\" d=\"M489 168 L489 196 L52 196\"/><path class=\"gi-a\" d=\"M52 196 L52 151\"/><polygon class=\"gi-ah\" points=\"52,144 48,151 56,151\"/><text class=\"fig-s\" x=\"270\" y=\"214\" text-anchor=\"middle\">next trial of the same task starts with these in its prompt</text>",
+        "text": [
+          "After each trial an evaluator decides success; on failure an LLM writes a short reflection on what went wrong and what to try next.",
+          "The reflection is added to this task's memory, which keeps only the last 3 (1 for code) and is read by the next trial."
+        ],
+        "src": "paper §3, Alg. 1, Fig. 2; code generate_reflections.py L29-L47",
+        "url": "https://github.com/noahshinn/reflexion/blob/612e616603650397d4060117de4578658626deb1/alfworld_runs/generate_reflections.py#L29-L47"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 232",
+        "body": "<text class=\"fig-t\" x=\"110\" y=\"16\" text-anchor=\"middle\">Actor prompt, every step</text><rect class=\"gi-f\" x=\"10\" y=\"26\" width=\"200\" height=\"176\" rx=\"8\"/><rect class=\"gi-ev\" x=\"20\" y=\"34\" width=\"180\" height=\"36\" rx=\"6\"/><text class=\"fig-t\" x=\"30\" y=\"49\" text-anchor=\"start\">few-shot examples</text><text class=\"fig-s\" x=\"30\" y=\"62\" text-anchor=\"start\">2 in ALFWorld</text><rect class=\"gi-hi\" x=\"20\" y=\"76\" width=\"180\" height=\"36\" rx=\"6\"/><text class=\"fig-t\" x=\"30\" y=\"91\" text-anchor=\"start\">reflections</text><text class=\"fig-s\" x=\"30\" y=\"104\" text-anchor=\"start\">all kept ones, oldest first</text><rect class=\"gi-ev\" x=\"20\" y=\"118\" width=\"180\" height=\"26\" rx=\"6\"/><text class=\"fig-t\" x=\"30\" y=\"135\" text-anchor=\"start\">task</text><rect class=\"gi-ev\" x=\"20\" y=\"150\" width=\"180\" height=\"36\" rx=\"6\"/><text class=\"fig-t\" x=\"30\" y=\"165\" text-anchor=\"start\">trajectory so far</text><text class=\"fig-s\" x=\"30\" y=\"178\" text-anchor=\"start\">short-term memory</text><path class=\"gi-a\" d=\"M210 110 L237 110\"/><polygon class=\"gi-ah\" points=\"244,110 237,106 237,114\"/><rect class=\"gi-llm\" x=\"244\" y=\"86\" width=\"90\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"289\" y=\"107\" text-anchor=\"middle\">Actor</text><text class=\"fig-s\" x=\"289\" y=\"120\" text-anchor=\"middle\">ReAct or CoT</text><path class=\"gi-a\" d=\"M334 110 L361 110\"/><polygon class=\"gi-ah\" points=\"368,110 361,106 361,114\"/><text class=\"fig-s\" x=\"351\" y=\"102\" text-anchor=\"middle\">action</text><rect class=\"gi-f\" x=\"368\" y=\"86\" width=\"96\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"416\" y=\"107\" text-anchor=\"middle\">Environment</text><text class=\"fig-s\" x=\"416\" y=\"120\" text-anchor=\"middle\">or answer check</text><path class=\"gi-a\" d=\"M416 134 L416 176\"/><path class=\"gi-a\" d=\"M416 176 L217 176\"/><polygon class=\"gi-ah\" points=\"210,176 217,172 217,180\"/><text class=\"fig-s\" x=\"313\" y=\"170\" text-anchor=\"middle\">observation appended</text><path class=\"gi-a\" d=\"M464 110 L483 110\"/><polygon class=\"gi-ah\" points=\"490,110 483,106 483,114\"/><rect class=\"gi-ev\" x=\"490\" y=\"86\" width=\"64\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"522\" y=\"107\" text-anchor=\"middle\">Done</text><text class=\"fig-s\" x=\"522\" y=\"120\" text-anchor=\"middle\">or step cap</text><text class=\"fig-s\" x=\"380\" y=\"30\" text-anchor=\"middle\">No search or ranking:</text><text class=\"fig-s\" x=\"380\" y=\"43\" text-anchor=\"middle\">the whole buffer is read.</text><text class=\"fig-s\" x=\"380\" y=\"60\" text-anchor=\"middle\">A new task starts empty.</text><text class=\"fig-s\" x=\"110\" y=\"222\" text-anchor=\"middle\">reflections: ≤3 (ALFWorld, HotPotQA), 1 (code)</text>",
+        "text": [
+          "Nothing is searched: all kept reflections of the task are written into the actor prompt, between the few-shot examples and the task.",
+          "The actor then steps through the environment with its trajectory as short-term memory until it finishes or hits the step cap."
+        ],
+        "src": "paper §3 (Memory); code env_history.py L43-L52, alfworld_trial.py L46-L72",
+        "url": "https://github.com/noahshinn/reflexion/blob/612e616603650397d4060117de4578658626deb1/alfworld_runs/env_history.py#L43-L52"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Reflections kept (Ω)",
+        "value": "3 ALFWorld, HotPotQA · 1 programming",
+        "src": "paper §3, §4.1-4.3",
+        "section": "construction"
+      },
+      {
+        "label": "Few-shot prompts",
+        "value": "ALFWorld 2 · HotPotQA CoT 6, ReAct 2, reflection 2",
+        "src": "paper §4.1-4.2",
+        "section": "method"
+      },
+      {
+        "label": "HotPotQA retries",
+        "value": "until 3 consecutive failures",
+        "src": "paper §4.2",
+        "section": "method"
+      },
+      {
+        "label": "Unit tests per problem",
+        "value": "≤ 6 (paper) · 1 (code)",
+        "src": "paper §4.3; code reflexion.py L37",
+        "section": "method"
+      },
+      {
+        "label": "ALFWorld trials",
+        "value": "12 (paper) · 10 (run script)",
+        "src": "paper §1, §4.1; code run_reflexion.sh",
+        "section": "method"
+      },
+      {
+        "label": "Reflection input cap (HotPotQA)",
+        "value": "1,600 tokens of trajectory",
+        "src": "code agents.py L363",
+        "section": "method"
+      },
+      {
+        "label": "Evaluation sets",
+        "value": "134 ALFWorld envs · 100 HotPotQA questions · 40 LeetcodeHard",
+        "src": "paper §4.1-4.3",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Actor",
+        "model": "LLM with ReAct or CoT prompting (GPT-3 on ALFWorld; text-davinci-003, gpt-3.5-turbo, gpt-4 on HotPotQA)",
+        "kind": "llm",
+        "src": "paper §4.1, Table 5"
+      },
+      {
+        "role": "Evaluator",
+        "model": "exact match / heuristic / LLM classifier / unit-test execution",
+        "kind": "rule",
+        "src": "paper §3, §4"
+      },
+      {
+        "role": "Self-reflection",
+        "model": "LLM, 2-shot prompt",
+        "kind": "llm",
+        "src": "paper §3, §4.2; code prompts.py L117-L124",
+        "url": "https://github.com/noahshinn/reflexion/blob/612e616603650397d4060117de4578658626deb1/hotpotqa_runs/prompts.py#L117-L124"
+      },
+      {
+        "role": "Memory window",
+        "model": "keep last Ω reflections",
+        "kind": "rule",
+        "src": "paper §3; code alfworld_trial.py L47-L50",
+        "url": "https://github.com/noahshinn/reflexion/blob/612e616603650397d4060117de4578658626deb1/alfworld_runs/alfworld_trial.py#L47-L50"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "HumanEval Rust, 50 hardest (pass@1)"
+      ],
+      "rows": [
+        [
+          "Base model (GPT-4)",
+          "60"
+        ],
+        [
+          "without test generation",
+          "52"
+        ],
+        [
+          "without self-reflection",
+          "60"
+        ],
+        [
+          "Reflexion",
+          "68"
+        ]
+      ],
+      "src": "paper Table 3"
+    },
+    "discussion": {
+      "takeaway": "Turning a pass/fail signal into a short written lesson, and showing the last few lessons on the next attempt, lets an LLM agent improve on the same task over trials without any weight updates.",
+      "claims": [
+        {
+          "claim": "Reflection improves sequential decision-making.",
+          "evidence": "ALFWorld: 130 of 134 tasks solved with the heuristic evaluator over 12 trials; ReAct alone plateaus after trial 6-7 (§4.1, Fig. 3)."
+        },
+        {
+          "claim": "Reflection improves reasoning over retries.",
+          "evidence": "HotPotQA (100 q): ReAct 0.30 → 0.55 and CoT (GT) 0.60 → 0.77 with text-davinci-003 (Table 5); baselines solve no new question after trial 1 (§4.2)."
+        },
+        {
+          "claim": "Verbal reflection beats just showing the last trajectory.",
+          "evidence": "About 8 points above the episodic-memory (last trajectory) baseline on CoT (GT) (§4.2, Fig. 4c)."
+        },
+        {
+          "claim": "State of the art on code generation.",
+          "evidence": "HumanEval Python pass@1 91.0 vs 80.1 for GPT-4 (Table 1); MBPP Python is the exception (77.1 vs 80.1), linked to a 16.3% false-positive rate of self-generated tests (Table 2)."
+        },
+        {
+          "claim": "Both test generation and self-reflection are needed.",
+          "evidence": "HumanEval Rust hardest 50: 68 full vs 52 without tests and 60 without reflection (Table 3)."
+        }
+      ],
+      "limits": [
+        "Policy optimisation in language can still get stuck in local minima; on WebShop it did not improve after 4 trials (App. B.1).",
+        "Long-term memory is only a sliding window with a maximum size.",
+        "Test-driven code feedback struggles with non-deterministic, impure, hardware-dependent or concurrent functions.",
+        "Self-correction appears only with stronger models: starchat-beta gains nothing (App. A, Table 4)."
+      ],
+      "limits_src": "paper §5, App. A, App. B.1",
+      "reading": [
+        "Memory never leaves the task: each environment or question keeps its own list, so the results measure improvement on repeated attempts, not transfer to new tasks.",
+        "On HotPotQA the between-trial signal is exact match against the gold answer, so the agent knows when it is wrong; accuracy after several trials is not comparable with single-attempt QA.",
+        "The HotPotQA code does not enforce the 3-reflection bound stated in the paper, and the ALFWorld code stops trials on a different rule than the one described (see paper vs code).",
+        "Table 1 does not name the model behind the Reflexion column; only Table 3 states GPT-4 as the base model (HumanEval Rust).",
+        "Most ALFWorld and HotPotQA numbers are shown only as curves (Fig. 3-4); the text gives 130/134 and the 22%/20% improvements."
+      ]
+    },
+    "abstract": {
+      "text": "Reflexion lets a language agent learn from trial and error without fine-tuning. After each attempt an evaluator gives a scalar or binary signal, and a second LLM turns a failure into a short written self-reflection. These reflections are kept in a small episodic buffer and added to the prompt of the next attempt at the same task. The authors report gains on ALFWorld, HotPotQA and code generation, including 91% pass@1 on HumanEval, and analyse which kinds of feedback and components matter.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2303.11366"
+    },
+    "sections": {
+      "Memory architecture": "§3",
+      "Results": "§4.1-4.3, Tables 1-2, 5",
+      "Ablation": "§4.2 (Fig. 4c), §4.3 (Table 3)",
+      "Discussion": "§5 Limitations, App. B.1",
+      "Details": "§4, App. A-D"
+    }
+  }
+}

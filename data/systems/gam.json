@@ -1,0 +1,632 @@
+{
+  "id": "gam",
+  "name": "GAM",
+  "paper": {
+    "title": "General Agentic Memory Via Deep Research",
+    "arxiv": "2511.18423",
+    "url": "https://arxiv.org/abs/2511.18423",
+    "venue": "arXiv 2025",
+    "venue_short": "arXiv",
+    "track": "preprint",
+    "year": 2025,
+    "code": "https://github.com/VectorSpaceLab/general-agentic-memory"
+  },
+  "design": {
+    "construction": {
+      "unit": "page: one session (LoCoMo) or 2,048-token chunk, plus an LLM memo of it",
+      "kept_as": "verbatim page content + LLM abstract (memo)",
+      "processing": "LLM writes a one-paragraph memo of each new page, reading all earlier memos; page stored with the memo as header",
+      "trigger": "other",
+      "writer": "backbone LLM (GPT-4o-mini or Qwen2.5-14B-Instruct)"
+    },
+    "organization": {
+      "structure": "flat memo list + flat page-store addressed by page id",
+      "stores": "memory (list of memos); page-store (header + raw content)",
+      "index": "BM25 (Lucene) and BGE-M3 dense over raw page content; page-id lookup"
+    },
+    "management": {
+      "operations": "append memo and page; nothing is edited",
+      "conflicts": null,
+      "forgetting": null,
+      "timing": "offline"
+    },
+    "retrieval": {
+      "query": "LLM planner turns question + all memos into keyword queries, vector queries and page ids",
+      "candidates": "BM25 top 5 (all keywords in one query), dense top 5 (scores summed over queries), up to 5 page ids",
+      "selection": "LLM integrates the pooled pages into notes; LLM checks sufficiency and writes follow-up requests",
+      "budget": "≤15 pages per round, at most 3 rounds (max reflection depth 3)"
+    },
+    "use": {
+      "context": "integrated notes only (~106 tokens on HotpotQA/NarrativeQA, Table 4)",
+      "reasoning": "separate answer call on the notes after up to 3 research rounds"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "fixed-rule",
+      "retrieval": "agent-tool-calls"
+    }
+  },
+  "classify": {
+    "structure": "flat",
+    "index": "vector and lexical",
+    "management": "append-only",
+    "candidates": "agent searches",
+    "decides": "LLM decides",
+    "note": "The memo list is not searched; it only steers the planner, which chooses queries for BM25, dense and page-id tools."
+  },
+  "tags": {
+    "fidelity": "verbatim+derived",
+    "structure": [
+      "flat"
+    ],
+    "write_time": [
+      "summarize"
+    ],
+    "selection": [
+      "hybrid",
+      "llm-tool-call",
+      "planner"
+    ],
+    "memory_type": [
+      "episodic",
+      "working"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "conversation",
+      "long-document",
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "History arrives as a stream of sessions; in the experiments a LoCoMo session is one page and long documents are cut into 2,048-token pages.",
+    "construction": "For each new page the memorizer LLM writes one concise memo paragraph, reading all earlier memos for consistency; the page is stored verbatim with the memo as its header.",
+    "organization": "Two flat stores: the list of memos (the 'memory') and the page-store. BM25 and BGE-M3 indexes are built over the raw page content.",
+    "update": "Append-only: memos and pages are added, never revised or deleted.",
+    "retrieval": "A researcher LLM plans from the question and the full memo list, calls BM25, dense and page-id tools (5 pages each), integrates the pages into notes, and repeats with LLM-written follow-up requests until an LLM check says enough (max 3 rounds).",
+    "answer": "The answer model reads only the researcher's integrated notes (Table 4 default); adding source pages is an ablation.",
+    "learning": "An RL objective for memorizer and researcher is written down (Eq. 6-7), but all reported runs use off-the-shelf models."
+  },
+  "summary": "Just-in-time memory: keep every page verbatim with a short LLM memo, and build the answer context at question time with an iterative plan-search-integrate-reflect research loop over BM25, dense and page-id tools.",
+  "verified": false,
+  "notes": "DESIGN: paper §2.2, §3.1, Tables 3-5, appendix prompts; code at commit 1af6bba1 (2025-12-01), research/ subfolder in later commits. Venue: only arXiv v1 (2025-11-23) is known from the arXiv page. control.management=fixed-rule because storage is a plain append; the RL formulation (§2.2.3) is not used in experiments, so learning=training-free. classify.decides='LLM decides' because the integrate LLM chooses what reaches the answer model.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2511.18423v1 (PDF read 2026-09-30)",
+      "code": "https://github.com/VectorSpaceLab/general-agentic-memory/tree/1af6bba1b24ebe6346b29f4d30294ae4c8803671/",
+      "code_note": "Commit 1af6bba1 (2025-12-01, merge of the gam_update branch with the evaluation scripts) is the earliest commit with the released eval scripts for LoCoMo, HotpotQA, RULER and NarrativeQA, eight days after arXiv v1. The same code was later moved to research/ (2026-02-28) when the repo was rebuilt as a general SDK. Exact identity with the paper's runs is not guaranteed."
+    },
+    "headline": [
+      "The stored memo is only a guide for the planner: search runs over the raw pages, and the memo is not even in the search index.",
+      "The answer model reads only the researcher's notes (about 106 tokens), not the pages it found.",
+      "Every question costs a multi-call research loop (plan, search, integrate, check, rewrite), about 12-18 s per question on HotpotQA."
+    ],
+    "units": [
+      {
+        "name": "Page",
+        "role": "one session or 2,048-token chunk of the history, kept whole",
+        "made_by": "memorizer (header) + rule (split)",
+        "fields": [
+          {
+            "name": "content",
+            "what": "the raw session or chunk text",
+            "kept_as": "verbatim",
+            "used_for": [
+              "index"
+            ],
+            "src": "code memory_agent.py L78; bm25.py L95-L99; dense_retriever.py L209-L212",
+            "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/gam/retriever/bm25.py#L95-L99"
+          },
+          {
+            "name": "header",
+            "what": "\"[ABSTRACT] \" + the page's memo (the paper describes a separate context header)",
+            "kept_as": "summarized",
+            "used_for": [],
+            "src": "code memory_agent.py L121-L123; the index code builds header+content then overwrites it with content",
+            "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/gam/agents/memory_agent.py#L121-L123"
+          },
+          {
+            "name": "page id",
+            "what": "position in the page-store",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code index_retriever.py L34-L54",
+            "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/gam/retriever/index_retriever.py#L34-L54"
+          }
+        ]
+      },
+      {
+        "name": "Memo",
+        "role": "one-paragraph abstract of a page; the list of memos is the 'memory'",
+        "made_by": "memorizer LLM",
+        "fields": [
+          {
+            "name": "memo",
+            "what": "concise abstract of the new page written with all earlier memos in view; output capped at 256 tokens in the eval config",
+            "kept_as": "summarized",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §2.2.1, App. prompt; code memory_agent.py L89-L119; locomo_test.py L304",
+            "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/gam/agents/memory_agent.py#L89-L119"
+          }
+        ]
+      },
+      {
+        "name": "Integration result",
+        "role": "temporary notes built per question",
+        "made_by": "researcher LLM",
+        "fields": [
+          {
+            "name": "content",
+            "what": "question-focused factual summary rewritten each round from new pages + previous notes",
+            "kept_as": "summarized",
+            "used_for": [
+              "verifier",
+              "answer"
+            ],
+            "src": "paper Eq. 4; code research_agent.py L392-L446",
+            "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/gam/agents/research_agent.py#L392-L446"
+          },
+          {
+            "name": "sources",
+            "what": "page ids the LLM says support the notes",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "code research_agent.py L428-L443",
+            "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/gam/agents/research_agent.py#L428-L443"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Split",
+        "how": "LoCoMo: one page per session with its date header; HotpotQA/RULER/NarrativeQA: 2,048-token chunks (tiktoken)",
+        "params": {
+          "page": "session / 2,048 tokens"
+        },
+        "src": "paper §3.1; code locomo_test.py L68-L92, hotpotqa_test.py L99-L106, eval_hotpotqa.sh",
+        "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/eval/locomo_test.py#L68-L92"
+      },
+      {
+        "step": "Memorize",
+        "how": "LLM writes one paragraph abstracting the new page, with every earlier memo listed as 'Page i: memo' for context",
+        "params": {
+          "max output": "256 tokens",
+          "temperature": "0.3"
+        },
+        "src": "paper Eq. 1; code memory_agent.py L89-L119, locomo_test.py L296-L313",
+        "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/gam/agents/memory_agent.py#L89-L119"
+      },
+      {
+        "step": "Page",
+        "how": "store {header: '[ABSTRACT] memo', content: raw page}; append memo to the memory list if not a duplicate",
+        "src": "paper Eq. 2; code memory_agent.py L60-L84, schemas/memory.py",
+        "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/gam/agents/memory_agent.py#L60-L84"
+      },
+      {
+        "step": "Index",
+        "how": "rebuild BM25 (Lucene) and BGE-M3 FAISS indexes over page content when the page count changes",
+        "src": "code bm25.py L81-L146, dense_retriever.py L209-L212, research_agent.py L127-L143",
+        "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/gam/agents/research_agent.py#L127-L143"
+      }
+    ],
+    "read": [
+      {
+        "step": "Plan",
+        "round": 1,
+        "input": "question (later rounds: follow-up request)",
+        "scores": "none (LLM reads all memos)",
+        "how": "LLM lists info needs and picks tools: keyword queries, natural-language vector queries, page ids named in memos",
+        "params": {
+          "page ids": "≤5"
+        },
+        "src": "paper Eq. 3, App. planning prompt; code research_agent.py L146-L198",
+        "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/gam/agents/research_agent.py#L146-L198"
+      },
+      {
+        "step": "Search",
+        "round": 1,
+        "input": "planned queries",
+        "scores": "raw page content",
+        "how": "BM25 on all keywords joined into one query; BGE-M3 per vector query with scores summed per page; direct page fetch by id; pooled and de-duplicated",
+        "params": {
+          "BM25": "top 5",
+          "dense": "top 5",
+          "page ids": "≤5"
+        },
+        "src": "paper §3.1 (max 5 pages); code research_agent.py L218-L287, dense_retriever.py L345-L374",
+        "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/gam/agents/research_agent.py#L218-L287"
+      },
+      {
+        "step": "Integrate",
+        "round": 1,
+        "how": "LLM merges the retrieved pages (full content) with the previous notes into a question-focused summary",
+        "out": "notes + supporting page ids",
+        "src": "paper Eq. 4; code research_agent.py L392-L446",
+        "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/gam/agents/research_agent.py#L392-L446"
+      },
+      {
+        "step": "Reflect",
+        "round": 1,
+        "how": "LLM judges whether the notes suffice; if not, a second call writes up to 5 follow-up questions, joined into one request for the next round",
+        "params": {
+          "max rounds": "3"
+        },
+        "src": "paper Eq. 5, §3.1; code research_agent.py L96-L119, L506-L574",
+        "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/gam/agents/research_agent.py#L506-L574"
+      }
+    ],
+    "answer_context": {
+      "sees": "the researcher's integrated notes (~106 tokens)",
+      "format": "answer prompt with QUESTION and SUMMARY = integrated notes; LoCoMo category 3 gets an 'infer' variant",
+      "excludes": [
+        "raw pages",
+        "memos",
+        "page ids"
+      ],
+      "includes": [
+        "LLM-written notes rewritten over up to 3 rounds"
+      ],
+      "note": "Paper §2.2.2 says pages' original information is also returned; Table 4 shows that variant (1,444-6,956 tokens) only as an ablation.",
+      "src": "code locomo_test.py L126-L163, L496-L517",
+      "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/eval/locomo_test.py#L496-L517"
+    },
+    "compression": [
+      {
+        "what": "answer context vs HotpotQA-56K input",
+        "kept": 0.103,
+        "of": 56,
+        "unit": "k tokens",
+        "basis": "Table 4 Integration-only tokens (103.42) over the 56K-token context (§3.1)",
+        "src": "paper Table 4, §3.1",
+        "url": "https://arxiv.org/pdf/2511.18423"
+      },
+      {
+        "what": "answer context vs NarrativeQA document",
+        "kept": 0.108,
+        "of": 87,
+        "unit": "k tokens",
+        "basis": "Table 4 Integration-only tokens (107.64) over the 87K average (§3.1)",
+        "src": "paper Table 4, §3.1",
+        "url": "https://arxiv.org/pdf/2511.18423"
+      },
+      {
+        "what": "memo vs its page",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported. The eval config caps the memo at 256 output tokens for a 2,048-token page.",
+        "src": "code hotpotqa_test.py L320",
+        "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/eval/hotpotqa_test.py#L320"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Research without memory (Table 3 avg)",
+        "value": "48.27 vs 53.18 full",
+        "src": "paper Table 3"
+      },
+      {
+        "label": "Memory without research (Table 3 avg)",
+        "value": "27.50",
+        "src": "paper Table 3"
+      },
+      {
+        "label": "Online serve time HotpotQA 56K / 224K / 448K",
+        "value": "12.43 / 16.65 / 18.49 s",
+        "src": "paper Table 5"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Page header",
+        "paper": "a header carrying context from the preceding trajectory, in the spirit of contextual retrieval",
+        "code": "header is '[ABSTRACT] ' + the page's own memo",
+        "src": "memory_agent.py L121-L123",
+        "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/gam/agents/memory_agent.py#L121-L123"
+      },
+      {
+        "topic": "What search matches",
+        "paper": "decorated pages, so that page semantics stay consistent for retrieval",
+        "code": "BM25 and dense indexes use page content only; the header text is built and then overwritten",
+        "src": "bm25.py L96-L98; dense_retriever.py L209-L212",
+        "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/gam/retriever/dense_retriever.py#L209-L212"
+      },
+      {
+        "topic": "Pages per round",
+        "paper": "maximum of 5 retrieved pages",
+        "code": "top 5 per tool (BM25, dense, page id), so up to 15 distinct pages go to one integrate call",
+        "src": "research_agent.py L218-L255",
+        "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/gam/agents/research_agent.py#L218-L255"
+      },
+      {
+        "topic": "Page size on LoCoMo",
+        "paper": "input segmented into 2,048-token pages",
+        "code": "LoCoMo uses one page per session, not token chunks",
+        "src": "locomo_test.py L85-L92, L327-L329",
+        "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/eval/locomo_test.py#L85-L92"
+      },
+      {
+        "topic": "What is returned",
+        "paper": "integration result plus original information from the pages (§2.2.2)",
+        "code": "only the integration result reaches the answer prompt (matches Table 4 default)",
+        "src": "research_agent.py L121-L125; locomo_test.py L496-L517",
+        "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/gam/agents/research_agent.py#L121-L125"
+      }
+    ],
+    "open_questions": [
+      "Research without memory still scores 48.27 (Table 3 avg vs 53.18), so most of the gain comes from the research loop over raw pages; the memo list adds about 5 points.",
+      "No run gives a baseline the same iterative BM25 + dense search budget, so the comparison mixes memory design with test-time compute."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 240",
+        "body": "<text class=\"fig-t\" x=\"50\" y=\"16\" text-anchor=\"middle\">History</text><rect class=\"gi-ev\" x=\"10\" y=\"26\" width=\"80\" height=\"18\" rx=\"6\"/><text class=\"fig-s\" x=\"50\" y=\"39\" text-anchor=\"middle\">session 1</text><rect class=\"gi-ev\" x=\"10\" y=\"50\" width=\"80\" height=\"18\" rx=\"6\"/><text class=\"fig-s\" x=\"50\" y=\"63\" text-anchor=\"middle\">session 2</text><rect class=\"gi-ev\" x=\"10\" y=\"74\" width=\"80\" height=\"18\" rx=\"6\"/><text class=\"fig-s\" x=\"50\" y=\"87\" text-anchor=\"middle\">…</text><rect class=\"gi-ev\" x=\"10\" y=\"98\" width=\"80\" height=\"18\" rx=\"6\"/><text class=\"fig-s\" x=\"50\" y=\"111\" text-anchor=\"middle\">session N</text><text class=\"fig-s\" x=\"50\" y=\"136\" text-anchor=\"middle\">LoCoMo: one session</text><text class=\"fig-s\" x=\"50\" y=\"149\" text-anchor=\"middle\">per page; documents:</text><text class=\"fig-s\" x=\"50\" y=\"162\" text-anchor=\"middle\">2,048-token chunks</text><path class=\"gi-a\" d=\"M92 64 L119 64\"/><polygon class=\"gi-ah\" points=\"126,64 119,60 119,68\"/><rect class=\"gi-llm\" x=\"126\" y=\"42\" width=\"76\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"164.0\" y=\"62.0\" text-anchor=\"middle\">Memorize</text><text class=\"fig-s\" x=\"164.0\" y=\"75.0\" text-anchor=\"middle\">LLM, ≤256 tok</text><text class=\"fig-s\" x=\"164\" y=\"100\" text-anchor=\"middle\">reads every</text><text class=\"fig-s\" x=\"164\" y=\"113\" text-anchor=\"middle\">earlier memo</text><path class=\"gi-a\" d=\"M202 64 L214 64 L214 52 L223 52\"/><polygon class=\"gi-ah\" points=\"230,52 223,48 223,56\"/><path class=\"gi-a\" d=\"M214 64 L214 176 L223 176\"/><polygon class=\"gi-ah\" points=\"230,176 223,172 223,180\"/><rect class=\"gi-ev\" x=\"230\" y=\"14\" width=\"170\" height=\"84\" rx=\"10\"/><text class=\"fig-t\" x=\"315\" y=\"31\" text-anchor=\"middle\">Memory (memo list)</text><rect class=\"gi-f\" x=\"240\" y=\"40\" width=\"150\" height=\"15\" rx=\"4\"/><text class=\"fig-s\" x=\"246\" y=\"51\" text-anchor=\"start\">Page 0: memo</text><rect class=\"gi-f\" x=\"240\" y=\"58\" width=\"150\" height=\"15\" rx=\"4\"/><text class=\"fig-s\" x=\"246\" y=\"69\" text-anchor=\"start\">Page 1: memo</text><rect class=\"gi-hi\" x=\"240\" y=\"76\" width=\"150\" height=\"15\" rx=\"4\"/><text class=\"fig-s\" x=\"246\" y=\"87\" text-anchor=\"start\">Page N: new memo</text><path class=\"gi-a\" d=\"M404 56 L425 56\"/><polygon class=\"gi-ah\" points=\"432,56 425,52 425,60\"/><rect class=\"gi-llm fig-soft\" x=\"432\" y=\"34\" width=\"122\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"493.0\" y=\"54.0\" text-anchor=\"middle\">whole list</text><text class=\"fig-s\" x=\"493.0\" y=\"67.0\" text-anchor=\"middle\">→ planner prompt</text><rect class=\"gi-ev\" x=\"230\" y=\"112\" width=\"170\" height=\"112\" rx=\"10\"/><text class=\"fig-t\" x=\"315\" y=\"129\" text-anchor=\"middle\">Page-store</text><rect class=\"gi-f\" x=\"240\" y=\"138\" width=\"150\" height=\"30\" rx=\"6\"/><text class=\"fig-t\" x=\"246\" y=\"151\" text-anchor=\"start\">header</text><text class=\"fig-s\" x=\"246\" y=\"163\" text-anchor=\"start\">\"[ABSTRACT] \" + memo</text><rect class=\"gi-hi\" x=\"240\" y=\"174\" width=\"150\" height=\"40\" rx=\"6\"/><text class=\"fig-t\" x=\"246\" y=\"189\" text-anchor=\"start\">content</text><text class=\"fig-s\" x=\"246\" y=\"203\" text-anchor=\"start\">raw session, verbatim</text><path class=\"gi-a\" d=\"M404 194 L425 194\"/><polygon class=\"gi-ah\" points=\"432,194 425,190 425,198\"/><rect class=\"gi-v fig-soft\" x=\"432\" y=\"172\" width=\"122\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"493.0\" y=\"192.0\" text-anchor=\"middle\">Index</text><text class=\"fig-s\" x=\"493.0\" y=\"205.0\" text-anchor=\"middle\">BM25 + BGE-M3</text><text class=\"fig-s\" x=\"493\" y=\"232\" text-anchor=\"middle\">built on content only</text>",
+        "text": [
+          "Each new session or 2,048-token chunk is abstracted by an LLM into a short memo, written with every earlier memo in view.",
+          "The page is stored whole with the memo as header; search indexes cover only the raw content, and the memo list goes to the planner."
+        ],
+        "src": "paper §2.2.1; code memory_agent.py L60-L124, bm25.py L95-L99",
+        "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/gam/agents/memory_agent.py#L60-L124"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 250",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"40\" width=\"56\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"32.0\" y=\"66.0\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M60 62 L61 62\"/><polygon class=\"gi-ah\" points=\"68,62 61,58 61,66\"/><rect class=\"gi-llm\" x=\"68\" y=\"40\" width=\"56\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"96.0\" y=\"60.0\" text-anchor=\"middle\">Plan</text><text class=\"fig-s\" x=\"96.0\" y=\"73.0\" text-anchor=\"middle\">q + memos</text><path class=\"gi-a\" d=\"M124 62 L130 62\"/><path class=\"gi-a\" d=\"M130 27 L130 97\"/><path class=\"gi-a\" d=\"M130 27 L131 27\"/><polygon class=\"gi-ah\" points=\"138,27 131,23 131,31\"/><rect class=\"gi-v fig-soft\" x=\"138\" y=\"16\" width=\"76\" height=\"22\" rx=\"6\"/><text class=\"fig-s\" x=\"176\" y=\"31\" text-anchor=\"middle\">BM25 · top 5</text><path class=\"gi-a\" d=\"M214 27 L220 27\"/><path class=\"gi-a\" d=\"M130 62 L131 62\"/><polygon class=\"gi-ah\" points=\"138,62 131,58 131,66\"/><rect class=\"gi-v fig-soft\" x=\"138\" y=\"51\" width=\"76\" height=\"22\" rx=\"6\"/><text class=\"fig-s\" x=\"176\" y=\"66\" text-anchor=\"middle\">BGE-M3 · top 5</text><path class=\"gi-a\" d=\"M214 62 L220 62\"/><path class=\"gi-a\" d=\"M130 97 L131 97\"/><polygon class=\"gi-ah\" points=\"138,97 131,93 131,101\"/><rect class=\"gi-f\" x=\"138\" y=\"86\" width=\"76\" height=\"22\" rx=\"6\"/><text class=\"fig-s\" x=\"176\" y=\"101\" text-anchor=\"middle\">page ids · ≤5</text><path class=\"gi-a\" d=\"M214 97 L220 97\"/><path class=\"gi-a\" d=\"M220 27 L220 97\"/><path class=\"gi-a\" d=\"M220 62 L221 62\"/><polygon class=\"gi-ah\" points=\"228,62 221,58 221,66\"/><rect class=\"gi-f\" x=\"228\" y=\"40\" width=\"62\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"259.0\" y=\"60.0\" text-anchor=\"middle\">≤15 pages</text><text class=\"fig-s\" x=\"259.0\" y=\"73.0\" text-anchor=\"middle\">raw text</text><path class=\"gi-a\" d=\"M290 62 L290 62\"/><polygon class=\"gi-ah\" points=\"297,62 290,58 290,66\"/><rect class=\"gi-llm\" x=\"297\" y=\"40\" width=\"56\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"325.0\" y=\"60.0\" text-anchor=\"middle\">Integrate</text><text class=\"fig-s\" x=\"325.0\" y=\"73.0\" text-anchor=\"middle\">LLM notes</text><path class=\"gi-a\" d=\"M353 62 L351 62\"/><polygon class=\"gi-ah\" points=\"358,62 351,58 351,66\"/><polygon class=\"gi-llm\" points=\"392,34.0 426.0,62 392,90.0 358.0,62\"/><text class=\"fig-t\" x=\"392\" y=\"61\" text-anchor=\"middle\">Enough?</text><text class=\"fig-s\" x=\"392\" y=\"73\" text-anchor=\"middle\">LLM</text><path class=\"gi-a\" d=\"M426 62 L439 62\"/><polygon class=\"gi-ah\" points=\"446,62 439,58 439,66\"/><text class=\"fig-yes\" x=\"436\" y=\"54\" text-anchor=\"middle\">Yes</text><rect class=\"gi-hi\" x=\"446\" y=\"40\" width=\"110\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"501.0\" y=\"60.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"501.0\" y=\"73.0\" text-anchor=\"middle\">reads notes only</text><text class=\"fig-s\" x=\"501\" y=\"100\" text-anchor=\"middle\">~106 tokens (Table 4)</text><path class=\"gi-a\" d=\"M392 90 L392 153\"/><polygon class=\"gi-ah\" points=\"392,160 396,153 388,153\"/><text class=\"fig-no\" x=\"400\" y=\"128\" text-anchor=\"start\">No</text><rect class=\"gi-llm\" x=\"330\" y=\"160\" width=\"124\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"392.0\" y=\"180.0\" text-anchor=\"middle\">New request</text><text class=\"fig-s\" x=\"392.0\" y=\"193.0\" text-anchor=\"middle\">≤5 gaps, joined</text><path class=\"gi-a\" d=\"M330 182 L96 182 L96 91\"/><polygon class=\"gi-ah\" points=\"96,84 100,91 92,91\"/><text class=\"fig-s\" x=\"210\" y=\"176\" text-anchor=\"middle\">next round, at most 3</text><text class=\"fig-s\" x=\"8\" y=\"226\" text-anchor=\"start\">keywords are joined into one BM25 query; vector scores are summed</text><text class=\"fig-s\" x=\"8\" y=\"240\" text-anchor=\"start\">across queries; notes are rewritten each round from new pages + old notes</text>",
+        "text": [
+          "An LLM planner reads the question and all memos and calls BM25, dense and page-id tools (5 pages each); another call folds the pages into notes.",
+          "An LLM check decides whether to stop or write a follow-up request (at most 3 rounds). The answer model reads only the notes."
+        ],
+        "src": "paper §2.2.2, §3.1; code research_agent.py L96-L574",
+        "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/gam/agents/research_agent.py#L96-L125"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Page size",
+        "value": "2,048 tokens (LoCoMo: one session)",
+        "src": "paper §3.1; code locomo_test.py",
+        "section": "construction"
+      },
+      {
+        "label": "Memo length cap",
+        "value": "256 output tokens",
+        "src": "code locomo_test.py L304",
+        "section": "construction"
+      },
+      {
+        "label": "Offline build time, HotpotQA",
+        "value": "56.9 s (56K) · 252.7 s (224K) · 557.2 s (448K)",
+        "src": "paper Table 5",
+        "section": "construction"
+      },
+      {
+        "label": "Pages per tool call",
+        "value": "5 (BM25, dense, page id)",
+        "src": "paper §3.1; code research_agent.py L225-L248",
+        "section": "method"
+      },
+      {
+        "label": "Research rounds",
+        "value": "at most 3",
+        "src": "paper §3.1; code locomo_test.py L467",
+        "section": "method"
+      },
+      {
+        "label": "Follow-up questions per round",
+        "value": "≤5, joined into one request",
+        "src": "paper App. prompt; code research_agent.py L564-L565",
+        "section": "method"
+      },
+      {
+        "label": "Answer context",
+        "value": "~106 tokens of notes (Table 4 avg)",
+        "src": "paper Table 4",
+        "section": "results"
+      },
+      {
+        "label": "Online time per question, HotpotQA",
+        "value": "12.4-18.5 s (Mem0 0.15-0.18 s)",
+        "src": "paper Table 5",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "HotpotQA 56K",
+        "HotpotQA 224K",
+        "HotpotQA 448K",
+        "NarrativeQA",
+        "Avg"
+      ],
+      "rows": [
+        [
+          "GAM (all three tools)",
+          "64.07",
+          "55.99",
+          "57.87",
+          "34.77",
+          "53.18"
+        ],
+        [
+          "only page id",
+          "44.86",
+          "21.65",
+          "19.02",
+          "30.30",
+          "28.96"
+        ],
+        [
+          "only dense",
+          "39.59",
+          "32.71",
+          "26.67",
+          "30.25",
+          "32.31"
+        ],
+        [
+          "only BM25",
+          "59.24",
+          "52.29",
+          "51.52",
+          "31.50",
+          "48.64"
+        ],
+        [
+          "dense + page id",
+          "47.25",
+          "34.78",
+          "28.43",
+          "33.41",
+          "35.97"
+        ],
+        [
+          "dense + BM25",
+          "61.37",
+          "55.00",
+          "54.90",
+          "33.20",
+          "51.12"
+        ],
+        [
+          "BM25 + page id",
+          "63.57",
+          "55.38",
+          "55.62",
+          "32.05",
+          "51.66"
+        ],
+        [
+          "research without memory",
+          "57.40",
+          "49.72",
+          "53.98",
+          "31.97",
+          "48.27"
+        ],
+        [
+          "memory without research",
+          "42.67",
+          "19.75",
+          "17.38",
+          "30.18",
+          "27.50"
+        ],
+        [
+          "output: notes + source pages",
+          "68.66",
+          "59.77",
+          "59.42",
+          "34.99",
+          "55.71"
+        ],
+        [
+          "output: notes + extracted snippets",
+          "67.41",
+          "57.83",
+          "57.81",
+          "34.82",
+          "54.47"
+        ]
+      ],
+      "src": "paper Tables 3-4 (Qwen2.5-14B, F1)"
+    },
+    "components": [
+      {
+        "role": "Memorize (memo per page)",
+        "model": "GPT-4o-mini or Qwen2.5-14B-Instruct (0.5B-32B in Table 2)",
+        "kind": "llm",
+        "src": "paper §3.1, Table 2"
+      },
+      {
+        "role": "Keyword search",
+        "model": "BM25 (Pyserini / Lucene)",
+        "kind": "retriever",
+        "src": "code bm25.py",
+        "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/gam/retriever/bm25.py#L148-L178"
+      },
+      {
+        "role": "Dense search",
+        "model": "BGE-M3",
+        "kind": "retriever",
+        "src": "paper §3.1; code locomo_test.py L400",
+        "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/eval/locomo_test.py#L400"
+      },
+      {
+        "role": "Page lookup by id",
+        "model": "index lookup",
+        "kind": "rule",
+        "src": "code index_retriever.py",
+        "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/gam/retriever/index_retriever.py#L34-L54"
+      },
+      {
+        "role": "Plan, integrate, check, follow-up",
+        "model": "same backbone as memorizer (research generator, max 2,048 output tokens)",
+        "kind": "llm",
+        "src": "code locomo_test.py L416-L436",
+        "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/eval/locomo_test.py#L416-L436"
+      },
+      {
+        "role": "Answer",
+        "model": "same backbone (working generator)",
+        "kind": "llm",
+        "src": "paper §3.1; code locomo_test.py L438-L456",
+        "url": "https://github.com/VectorSpaceLab/general-agentic-memory/blob/1af6bba1b24ebe6346b29f4d30294ae4c8803671/eval/locomo_test.py#L438-L456"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Do not bet on a pre-built compressed memory: keep all pages verbatim with light memos, and spend compute at question time on an agentic search-and-integrate loop. In its own paper this beats Mem0, A-Mem, MemoryOS, LightMem, RAG and long-context LLMs on LoCoMo, HotpotQA, RULER and NarrativeQA.",
+      "claims": [
+        {
+          "claim": "GAM beats memory-based and memory-free baselines on every benchmark.",
+          "evidence": "GPT-4o-mini: LoCoMo single-hop F1 57.75 vs 52.45 (RAG); HotpotQA-448K F1 59.81 vs 54.01 (RAG); RULER MT 93.20 vs 60.60 (long-LLM). Table 1"
+        },
+        {
+          "claim": "Pre-built memory alone loses information; search over full pages is needed.",
+          "evidence": "Memory without research 27.50 avg vs 53.18 full; research without memory 48.27. Table 3"
+        },
+        {
+          "claim": "The researcher needs a larger model than the memorizer.",
+          "evidence": "0.5B memorizer still averages 48.83; 0.5B researcher drops to 9.08 (14B: 53.18). Table 2"
+        },
+        {
+          "claim": "More test-time compute helps.",
+          "evidence": "Scores rise with reflection depth 1→5 and retrieved pages 3→20, with diminishing gains. Fig. 2, §3.4"
+        },
+        {
+          "claim": "Cost is comparable to Mem0 and MemoryOS.",
+          "evidence": "HotpotQA-56K total 69.3 s vs Mem0 37.6 s, MemoryOS 80.8 s, A-Mem 210.3 s; but online 12.4 s vs ≤0.52 s. Table 5"
+        }
+      ],
+      "limits": [],
+      "limits_src": "The paper has no limitations section.",
+      "reading": [
+        "The memo is not indexed: BM25 and dense search run over raw page content, and the memo list only helps the planner choose queries and page ids.",
+        "The answer model reads about 106 tokens of LLM notes; the long-LLM baseline instead reads up to 128K tokens and takes the max score over chunks, so the settings differ in more than memory.",
+        "No baseline gets the same multi-round search budget; research-without-memory (48.27 avg) already beats every Table 1 baseline on HotpotQA, so much of the gain is the loop, not the memory.",
+        "LoCoMo is scored with F1 and BLEU-1 only (no LLM judge), and the paper says it re-mapped LoCoMo categories for A-Mem, Mem0 and MemoryOS, so per-category numbers differ from those papers.",
+        "The RL training in §2.2.3 is not used in any experiment and no training code is in the repo at the pinned commit.",
+        "Online serving is 60-100x slower than Mem0 or MemoryOS per question (Table 5)."
+      ]
+    },
+    "abstract": {
+      "text": "GAM argues that memories compressed ahead of time inevitably lose details, and instead builds the context for each request at run time. A memorizer keeps every session or chunk verbatim in a page-store and adds a short LLM memo per page. A researcher agent reads the memos, plans keyword, dense and page-id searches over the page-store, integrates what it finds and reflects until the information is enough. On LoCoMo, HotpotQA, RULER and NarrativeQA it outperforms memory systems such as Mem0 and A-Mem as well as RAG and long-context baselines.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2511.18423"
+    },
+    "sections": {
+      "Memory architecture": "§2.2",
+      "Results": "§3.2",
+      "Ablation": "§3.3-3.5",
+      "Discussion": "§3.6, §4",
+      "Details": "§3.1, Appendix prompts"
+    }
+  }
+}

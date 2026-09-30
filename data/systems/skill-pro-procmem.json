@@ -1,0 +1,565 @@
+{
+ "id": "skill-pro-procmem",
+ "name": "Skill-Pro (ProcMEM)",
+ "paper": {
+  "title": "Skill-Pro: Learning Reusable Skills from Experience via Non-Parametric PPO for LLM Agents",
+  "arxiv": "2602.01869",
+  "url": "https://arxiv.org/abs/2602.01869",
+  "venue": "ICML 2026",
+  "venue_short": "ICML",
+  "track": "main",
+  "year": 2026,
+  "code": "https://github.com/Miracle1207/Skill-Pro"
+ },
+ "design": {
+  "construction": {
+   "unit": "Skill: name, activation (initiation) condition, 3-5 natural-language steps, termination condition, plus usage statistics",
+   "kept_as": "LLM-written procedure distilled from diagnosed trajectories; no trajectory text is stored with the skill",
+   "processing": "per-trajectory LLM diagnosis (semantic gradient) -> one LLM call merges them and rewrites the skill -> 3 candidates -> PPO Gate on action log-probs; best candidate added if J > 0",
+   "trigger": "other",
+   "writer": "evolver LLM (--ge_model_name; default llama-3.3-70b-instruct in the code); the paper says skills are learned with Gemma-2-9B on TextArena and Qwen3-32B on ALFWorld"
+  },
+  "organization": {
+   "structure": "flat pool of at most K = 10 skills; refined versions keep a parent id and version number",
+   "stores": "one skill pool; per-skill buffer of trajectories that used it",
+   "index": "none for the default selection; all-MiniLM-L6-v2 embeddings of the activation condition are used for de-duplication and the similarity fallback"
+  },
+  "management": {
+   "operations": "refine a skill into a new version or synthesise a new skill; accept only if the PPO Gate score is positive; prune by score when the pool exceeds capacity",
+   "conflicts": "versions of one skill coexist and compete on score; near-duplicates (cosine >= 0.95) keep the best",
+   "forgetting": "score-based pruning (code: lower confidence bound of mean gain) and removal of duplicates",
+   "timing": "online"
+  },
+  "retrieval": {
+   "query": "current environment state",
+   "candidates": "whole pool listed to the LLM as name + activation condition (paper: similarity to the activation condition, optionally top-k then highest value)",
+   "selection": "the acting LLM picks one skill or NONE; with probability epsilon a random skill or none is used instead",
+   "budget": "one active skill at a time, kept until an LLM termination check says DONE or 8 steps pass"
+  },
+  "use": {
+   "context": "current state (plus admissible commands on ALFWorld) and the active skill's text with usage instructions",
+   "reasoning": "one LLM call per step: match, apply the steps, output one action"
+  },
+  "control": {
+   "construction": "feedback-optimized",
+   "management": "fixed-rule",
+   "retrieval": "prompted-llm"
+  }
+ },
+ "classify": {
+  "structure": "flat",
+  "index": "none",
+  "management": "evict",
+  "candidates": "LLM routing",
+  "decides": "LLM decides",
+  "note": "The code's default selector (llm_model) shows the LLM the whole pool of at most 10 skills; the paper describes similarity selection. Refinement adds new versions next to the parent, and score-based pruning removes the losers, so the net management effect is eviction."
+ },
+ "tags": {
+  "fidelity": "extracted",
+  "structure": [
+   "flat"
+  ],
+  "write_time": [
+   "extract",
+   "filter",
+   "consolidate"
+  ],
+  "selection": [
+   "model-reads"
+  ],
+  "memory_type": [
+   "procedural"
+  ],
+  "learning": "training-free",
+  "domain": [
+   "embodied",
+   "general"
+  ]
+ },
+ "stages": {
+  "ingestion": "Episodes are run with the current pool; each finished trajectory (state/action transitions, reward, names of the skills it used) is added to the buffer of every skill it used.",
+  "construction": "When a skill has at least 6 buffered trajectories, 3 lowest- and 3 highest-reward ones are diagnosed one by one by an LLM into structured fixes for the activation, steps and termination (semantic gradients); one more LLM call merges them and rewrites the skill. This is sampled 3 times to get candidates.",
+  "organization": "A flat pool capped at 10 skills. Refined skills are named <base>_v<n> and record their parent; the six hand-written seed skills are the starting pool.",
+  "update": "The PPO Gate re-scores the buffered actions under each candidate versus the old skill (clipped probability ratio times advantage); the best candidate is added if its score is positive, and the parent stays. After each iteration every used skill's gain is updated and the pool is pruned by score and de-duplicated.",
+  "retrieval": "Whenever no skill is active, the acting LLM reads the list of skill names and activation conditions and picks one or NONE (epsilon-greedy random picks during training and test).",
+  "answer": "The active skill's text is placed in the decision prompt; the LLM outputs one action per step. An LLM meta-controller checks each step whether the skill should stop.",
+  "learning": "No weights change. Skills improve through LLM-written rewrites that are accepted or rejected by the PPO-style gate and kept or pruned by their online gain."
+ },
+ "summary": "Procedural memory as a small pool of natural-language skills (trigger, steps, stop condition) that an LLM rewrites from diagnosed trajectories, with a PPO-style log-probability gate deciding which rewrites enter the pool and score-based pruning keeping it at 10.",
+ "verified": false,
+ "notes": "Name: v1 of arXiv 2602.01869 was titled 'ProcMEM: Learning Reusable Procedural Memory from Experience via Non-Parametric PPO for LLM Agents'; v2/v3 and the proceedings use 'Skill-Pro: Learning Reusable Skills from Experience via Non-Parametric PPO for LLM Agents'. The code hint github.com/Miracle1207/ProcMEM redirects to Miracle1207/Skill-Pro. Venue verified: PMLR vol. 306 (ICML 2026), pages 88574-88595 (proceedings.mlr.press/v306/mi26d.html); arXiv comment says spotlight. Text read from arXiv v3 PDF.\nDESIGN: paper §3-4, App. B, E; code at commit 3be7a9b. Where paper and code differ (selection, score, pruning, gate advantage) the design fields follow the code and mechanism.paper_vs_code lists both. The evolver model used in the paper's runs is not named in the paper.",
+ "mechanism": {
+  "sources": {
+   "paper": "arXiv 2602.01869v3 (PDF read 2026-09-30)",
+   "code": "https://github.com/Miracle1207/Skill-Pro/tree/3be7a9be2d4c024d132efe394d537404eba7e4c8/",
+   "code_note": "Latest commit on main (2026-05-11, README update); the repo has 3 visible commits from 2026-04-28 onward, after paper v1 (2026-02-02), so it is the released code, not necessarily the exact code of every run. The repository has no evaluation scripts for reuse rates or stored-token counts."
+  },
+  "headline": [
+   "Memory is at most 10 short skills (the paper reports 816 stored tokens in total, 102 per skill), not past trajectories.",
+   "A rewrite enters the pool only if re-scoring past actions under it gives a positive clipped advantage (the PPO Gate); in the code the log-probabilities come from the evolver model.",
+   "In the released code the acting LLM picks the skill from the whole list; the paper's similarity/value selection is not the default."
+  ],
+  "units": [
+   {
+    "name": "Skill",
+    "role": "one reusable procedure the agent follows for several steps",
+    "made_by": "hand-written seeds (6), then LLM rewrites accepted by the PPO Gate",
+    "fields": [
+     {
+      "name": "name",
+      "what": "short skill name; refined versions get _v<n>",
+      "kept_as": "rewritten",
+      "used_for": [
+       "index",
+       "answer"
+      ],
+      "src": "code skill_evolution.py L279-L287",
+      "url": "https://github.com/Miracle1207/Skill-Pro/blob/3be7a9be2d4c024d132efe394d537404eba7e4c8/Skills/skill_evolution.py#L279-L287"
+     },
+     {
+      "name": "initiation",
+      "what": "natural-language condition for when to use the skill",
+      "kept_as": "rewritten",
+      "used_for": [
+       "index",
+       "answer",
+       "verifier"
+      ],
+      "src": "code skill_pool.py L257-L259; run.py L405-L431",
+      "url": "https://github.com/Miracle1207/Skill-Pro/blob/3be7a9be2d4c024d132efe394d537404eba7e4c8/Skills/skill_pool.py#L257-L259"
+     },
+     {
+      "name": "policy",
+      "what": "3-5 natural-language steps",
+      "kept_as": "rewritten",
+      "used_for": [
+       "answer"
+      ],
+      "src": "code data_structures.py L83-L93",
+      "url": "https://github.com/Miracle1207/Skill-Pro/blob/3be7a9be2d4c024d132efe394d537404eba7e4c8/data_structures.py#L83-L93"
+     },
+     {
+      "name": "termination",
+      "what": "natural-language stop condition, checked by an LLM each step",
+      "kept_as": "rewritten",
+      "used_for": [
+       "answer",
+       "verifier"
+      ],
+      "src": "code run.py L395-L439",
+      "url": "https://github.com/Miracle1207/Skill-Pro/blob/3be7a9be2d4c024d132efe394d537404eba7e4c8/run.py#L395-L439"
+     },
+     {
+      "name": "frequency, avg_gain, maturity",
+      "what": "calls, mean advantage share per call, iterations survived",
+      "kept_as": "derived",
+      "used_for": [
+       "index"
+      ],
+      "src": "code data_structures.py L18-L66",
+      "url": "https://github.com/Miracle1207/Skill-Pro/blob/3be7a9be2d4c024d132efe394d537404eba7e4c8/data_structures.py#L18-L66"
+     }
+    ]
+   },
+   {
+    "name": "Trajectory buffer",
+    "role": "runs that used a skill, kept until the skill is evolved",
+    "made_by": "the environment loop",
+    "fields": [
+     {
+      "name": "transitions",
+      "what": "state and action per step, with the skill active",
+      "kept_as": "verbatim",
+      "used_for": [
+       "verifier"
+      ],
+      "src": "code run.py L334-L365",
+      "url": "https://github.com/Miracle1207/Skill-Pro/blob/3be7a9be2d4c024d132efe394d537404eba7e4c8/run.py#L334-L365"
+     },
+     {
+      "name": "trajectory text + reward",
+      "what": "final observation text with reward and feedback, read by the diagnosing LLM",
+      "kept_as": "verbatim",
+      "used_for": [
+       "verifier"
+      ],
+      "src": "code run.py L381-L390",
+      "url": "https://github.com/Miracle1207/Skill-Pro/blob/3be7a9be2d4c024d132efe394d537404eba7e4c8/run.py#L381-L390"
+     }
+    ]
+   }
+  ],
+  "write": [
+   {
+    "step": "Collect",
+    "how": "run 5 episodes per environment per iteration; each trajectory goes to the buffer of every skill it used",
+    "params": {
+     "episodes": "5 per iteration (default)",
+     "max steps": "50"
+    },
+    "src": "code run.py L211-L235; skill_evolution.py L386-L391; main.py L30",
+    "url": "https://github.com/Miracle1207/Skill-Pro/blob/3be7a9be2d4c024d132efe394d537404eba7e4c8/Skills/skill_evolution.py#L386-L391"
+   },
+   {
+    "step": "Choose parents",
+    "how": "skills with >= 6 buffered runs are ranked by a priority that favours frequently used skills whose gain is below the best; up to 2 are evolved per iteration",
+    "params": {
+     "threshold": "6 runs",
+     "parents": "<= 2 per iteration"
+    },
+    "src": "code skill_evolution.py L59-L122, L396-L405",
+    "url": "https://github.com/Miracle1207/Skill-Pro/blob/3be7a9be2d4c024d132efe394d537404eba7e4c8/Skills/skill_evolution.py#L396-L405"
+   },
+   {
+    "step": "Diagnose",
+    "how": "for each of 6 runs (3 lowest and 3 highest reward) an LLM writes a diagnosis and fixes for trigger, steps and stop condition, or marks the run unrelated",
+    "src": "paper §4.1, App. E; code skill_evolution.py L17-L56, L171-L245",
+    "url": "https://github.com/Miracle1207/Skill-Pro/blob/3be7a9be2d4c024d132efe394d537404eba7e4c8/Skills/skill_evolution.py#L171-L245"
+   },
+   {
+    "step": "Merge and rewrite",
+    "how": "one LLM call aggregates the fixes and rewrites the skill; if fewer than half the runs were related, it writes a new skill instead",
+    "params": {
+     "candidates": "3 (each re-runs the diagnosis)"
+    },
+    "src": "paper §4.1; code skill_evolution.py L248-L366, L440-L446",
+    "url": "https://github.com/Miracle1207/Skill-Pro/blob/3be7a9be2d4c024d132efe394d537404eba7e4c8/Skills/skill_evolution.py#L248-L366"
+   },
+   {
+    "step": "PPO Gate",
+    "how": "score each candidate by the clipped ratio of old actions' log-probabilities (candidate vs old skill) times the run's advantage per step; add the best if its score > 0",
+    "params": {
+     "clip ε": "0.2",
+     "margin": "0"
+    },
+    "out": "59.49% of candidates pass on Mastermind-v0 (Table 3)",
+    "src": "paper §4.2, Table 3; code skill_evolution.py L454-L513",
+    "url": "https://github.com/Miracle1207/Skill-Pro/blob/3be7a9be2d4c024d132efe394d537404eba7e4c8/Skills/skill_evolution.py#L454-L513"
+   },
+   {
+    "step": "Score and prune",
+    "how": "each used skill gets an equal share of (return - task baseline) per call; when the pool exceeds 10, drop duplicates and skills with low lower-confidence-bound gain",
+    "params": {
+     "K": "10",
+     "dedup": "cosine >= 0.95"
+    },
+    "src": "paper §4.3; code data_structures.py L30-L66, skill_pool.py L457-L601",
+    "url": "https://github.com/Miracle1207/Skill-Pro/blob/3be7a9be2d4c024d132efe394d537404eba7e4c8/Skills/skill_pool.py#L457-L601"
+   }
+  ],
+  "read": [
+   {
+    "step": "Pick a skill",
+    "round": 1,
+    "input": "current state",
+    "scores": "skill names and activation conditions (LLM judgement)",
+    "how": "the acting LLM chooses one skill or NONE from the full list; skills with mean gain <= -0.015 are refused once 3 iterations old; with probability ε a random skill or none",
+    "params": {
+     "ε": "0.3 -> 0.05 over 100 iterations (0.3 in test mode)"
+    },
+    "src": "code skill_pool.py L112-L151, L250-L301; run.py L96-L102",
+    "url": "https://github.com/Miracle1207/Skill-Pro/blob/3be7a9be2d4c024d132efe394d537404eba7e4c8/Skills/skill_pool.py#L250-L301"
+   },
+   {
+    "step": "Act",
+    "round": 1,
+    "how": "prompt = state (+ admissible commands) + active skill text + instructions to match and apply each step; one action out",
+    "src": "paper App. E; code run.py L441-L501",
+    "url": "https://github.com/Miracle1207/Skill-Pro/blob/3be7a9be2d4c024d132efe394d537404eba7e4c8/run.py#L441-L501"
+   },
+   {
+    "step": "Stop check",
+    "round": 1,
+    "how": "a meta-controller prompt to the same LLM returns DONE if the termination is met or the initiation no longer holds; also forced after 8 steps",
+    "params": {
+     "max skill age": "8 steps"
+    },
+    "src": "paper App. E; code run.py L264, L273-L282, L395-L439",
+    "url": "https://github.com/Miracle1207/Skill-Pro/blob/3be7a9be2d4c024d132efe394d537404eba7e4c8/run.py#L395-L439"
+   }
+  ],
+  "answer_context": {
+   "sees": "the current state and one skill",
+   "format": "[CURRENT STATE] {state} [ADMISSIBLE COMMANDS] ... [ACTIVE OPTION] Skill Name / Initiation / Strategy Steps / Termination, then match-apply-output instructions",
+   "excludes": [
+    "other skills",
+    "past trajectories",
+    "skill statistics"
+   ],
+   "includes": [
+    "one skill's text (about 102 tokens)",
+    "the environment state; on ALFWorld the full observation history"
+   ],
+   "src": "code run.py L441-L501; data_structures.py L83-L93",
+   "url": "https://github.com/Miracle1207/Skill-Pro/blob/3be7a9be2d4c024d132efe394d537404eba7e4c8/run.py#L441-L501"
+  },
+  "compression": [
+   {
+    "what": "stored memory, Skill-Pro vs the smallest baseline store (G-Memory)",
+    "kept": 816,
+    "of": 40510,
+    "unit": "tokens",
+    "basis": "Table 1 Total Stored Tokens on Mastermind-v0: 816 for Skill-Pro, 40,510 for G-Memory (RAG 116,527; AWM 391,706).",
+    "src": "paper Table 1",
+    "url": "https://arxiv.org/pdf/2602.01869"
+   },
+   {
+    "what": "prompt tokens added per step, Skill-Pro vs G-Memory",
+    "kept": 273,
+    "of": 434,
+    "unit": "tokens",
+    "basis": "Table 1 ∆ Prompt Tokens/Step: 273±5 vs 434±79.",
+    "src": "paper Table 1",
+    "url": "https://arxiv.org/pdf/2602.01869"
+   }
+  ],
+  "paper_vs_code": [
+   {
+    "topic": "Skill selection",
+    "paper": "similarity between state and activation condition (cosine or LLM judge), optionally top-k by similarity then highest value Q",
+    "code": "default --select_type llm_model: the acting LLM picks from all skills; similarity (MiniLM, threshold 0.5) only as fallback; ε-greedy random picks",
+    "src": "main.py L27; skill_pool.py L112-L151",
+    "url": "https://github.com/Miracle1207/Skill-Pro/blob/3be7a9be2d4c024d132efe394d537404eba7e4c8/Skills/skill_pool.py#L112-L151"
+   },
+   {
+    "topic": "Online score",
+    "paper": "mean per-step advantage over the steps the skill was active (Eq. 7); remove skills with score <= 0",
+    "code": "each call gets (R - EMA baseline) / number of skill calls in the run; pruning ranks by mean gain - 0.2·sqrt(ln(1+t)/n) and only runs while the pool is over 10",
+    "src": "data_structures.py L30-L66; skill_pool.py L495-L601",
+    "url": "https://github.com/Miracle1207/Skill-Pro/blob/3be7a9be2d4c024d132efe394d537404eba7e4c8/Skills/skill_pool.py#L495-L601"
+   },
+   {
+    "topic": "PPO Gate advantage and model",
+    "paper": "return-to-go minus running baseline per step; ratio under the acting LLM π_LLM",
+    "code": "trajectory advantage spread evenly over its steps; mean per-token log-prob from the evolver model, which is the acting model only when --ge_model_name equals --agent_name (defaults differ)",
+    "src": "skill_evolution.py L454-L480, L526-L544; run.py L79-L83",
+    "url": "https://github.com/Miracle1207/Skill-Pro/blob/3be7a9be2d4c024d132efe394d537404eba7e4c8/Skills/skill_evolution.py#L454-L480"
+   },
+   {
+    "topic": "Candidates",
+    "paper": "Nc candidates from one aggregated semantic gradient",
+    "code": "3 candidates, each from a fresh round of per-run diagnoses; a 'new skill' mode when under half the runs are related",
+    "src": "skill_evolution.py L248-L298, L440-L446",
+    "url": "https://github.com/Miracle1207/Skill-Pro/blob/3be7a9be2d4c024d132efe394d537404eba7e4c8/Skills/skill_evolution.py#L248-L298"
+   }
+  ],
+  "open_questions": [
+   "Reuse rate counts the fraction of stored units used at least once, so a pool of about 8 skills and stores of hundreds of trajectories or insights are not on equal footing; Table 1 cannot separate better skills from a smaller store.",
+   "The six seed skills are hand-written and one (StrategicPlanning) already targets Mastermind openings, so how much of the Mastermind gain comes from the seeds versus NP-PPO is only partly shown by 'w/o NP-PPO' (0.563 vs 0.606)."
+  ],
+  "figures": [
+   {
+    "id": "build",
+    "title": "Memory construction",
+    "viewBox": "0 0 560 268",
+    "body": "<text class=\"fig-t\" x=\"50\" y=\"16\" text-anchor=\"middle\">Runs with skill ω</text><rect class=\"gi-ev\" x=\"8\" y=\"30\" width=\"70\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"16\" y1=\"39.0\" x2=\"64\" y2=\"39.0\"/><rect class=\"gi-ev\" x=\"22\" y=\"54\" width=\"70\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"30\" y1=\"63.0\" x2=\"78\" y2=\"63.0\"/><rect class=\"gi-ev\" x=\"8\" y=\"78\" width=\"70\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"16\" y1=\"87.0\" x2=\"64\" y2=\"87.0\"/><rect class=\"gi-ev\" x=\"22\" y=\"102\" width=\"70\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"30\" y1=\"111.0\" x2=\"78\" y2=\"111.0\"/><rect class=\"gi-ev\" x=\"8\" y=\"126\" width=\"70\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"16\" y1=\"135.0\" x2=\"64\" y2=\"135.0\"/><rect class=\"gi-ev\" x=\"22\" y=\"150\" width=\"70\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"30\" y1=\"159.0\" x2=\"78\" y2=\"159.0\"/><text class=\"fig-s\" x=\"50\" y=\"186\" text-anchor=\"middle\">6 runs: 3 worst,</text><text class=\"fig-s\" x=\"50\" y=\"199\" text-anchor=\"middle\">3 best by reward</text><path class=\"gi-a\" d=\"M98.0 96.0 L127.0 96.0\"/><polygon class=\"gi-ah\" points=\"134.0,96.0 127.0,100.0 127.0,92.0\"/><rect class=\"gi-llm\" x=\"100\" y=\"74\" width=\"32\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"116\" y=\"84\" text-anchor=\"middle\">LLM</text><text class=\"fig-s\" x=\"116\" y=\"112\" text-anchor=\"middle\">diagnose</text><text class=\"fig-t\" x=\"186\" y=\"16\" text-anchor=\"middle\">Semantic gradients</text><rect class=\"gi-ev\" x=\"138\" y=\"30\" width=\"96\" height=\"36\" rx=\"6\"/><text class=\"fig-s\" x=\"146\" y=\"44\" text-anchor=\"start\">g1: fix trigger,</text><text class=\"fig-s\" x=\"146\" y=\"57\" text-anchor=\"start\">steps or stop</text><rect class=\"gi-ev\" x=\"138\" y=\"74\" width=\"96\" height=\"36\" rx=\"6\"/><text class=\"fig-s\" x=\"146\" y=\"88\" text-anchor=\"start\">g2: fix trigger,</text><text class=\"fig-s\" x=\"146\" y=\"101\" text-anchor=\"start\">steps or stop</text><rect class=\"gi-ev\" x=\"138\" y=\"118\" width=\"96\" height=\"36\" rx=\"6\"/><text class=\"fig-s\" x=\"146\" y=\"132\" text-anchor=\"start\">g6: fix trigger,</text><text class=\"fig-s\" x=\"146\" y=\"145\" text-anchor=\"start\">steps or stop</text><text class=\"fig-s\" x=\"186\" y=\"170\" text-anchor=\"middle\">one per run</text><text class=\"fig-s\" x=\"186\" y=\"183\" text-anchor=\"middle\">(empty if no change)</text><path class=\"gi-a\" d=\"M236.0 96.0 L265.0 96.0\"/><polygon class=\"gi-ah\" points=\"272.0,96.0 265.0,100.0 265.0,92.0\"/><rect class=\"gi-llm\" x=\"238\" y=\"74\" width=\"32\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"254\" y=\"84\" text-anchor=\"middle\">LLM</text><text class=\"fig-s\" x=\"254\" y=\"112\" text-anchor=\"middle\">merge,</text><text class=\"fig-s\" x=\"254\" y=\"124\" text-anchor=\"middle\">rewrite</text><text class=\"fig-t\" x=\"306\" y=\"16\" text-anchor=\"middle\">3 candidates</text><rect class=\"gi-ev\" x=\"276\" y=\"30\" width=\"62\" height=\"36\" rx=\"6\"/><line class=\"gi-t\" x1=\"284\" y1=\"39\" x2=\"310\" y2=\"39\"/><line class=\"gi-t\" x1=\"284\" y1=\"48\" x2=\"330\" y2=\"48\"/><line class=\"gi-t\" x1=\"284\" y1=\"57\" x2=\"330\" y2=\"57\"/><text class=\"fig-s\" x=\"332\" y=\"43\" text-anchor=\"end\">ω′1</text><rect class=\"gi-ev\" x=\"276\" y=\"74\" width=\"62\" height=\"36\" rx=\"6\"/><line class=\"gi-t\" x1=\"284\" y1=\"83\" x2=\"310\" y2=\"83\"/><line class=\"gi-t\" x1=\"284\" y1=\"92\" x2=\"330\" y2=\"92\"/><line class=\"gi-t\" x1=\"284\" y1=\"101\" x2=\"330\" y2=\"101\"/><text class=\"fig-s\" x=\"332\" y=\"87\" text-anchor=\"end\">ω′2</text><rect class=\"gi-ev\" x=\"276\" y=\"118\" width=\"62\" height=\"36\" rx=\"6\"/><line class=\"gi-t\" x1=\"284\" y1=\"127\" x2=\"310\" y2=\"127\"/><line class=\"gi-t\" x1=\"284\" y1=\"136\" x2=\"330\" y2=\"136\"/><line class=\"gi-t\" x1=\"284\" y1=\"145\" x2=\"330\" y2=\"145\"/><text class=\"fig-s\" x=\"332\" y=\"131\" text-anchor=\"end\">ω′3</text><text class=\"fig-s\" x=\"306\" y=\"170\" text-anchor=\"middle\">refine ω, or new</text><text class=\"fig-s\" x=\"306\" y=\"183\" text-anchor=\"middle\">if runs unrelated</text><path class=\"gi-a\" d=\"M340.0 96.0 L347.0 96.0\"/><polygon class=\"gi-ah\" points=\"354.0,96.0 347.0,100.0 347.0,92.0\"/><polygon class=\"gi-llm\" points=\"396,62 438,96 396,130 354,96\"/><text class=\"fig-t\" x=\"396\" y=\"92\" text-anchor=\"middle\">PPO Gate</text><text class=\"fig-s\" x=\"396\" y=\"106\" text-anchor=\"middle\">best J &gt; 0?</text><path class=\"gi-a\" d=\"M396.0 130.0 L396.0 143.0\"/><polygon class=\"gi-ah\" points=\"396.0,150.0 392.0,143.0 400.0,143.0\"/><text class=\"fig-s\" x=\"396\" y=\"162\" text-anchor=\"middle\">discard</text><text class=\"fig-s\" x=\"396\" y=\"184\" text-anchor=\"middle\">J = clipped</text><text class=\"fig-s\" x=\"396\" y=\"196\" text-anchor=\"middle\">ratio × advantage</text><path class=\"gi-a\" d=\"M438.0 96.0 L453.0 96.0\"/><polygon class=\"gi-ah\" points=\"460.0,96.0 453.0,100.0 453.0,92.0\"/><text class=\"fig-yes\" x=\"449\" y=\"88\" text-anchor=\"middle\">Yes</text><rect class=\"gi-f\" x=\"462\" y=\"26\" width=\"94\" height=\"170\" rx=\"8\"/><text class=\"fig-t\" x=\"509\" y=\"44\" text-anchor=\"middle\">Skill pool</text><text class=\"fig-s\" x=\"509\" y=\"57\" text-anchor=\"middle\">≤ 10 skills</text><rect class=\"gi-ev\" x=\"472\" y=\"66\" width=\"74\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"480\" y1=\"75.0\" x2=\"532\" y2=\"75.0\"/><rect class=\"gi-ev\" x=\"472\" y=\"88\" width=\"74\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"480\" y1=\"97.0\" x2=\"532\" y2=\"97.0\"/><rect class=\"gi-ev\" x=\"472\" y=\"110\" width=\"74\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"480\" y1=\"119.0\" x2=\"532\" y2=\"119.0\"/><rect class=\"gi-hi\" x=\"472\" y=\"132\" width=\"74\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"480\" y1=\"141.0\" x2=\"532\" y2=\"141.0\"/><text class=\"fig-s\" x=\"509\" y=\"166\" text-anchor=\"middle\">+ accepted ω′;</text><text class=\"fig-s\" x=\"509\" y=\"178\" text-anchor=\"middle\">parent kept</text><text class=\"fig-no\" x=\"402\" y=\"144\" text-anchor=\"start\">No</text><rect class=\"gi-ev d\" x=\"142\" y=\"222\" width=\"414\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"150\" y=\"238\" text-anchor=\"start\">After every iteration: prune when over 10</text><text class=\"fig-s\" x=\"150\" y=\"253\" text-anchor=\"start\">score = mean gain − 0.2·√(ln(1+t)/n) · near-duplicates (cos ≥ 0.95) removed</text><path class=\"gi-a\" d=\"M509.0 196.0 L509.0 215.0\"/><polygon class=\"gi-ah\" points=\"509.0,222.0 505.0,215.0 513.0,215.0\"/>",
+    "text": [
+     "An LLM diagnoses 6 runs that used a skill and rewrites the skill from those fixes three times.",
+     "The PPO Gate adds the best rewrite only if it raises the likelihood of high-advantage past actions; the pool is then pruned back to 10."
+    ],
+    "src": "paper §4, Alg. 1; code skill_evolution.py L368-L523, skill_pool.py L457-L601",
+    "url": "https://github.com/Miracle1207/Skill-Pro/blob/3be7a9be2d4c024d132efe394d537404eba7e4c8/Skills/skill_evolution.py#L368-L523"
+   },
+   {
+    "id": "read",
+    "title": "Memory retrieval",
+    "viewBox": "0 0 560 240",
+    "body": "<rect class=\"gi-f\" x=\"4\" y=\"34\" width=\"58\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"33\" y=\"60\" text-anchor=\"middle\">State</text><path class=\"gi-a\" d=\"M62.0 56.0 L69.0 56.0\"/><polygon class=\"gi-ah\" points=\"76.0,56.0 69.0,60.0 69.0,52.0\"/><rect class=\"gi-llm\" x=\"76\" y=\"34\" width=\"100\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"126\" y=\"53\" text-anchor=\"middle\">Pick a skill</text><text class=\"fig-s\" x=\"126\" y=\"67\" text-anchor=\"middle\">LLM reads the list</text><text class=\"fig-s\" x=\"126\" y=\"92\" text-anchor=\"middle\">≤ 10 names + triggers,</text><text class=\"fig-s\" x=\"126\" y=\"104\" text-anchor=\"middle\">or NONE</text><path class=\"gi-a\" d=\"M176.0 56.0 L183.0 56.0\"/><polygon class=\"gi-ah\" points=\"190.0,56.0 183.0,60.0 183.0,52.0\"/><rect class=\"gi-hi\" x=\"190\" y=\"24\" width=\"100\" height=\"64\" rx=\"8\"/><text class=\"fig-t\" x=\"240\" y=\"41\" text-anchor=\"middle\">Active skill</text><text class=\"fig-s\" x=\"240\" y=\"55\" text-anchor=\"middle\">trigger</text><text class=\"fig-s\" x=\"240\" y=\"67\" text-anchor=\"middle\">3-5 steps</text><text class=\"fig-s\" x=\"240\" y=\"79\" text-anchor=\"middle\">stop condition</text><path class=\"gi-a\" d=\"M290.0 56.0 L297.0 56.0\"/><polygon class=\"gi-ah\" points=\"304.0,56.0 297.0,60.0 297.0,52.0\"/><rect class=\"gi-ev\" x=\"304\" y=\"34\" width=\"80\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"344\" y=\"53\" text-anchor=\"middle\">Prompt</text><text class=\"fig-s\" x=\"344\" y=\"67\" text-anchor=\"middle\">state + skill text</text><path class=\"gi-a\" d=\"M384.0 56.0 L391.0 56.0\"/><polygon class=\"gi-ah\" points=\"398.0,56.0 391.0,60.0 391.0,52.0\"/><rect class=\"gi-llm\" x=\"398\" y=\"34\" width=\"76\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"436\" y=\"53\" text-anchor=\"middle\">Same LLM</text><text class=\"fig-s\" x=\"436\" y=\"67\" text-anchor=\"middle\">one action</text><path class=\"gi-a\" d=\"M474.0 56.0 L481.0 56.0\"/><polygon class=\"gi-ah\" points=\"488.0,56.0 481.0,60.0 481.0,52.0\"/><rect class=\"gi-f\" x=\"488\" y=\"34\" width=\"68\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"522\" y=\"60\" text-anchor=\"middle\">Env</text><path class=\"gi-a\" d=\"M522 78 L522 176\"/><path class=\"gi-a\" d=\"M522.0 176.0 L375.0 176.0\"/><polygon class=\"gi-ah\" points=\"368.0,176.0 375.0,172.0 375.0,180.0\"/><polygon class=\"gi-llm\" points=\"318,150 368,176 318,202 268,176\"/><text class=\"fig-t\" x=\"318\" y=\"173\" text-anchor=\"middle\">Stop skill?</text><text class=\"fig-s\" x=\"318\" y=\"186\" text-anchor=\"middle\">LLM checks</text><path class=\"gi-a\" d=\"M268 176 L126 176\"/><path class=\"gi-a\" d=\"M126.0 176.0 L126.0 117.0\"/><polygon class=\"gi-ah\" points=\"126.0,110.0 130.0,117.0 122.0,117.0\"/><text class=\"fig-yes\" x=\"254\" y=\"168\" text-anchor=\"end\">Yes</text><path class=\"gi-a\" d=\"M318 150 L318 124 L240 124\"/><path class=\"gi-a\" d=\"M240.0 124.0 L240.0 97.0\"/><polygon class=\"gi-ah\" points=\"240.0,90.0 244.0,97.0 236.0,97.0\"/><text class=\"fig-no\" x=\"326\" y=\"140\" text-anchor=\"start\">No: keep</text><text class=\"fig-s\" x=\"450\" y=\"196\" text-anchor=\"middle\">also stops after 8 steps</text><text class=\"fig-s\" x=\"4\" y=\"218\" text-anchor=\"start\">Picks are random (a skill or none) with ε = 0.3 → 0.05 in training, 0.3 at test;</text><text class=\"fig-s\" x=\"4\" y=\"231\" text-anchor=\"start\">a skill whose mean gain is ≤ −0.015 is refused once it is 3 iterations old.</text>",
+    "text": [
+     "The acting LLM reads the skill list and picks one, which stays active over several steps.",
+     "Each step the skill text goes into the action prompt, and an LLM check decides whether to keep it or pick again."
+    ],
+    "src": "code skill_pool.py L112-L301; run.py L271-L309, L395-L439",
+    "url": "https://github.com/Miracle1207/Skill-Pro/blob/3be7a9be2d4c024d132efe394d537404eba7e4c8/run.py#L271-L309"
+   }
+  ],
+  "key_numbers": [
+   {
+    "label": "Pool capacity",
+    "value": "10 skills",
+    "src": "code main.py L36",
+    "section": "construction"
+   },
+   {
+    "label": "Seed skills",
+    "value": "6 hand-written",
+    "src": "code skill_pool.py L27-L95",
+    "section": "construction"
+   },
+   {
+    "label": "Runs per evolution",
+    "value": "6 (3 worst + 3 best)",
+    "src": "code skill_evolution.py L17-L56, L127",
+    "section": "construction"
+   },
+   {
+    "label": "Candidates per evolution",
+    "value": "3, clip ε 0.2",
+    "src": "code skill_evolution.py L127, L377",
+    "section": "method"
+   },
+   {
+    "label": "PPO Gate pass rate",
+    "value": "59.49% (Mastermind-v0)",
+    "src": "paper Table 3",
+    "section": "method"
+   },
+   {
+    "label": "Skill held for",
+    "value": "until LLM stop check, at most 8 steps",
+    "src": "code run.py L264",
+    "section": "method"
+   },
+   {
+    "label": "Stored tokens",
+    "value": "816 total, 102 per skill",
+    "src": "paper Table 1",
+    "section": "results"
+   },
+   {
+    "label": "Added prompt tokens per step",
+    "value": "273 (G-Memory 434, RAG 2,698)",
+    "src": "paper Table 1",
+    "section": "results"
+   },
+   {
+    "label": "Retrieval ratio",
+    "value": "0.591 of steps (RAG, Expel, A-MEM: 1)",
+    "src": "paper Table 1",
+    "section": "results"
+   }
+  ],
+  "components": [
+   {
+    "role": "Acts, picks skills, checks termination",
+    "model": "Gemma-2-9B (TextArena), Qwen3-32B (ALFWorld); reused by Gemma-3-4B, Qwen3-32B, Llama-3.3-70B",
+    "kind": "llm",
+    "src": "paper §5.1, App. B.3"
+   },
+   {
+    "role": "Diagnoses runs and rewrites skills",
+    "model": "evolver LLM (--ge_model_name; code default llama-3.3-70b-instruct); not named in the paper",
+    "kind": "llm",
+    "src": "code main.py L26",
+    "url": "https://github.com/Miracle1207/Skill-Pro/blob/3be7a9be2d4c024d132efe394d537404eba7e4c8/main.py#L26"
+   },
+   {
+    "role": "PPO Gate log-probabilities",
+    "model": "evolver model via vLLM prompt log-probs (mean per action token)",
+    "kind": "rule",
+    "src": "code skill_evolution.py L526-L544",
+    "url": "https://github.com/Miracle1207/Skill-Pro/blob/3be7a9be2d4c024d132efe394d537404eba7e4c8/Skills/skill_evolution.py#L526-L544"
+   },
+   {
+    "role": "De-duplication and similarity fallback",
+    "model": "all-MiniLM-L6-v2 on activation conditions",
+    "kind": "retriever",
+    "src": "code utils/encode.py L9",
+    "url": "https://github.com/Miracle1207/Skill-Pro/blob/3be7a9be2d4c024d132efe394d537404eba7e4c8/utils/encode.py#L9"
+   }
+  ],
+  "ablation": {
+   "cols": [
+    "Reuse rate",
+    "Return",
+    "Online score",
+    "Gate pass rate"
+   ],
+   "rows": [
+    [
+     "Full",
+     "0.925",
+     "0.606",
+     "0.0406",
+     "59.49%"
+    ],
+    [
+     "w/o Skill (state only)",
+     "–",
+     "0.388",
+     "–",
+     "–"
+    ],
+    [
+     "w/o NP-PPO (seed skills only)",
+     "0.563",
+     "0.482",
+     "0.0265",
+     "–"
+    ],
+    [
+     "w/o semantic gradients",
+     "0.306",
+     "0.530",
+     "0.0015",
+     "41.54%"
+    ],
+    [
+     "w/o PPO Gate",
+     "0.222",
+     "0.453",
+     "0.0011",
+     "100.00%"
+    ],
+    [
+     "w/o score pruning (FIFO)",
+     "0.131",
+     "0.439",
+     "-0.0064",
+     "57.18%"
+    ]
+   ],
+   "src": "paper Table 3 / Table 4 (Mastermind-v0, Gemma-2-9B)"
+  },
+  "discussion": {
+   "takeaway": "Store experience as a few executable skills rather than episodes, and admit a rewritten skill only when a PPO-style check on past actions says it helps. On TextArena Mastermind and ALFWorld this gives the highest reuse and mostly the best returns with under 1k stored tokens.",
+   "claims": [
+    {
+     "claim": "Learned skills are reused far more than episodic memories.",
+     "evidence": "In-domain reuse 0.925 vs at most 0.349 (RAG) on Mastermind-v0; cross-agent 0.850-0.875. Table 1"
+    },
+    {
+     "claim": "Procedural memory is much smaller and cheaper to use.",
+     "evidence": "816 stored tokens vs 40,510-391,706; 273 added prompt tokens per step; retrieval at 59% of steps. Table 1"
+    },
+    {
+     "claim": "Performance improves despite the small memory.",
+     "evidence": "ALFWorld 0.900 train / 0.909 OOD success vs AWM 0.700 / 0.900; Mastermind-v0 0.606 vs 0.577 (G-Memory). Table 2"
+    },
+    {
+     "claim": "Semantic gradients, the PPO Gate and score pruning are all needed.",
+     "evidence": "Return drops to 0.530 / 0.453 / 0.439 without each; reuse to 0.306 / 0.222 / 0.131. Table 3"
+    },
+    {
+     "claim": "Skills transfer to function calling.",
+     "evidence": "BFCL v4 accuracy 0.433 vs 0.383 (ReAct). App. C.2, Table 5"
+    }
+   ],
+   "limits": [
+    "Skills are explicit text, unlike implicit human procedural memory; moving to implicit or directly executable skills is left for future work.",
+    "The PPO Gate needs output-token log-probabilities, which some closed APIs do not expose."
+   ],
+   "limits_src": "paper App. F",
+   "reading": [
+    "Standard deviations are large (e.g. ALFWorld OOD 0.909±0.287 vs AWM 0.900±0.042; Mastermind-v0 0.606±0.234), and results average 50 episodes per setting; several gaps are within one standard deviation.",
+    "On Mastermind-v0-Extreme G-Memory (0.356) is above Skill-Pro (0.333) in Table 2.",
+    "The ablation and training curves are on Mastermind-v0 only.",
+    "The code's test mode still explores with ε = 0.3, so about 30% of skill picks at evaluation are random if the released defaults were used; the paper does not state ε at test.",
+    "The PPO Gate re-scores ALFWorld actions with a prompt holding only the last observation (the stored transition state) and no admissible commands, while the acting prompt had the full history.",
+    "ExperiencePool and GoldenExperiencePool are created but never filled; evolution uses only the per-skill buffers."
+   ]
+  },
+  "abstract": {
+   "text": "Skill-Pro lets an LLM agent learn procedural memory without changing weights. Memory is a pool of natural-language skills, each with an activation condition, a short procedure and a termination condition, used as temporally extended options in a Skill-MDP. Skills evolve by Non-Parametric PPO: an LLM turns batches of trajectories into structured fixes (semantic gradients) and rewrites the skill, and a clipped importance-ratio check on past actions (the PPO Gate) admits only candidates expected to improve return, while online scores prune weak skills. On TextArena Mastermind, ALFWorld and BFCL v4 the authors report higher reuse, better returns and far smaller memory than episodic-memory baselines.",
+   "note": "Summary in our words; the original abstract is on arXiv.",
+   "url": "https://arxiv.org/abs/2602.01869"
+  },
+  "sections": {
+   "Memory architecture": "§3, §4",
+   "Results": "§5.2, App. C.2",
+   "Ablation": "§5.3",
+   "Discussion": "§5.4, App. F",
+   "Details": "Alg. 1, App. B, D, E"
+  }
+ }
+}

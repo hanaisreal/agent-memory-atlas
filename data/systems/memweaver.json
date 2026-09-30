@@ -1,0 +1,560 @@
+{
+  "id": "memweaver",
+  "name": "MemWeaver",
+  "paper": {
+    "title": "MemWeaver: A Hierarchical Memory from Textual Interactive Behaviors for Personalized Generation",
+    "arxiv": "2510.07713",
+    "url": "https://arxiv.org/abs/2510.07713",
+    "venue": "WWW 2026",
+    "venue_short": "WWW",
+    "track": "main",
+    "year": 2026,
+    "code": "https://github.com/fishsure/MemWeaver"
+  },
+  "design": {
+    "construction": {
+      "unit": "a user's past document (behavior) as a graph node, plus one LLM-written user summary",
+      "kept_as": "past documents verbatim (truncated to fit the prompt); summary written by the LLM",
+      "processing": "embed each document (BGE-M3), K-means over the embeddings, link consecutive documents (temporal) and same-cluster documents (semantic); LLM summarizes each cluster, then merges the local summaries into one global summary",
+      "trigger": "offline-batch",
+      "writer": "backbone LLM (Qwen3-8B or Llama-3.1-8B) for summaries; BGE-M3 for embeddings"
+    },
+    "organization": {
+      "structure": "per-user graph over the history (temporal chain + intra-cluster semantic edges) and one global preference summary",
+      "stores": "behavior graph (rebuilt per query in the code); cognitive memory text per user",
+      "index": "BGE-M3 dense embeddings"
+    },
+    "management": {
+      "operations": "paper: incremental update links new documents to the last node, clusters the new batch on its own, and re-merges old and new local summaries; not in the released code",
+      "conflicts": null,
+      "forgetting": null,
+      "timing": "offline"
+    },
+    "retrieval": {
+      "query": "the task input (LaMP query text)",
+      "candidates": "random walk over the graph from the history item most similar to the query, at most 10 unique nodes (paper)",
+      "selection": "code: walked nodes reranked by BGE-M3 similarity, top 5 kept, topped up from the rest of the history if fewer",
+      "budget": "5 past items plus the summary, input capped at 3000 tokens"
+    },
+    "use": {
+      "context": "'User summary: ...' followed by the retrieved past items, the task instruction and the query",
+      "reasoning": "single generation call (max 64 new tokens)"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "fixed-rule",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "graph",
+    "index": "vector",
+    "management": "append-only",
+    "candidates": "graph walk",
+    "decides": "top-k rule",
+    "note": "The walk produces the candidates; the released code then keeps the 5 most similar by dense score. The summary sits beside the graph and is always included."
+  },
+  "tags": {
+    "fidelity": "verbatim+derived",
+    "structure": [
+      "graph",
+      "profile"
+    ],
+    "write_time": [
+      "link",
+      "summarize"
+    ],
+    "selection": [
+      "graph-expansion",
+      "dense"
+    ],
+    "memory_type": [
+      "episodic",
+      "profile"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "The input is a user's time-ordered list of past documents (e.g. paper titles and abstracts, reviews, headlines) from the LaMP profiles.",
+    "construction": "Each document is embedded with BGE-M3 and clustered with K-means (K = 5 in the paper); a graph links consecutive documents (temporal edges) and documents in the same cluster (semantic edges).",
+    "organization": "Two memories: the behavior graph over raw documents and a cognitive memory, a short text built by summarizing groups of documents and then merging those summaries (paper: time phases; code: K-means clusters).",
+    "update": "The paper describes incremental updates (append and link new documents, cluster the new batch alone, re-merge summaries), which track a full rebuild at lower cost in a simulation (Fig. 5); the released code rebuilds instead.",
+    "retrieval": "A random walk starts at the document most similar to the query and moves to neighbours with probability tied to query similarity, time gap and recency (alpha 1.5, lambda1 0.01, lambda2 0.02), for at most 10 steps; the code reranks the visited documents and keeps 5.",
+    "answer": "The LLM is prompted with the user summary, the selected past documents and the task query.",
+    "learning": "Training-free; ROPG and CFRAG baselines are trained on the LaMP training split, MemWeaver only uses the test split."
+  },
+  "summary": "Personalized generation from a user's past texts: the history becomes a graph (temporal and same-cluster semantic edges) that is sampled by a query-guided random walk, plus a two-stage LLM summary of the user's preferences, and both go into the prompt.",
+  "verified": false,
+  "notes": "VENUE: WWW '26 (ACM Web Conference 2026, Dubai), DOI 10.1145/3774904.3792732, printed on the arXiv v2 PDF (ACM format, CC-BY) and in the README ('Accepted at ACM Web Conference 2026'). Track taken as main (full 12-page proceedings paper).\nCODE: pinned to HEAD 356b910 (2026-05-18; the last code change is eb89bae, 2025-11-16). The repo is not runnable as released: ranking.py imports runners.MemRetrievalRunner and MemGraphRunner imports models.retriever, neither of which is in the repository (only a .pyc of the first). MemGraphRunner defines _get_random_walk_start_node and _personalized_random_walk twice; Python uses the second copies (L1264, L1328), which match the first.\nDESIGN: §3.3-3.4, §4.1, App. A.3, D; code MemGraphRunner.py, generate/generate.py, prompts/prompts.py, script/run.sh.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2510.07713v2 (PDF read 2026-09-30)",
+      "code": "https://github.com/fishsure/MemWeaver/tree/356b910c49d00bbcc5fc9277dee997593be39124/",
+      "code_note": "HEAD at reading time; code files last changed in eb89bae (2025-11-16) and are otherwise the October 2025 release. No commit is tied to the paper's runs, and the example script (script/run.sh) uses settings that differ from App. A.3."
+    },
+    "sections": {
+      "Memory architecture": "§3.3",
+      "Results": "§4.2, Table 1; App. C (Tables 4-5)",
+      "Ablation": "§4.3, Table 2",
+      "Discussion": "§4.4-4.6, §5",
+      "Details": "§3.4, §4.1, App. A, D"
+    },
+    "abstract": {
+      "text": "MemWeaver personalizes LLM outputs from the texts a user has written or interacted with. It keeps two memories: a behavioral memory, sampled per query by a random walk over a graph whose edges join time-adjacent and topically similar past documents, and a cognitive memory, an LLM summary of the user's preferences built from summaries of parts of the history. Both are placed in the prompt of an 8B model. On six LaMP tasks it beats plain retrievers and trained personalization retrievers (ROPG, CFRAG) on every metric.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2510.07713"
+    },
+    "headline": [
+      "The answer model reads 5 raw past documents plus one LLM-written user summary; the graph only decides which 5.",
+      "In the released code the walked documents are reranked by dense similarity, so the walk acts as a candidate filter before plain dense top-5.",
+      "The paper builds the summary from time phases; the code (and App. D.1) builds it from K-means clusters."
+    ],
+    "units": [
+      {
+        "name": "Behavior node",
+        "role": "one past document of the user",
+        "made_by": "LaMP profile item, embedded by BGE-M3",
+        "fields": [
+          {
+            "name": "text",
+            "what": "the original document (title, abstract, review, headline ...), truncated in the prompt to share the token budget",
+            "kept_as": "verbatim",
+            "used_for": [
+              "index",
+              "rerank",
+              "answer"
+            ],
+            "src": "code prompts.py L146-L181",
+            "url": "https://github.com/fishsure/MemWeaver/blob/356b910c49d00bbcc5fc9277dee997593be39124/prompts/prompts.py#L146-L181"
+          },
+          {
+            "name": "date",
+            "what": "timestamp; orders temporal edges and sets time gaps in the walk",
+            "kept_as": "verbatim",
+            "used_for": [
+              "index"
+            ],
+            "src": "code MemGraphRunner.py L437-L458, L1400-L1406",
+            "url": "https://github.com/fishsure/MemWeaver/blob/356b910c49d00bbcc5fc9277dee997593be39124/runners/MemGraphRunner.py#L437-L458"
+          },
+          {
+            "name": "embedding",
+            "what": "BGE-M3 vector",
+            "kept_as": "derived",
+            "used_for": [
+              "index",
+              "rerank"
+            ],
+            "src": "paper §3.3.1; code L401-L405",
+            "url": "https://github.com/fishsure/MemWeaver/blob/356b910c49d00bbcc5fc9277dee997593be39124/runners/MemGraphRunner.py#L401-L405"
+          },
+          {
+            "name": "cluster label",
+            "what": "K-means cluster; gives semantic edges and the groups that are summarized",
+            "kept_as": "derived",
+            "used_for": [
+              "index",
+              "profile"
+            ],
+            "src": "code L417-L433, L1067-L1089",
+            "url": "https://github.com/fishsure/MemWeaver/blob/356b910c49d00bbcc5fc9277dee997593be39124/runners/MemGraphRunner.py#L417-L433"
+          }
+        ]
+      },
+      {
+        "name": "Cognitive memory",
+        "role": "one preference summary per user",
+        "made_by": "backbone LLM, two prompts",
+        "fields": [
+          {
+            "name": "local summaries",
+            "what": "one LLM summary per cluster of at least 3 documents (smaller clusters are added to the first cluster)",
+            "kept_as": "summarized",
+            "used_for": [
+              "profile"
+            ],
+            "src": "code L1074-L1104, L1139-L1171",
+            "url": "https://github.com/fishsure/MemWeaver/blob/356b910c49d00bbcc5fc9277dee997593be39124/runners/MemGraphRunner.py#L1139-L1171"
+          },
+          {
+            "name": "global summary",
+            "what": "LLM merge of the local summaries, asked for at most 300 words",
+            "kept_as": "summarized",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code L1173-L1207; paper App. D.1",
+            "url": "https://github.com/fishsure/MemWeaver/blob/356b910c49d00bbcc5fc9277dee997593be39124/runners/MemGraphRunner.py#L1173-L1207"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Embed and cluster",
+        "how": "BGE-M3 embeddings, K-means",
+        "params": {
+          "K": "5 (paper App. A.3); code default 10"
+        },
+        "src": "paper App. A.3; code L39, L418-L424",
+        "url": "https://github.com/fishsure/MemWeaver/blob/356b910c49d00bbcc5fc9277dee997593be39124/runners/MemGraphRunner.py#L418-L424"
+      },
+      {
+        "step": "Link",
+        "how": "temporal edge between time-consecutive documents (weight exp(-0.01 x days)); semantic edge between documents of one cluster with cosine > 0.3",
+        "src": "code L426-L458",
+        "url": "https://github.com/fishsure/MemWeaver/blob/356b910c49d00bbcc5fc9277dee997593be39124/runners/MemGraphRunner.py#L426-L458"
+      },
+      {
+        "step": "Summarize",
+        "how": "LLM summary per cluster, then one global summary of at most 300 words",
+        "src": "code L1047-L1207; paper §3.3.2, App. D.1",
+        "url": "https://github.com/fishsure/MemWeaver/blob/356b910c49d00bbcc5fc9277dee997593be39124/runners/MemGraphRunner.py#L1047-L1207"
+      }
+    ],
+    "read": [
+      {
+        "step": "Start",
+        "round": 1,
+        "input": "query",
+        "scores": "each past document's text",
+        "how": "cosine between BGE-M3 embeddings, take the best",
+        "src": "code L1291-L1318",
+        "url": "https://github.com/fishsure/MemWeaver/blob/356b910c49d00bbcc5fc9277dee997593be39124/runners/MemGraphRunner.py#L1291-L1318"
+      },
+      {
+        "step": "Walk",
+        "round": 1,
+        "how": "score unvisited neighbours by cos(q,v)^alpha x exp(-lambda1 x gap(u,v)) x exp(-lambda2 x age(v)); pick one of the top 3 at random by normalized score; stop at the step limit or a dead end",
+        "params": {
+          "alpha": "1.5",
+          "lambda1": "0.01",
+          "lambda2": "0.02 (paper) / 0.01 (run.sh)",
+          "steps": "10 (paper) / 15 (run.sh)"
+        },
+        "src": "code L1328-L1437; paper Eq. 2, App. A.3",
+        "url": "https://github.com/fishsure/MemWeaver/blob/356b910c49d00bbcc5fc9277dee997593be39124/runners/MemGraphRunner.py#L1328-L1437"
+      },
+      {
+        "step": "Rerank",
+        "round": 1,
+        "input": "query",
+        "scores": "walked documents",
+        "how": "BGE-M3 dense score, keep top 5; fill from the rest of the history if the walk visited fewer",
+        "params": {
+          "k": "5"
+        },
+        "src": "code L889-L920",
+        "url": "https://github.com/fishsure/MemWeaver/blob/356b910c49d00bbcc5fc9277dee997593be39124/runners/MemGraphRunner.py#L889-L920"
+      }
+    ],
+    "answer_context": {
+      "sees": "the user summary and 5 past documents",
+      "format": "\"User summary: {summary}\" then \"The historical profiles are as follows:\" with the documents (each truncated to share the 3000-token input), then the task instruction and query",
+      "excludes": [
+        "local cluster summaries",
+        "graph edges",
+        "dates (unless the task's corpus text includes them)"
+      ],
+      "src": "code prompts.py L146-L181; generate.py L45-L46",
+      "url": "https://github.com/fishsure/MemWeaver/blob/356b910c49d00bbcc5fc9277dee997593be39124/prompts/prompts.py#L146-L181"
+    },
+    "paper_vs_code": [
+      {
+        "topic": "What the cognitive summary groups",
+        "paper": "time phases cut where similarity between consecutive documents drops (§3.3.2)",
+        "code": "the K-means clusters of the graph step; clusters under 3 documents are appended to the first cluster (App. D.1 also speaks of clusters)",
+        "src": "MemGraphRunner.py L1067-L1089",
+        "url": "https://github.com/fishsure/MemWeaver/blob/356b910c49d00bbcc5fc9277dee997593be39124/runners/MemGraphRunner.py#L1067-L1089"
+      },
+      {
+        "topic": "Semantic edges",
+        "paper": "any two documents in the same cluster",
+        "code": "same cluster and cosine > 0.3",
+        "src": "L426-L433",
+        "url": "https://github.com/fishsure/MemWeaver/blob/356b910c49d00bbcc5fc9277dee997593be39124/runners/MemGraphRunner.py#L426-L433"
+      },
+      {
+        "topic": "Time terms of the step score",
+        "paper": "lambda1 on the gap to the query time, lambda2 on the gap between u and v",
+        "code": "lambda1 on the gap between u and v, lambda2 on the gap to the newest history item",
+        "src": "L1400-L1413",
+        "url": "https://github.com/fishsure/MemWeaver/blob/356b910c49d00bbcc5fc9277dee997593be39124/runners/MemGraphRunner.py#L1400-L1413"
+      },
+      {
+        "topic": "Choosing the next node",
+        "paper": "sample among all neighbours in proportion to the score",
+        "code": "sample among the top 3 using probabilities normalized over all neighbours; numpy rejects probabilities that do not sum to 1, so with more than 3 unvisited neighbours the walk raises and the code falls back to plain retrieval",
+        "src": "L1421-L1432, L922-L1045",
+        "url": "https://github.com/fishsure/MemWeaver/blob/356b910c49d00bbcc5fc9277dee997593be39124/runners/MemGraphRunner.py#L1421-L1432"
+      },
+      {
+        "topic": "Behavioral memory",
+        "paper": "the unique nodes visited by the walk",
+        "code": "walked nodes reranked by dense score, top 5, topped up from the rest",
+        "src": "L889-L920",
+        "url": "https://github.com/fishsure/MemWeaver/blob/356b910c49d00bbcc5fc9277dee997593be39124/runners/MemGraphRunner.py#L889-L920"
+      },
+      {
+        "topic": "Example settings",
+        "paper": "K = 5 clusters, 10 steps, lambda2 = 0.02, test split",
+        "code": "run.sh: K-means off (no semantic edges, no cluster summaries), walk_length 15, lambda2 0.01, dev split",
+        "src": "script/run.sh",
+        "url": "https://github.com/fishsure/MemWeaver/blob/356b910c49d00bbcc5fc9277dee997593be39124/script/run.sh#L1-L19"
+      },
+      {
+        "topic": "Decoding",
+        "paper": "temperature 0.7, top-p 0.95, 5 seeds averaged",
+        "code": "generate.py uses temperature 0",
+        "src": "generate/generate.py L89-L92",
+        "url": "https://github.com/fishsure/MemWeaver/blob/356b910c49d00bbcc5fc9277dee997593be39124/generate/generate.py#L89-L92"
+      },
+      {
+        "topic": "Incremental update",
+        "paper": "§3.3.3 and Fig. 5",
+        "code": "not present; the graph is rebuilt for every query and the summary once per user",
+        "src": "L840-L883, L698-L752",
+        "url": "https://github.com/fishsure/MemWeaver/blob/356b910c49d00bbcc5fc9277dee997593be39124/runners/MemGraphRunner.py#L840-L883"
+      }
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 250",
+        "body": "<text class=\"fig-t\" x=\"40\" y=\"16\" text-anchor=\"middle\">History</text><rect class=\"gi-ev\" x=\"6\" y=\"26\" width=\"58\" height=\"20\" rx=\"5\"/><line class=\"gi-t\" x1=\"13\" y1=\"36\" x2=\"50\" y2=\"36\"/><rect class=\"gi-ev\" x=\"16\" y=\"52\" width=\"58\" height=\"20\" rx=\"5\"/><line class=\"gi-t\" x1=\"23\" y1=\"62\" x2=\"60\" y2=\"62\"/><rect class=\"gi-ev\" x=\"6\" y=\"78\" width=\"58\" height=\"20\" rx=\"5\"/><line class=\"gi-t\" x1=\"13\" y1=\"88\" x2=\"50\" y2=\"88\"/><rect class=\"gi-ev\" x=\"16\" y=\"104\" width=\"58\" height=\"20\" rx=\"5\"/><line class=\"gi-t\" x1=\"23\" y1=\"114\" x2=\"60\" y2=\"114\"/><rect class=\"gi-ev\" x=\"6\" y=\"130\" width=\"58\" height=\"20\" rx=\"5\"/><line class=\"gi-t\" x1=\"13\" y1=\"140\" x2=\"50\" y2=\"140\"/><rect class=\"gi-ev\" x=\"16\" y=\"156\" width=\"58\" height=\"20\" rx=\"5\"/><line class=\"gi-t\" x1=\"23\" y1=\"166\" x2=\"60\" y2=\"166\"/><rect class=\"gi-ev\" x=\"6\" y=\"182\" width=\"58\" height=\"20\" rx=\"5\"/><line class=\"gi-t\" x1=\"13\" y1=\"192\" x2=\"50\" y2=\"192\"/><text class=\"fig-s\" x=\"40\" y=\"220\" text-anchor=\"middle\">dated texts</text><text class=\"fig-s\" x=\"40\" y=\"232\" text-anchor=\"middle\">(papers, reviews…)</text><path class=\"gi-a\" d=\"M80.0 114.0 L89.0 114.0\"/><polygon class=\"gi-ah\" points=\"96.0,114.0 89.0,118.0 89.0,110.0\"/><rect class=\"gi-v fig-soft\" x=\"96\" y=\"90\" width=\"72\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"132.0\" y=\"106.0\" text-anchor=\"middle\">Embed +</text><text class=\"fig-s\" x=\"132.0\" y=\"119.0\" text-anchor=\"middle\">K-means</text><text class=\"fig-s\" x=\"132.0\" y=\"131.0\" text-anchor=\"middle\">BGE-M3</text><path class=\"gi-a\" d=\"M168.0 104.0 L182.0 104.0 L182.0 60.0 L189.0 60.0\"/><polygon class=\"gi-ah\" points=\"196.0,60.0 189.0,64.0 189.0,56.0\"/><text class=\"fig-t\" x=\"376\" y=\"14\" text-anchor=\"middle\">Behavioral graph (built per query)</text><path class=\"gi-e d\" d=\"M214 62 Q 262.0 32 310 62\"/><path class=\"gi-e d\" d=\"M310 62 Q 382.0 32 454 62\"/><path class=\"gi-e d\" d=\"M262 62 Q 310.0 92 358 62\"/><path class=\"gi-e d\" d=\"M358 62 Q 382.0 92 406 62\"/><path class=\"gi-e d\" d=\"M406 62 Q 454.0 92 502 62\"/><line class=\"gi-e\" x1=\"214\" y1=\"62\" x2=\"262\" y2=\"62\"/><line class=\"gi-e\" x1=\"262\" y1=\"62\" x2=\"310\" y2=\"62\"/><line class=\"gi-e\" x1=\"310\" y1=\"62\" x2=\"358\" y2=\"62\"/><line class=\"gi-e\" x1=\"358\" y1=\"62\" x2=\"406\" y2=\"62\"/><line class=\"gi-e\" x1=\"406\" y1=\"62\" x2=\"454\" y2=\"62\"/><line class=\"gi-e\" x1=\"454\" y1=\"62\" x2=\"502\" y2=\"62\"/><circle class=\"gi-n\" cx=\"214\" cy=\"62\" r=\"7\"/><circle class=\"gi-n d\" cx=\"262\" cy=\"62\" r=\"7\"/><circle class=\"gi-n\" cx=\"310\" cy=\"62\" r=\"7\"/><circle class=\"gi-n d\" cx=\"358\" cy=\"62\" r=\"7\"/><circle class=\"gi-n d\" cx=\"406\" cy=\"62\" r=\"7\"/><circle class=\"gi-n\" cx=\"454\" cy=\"62\" r=\"7\"/><circle class=\"gi-n d\" cx=\"502\" cy=\"62\" r=\"7\"/><line class=\"gi-e\" x1=\"206\" y1=\"104\" x2=\"226\" y2=\"104\"/><text class=\"fig-s\" x=\"232\" y=\"108\" text-anchor=\"start\">temporal: consecutive, w = e^(−0.01·days)</text><line class=\"gi-e d\" x1=\"206\" y1=\"118\" x2=\"226\" y2=\"118\"/><text class=\"fig-s\" x=\"232\" y=\"122\" text-anchor=\"start\">semantic: same cluster and cos &gt; 0.3</text><path class=\"gi-a\" d=\"M168.0 124.0 L182.0 124.0 L182.0 172.0 L189.0 172.0\"/><polygon class=\"gi-ah\" points=\"196.0,172.0 189.0,176.0 189.0,168.0\"/><text class=\"fig-t\" x=\"376\" y=\"146\" text-anchor=\"middle\">Cognitive memory (once per user)</text><path class=\"gi-h\" d=\"M200 160 C 198 150, 244 148, 248 162 C 252 178, 212 186, 204 178 C 198 172, 200 166, 200 160 Z\"/><circle class=\"gi-n\" cx=\"214\" cy=\"164\" r=\"5\"/><circle class=\"gi-n\" cx=\"232\" cy=\"160\" r=\"5\"/><circle class=\"gi-n\" cx=\"226\" cy=\"175\" r=\"5\"/><path class=\"gi-h\" d=\"M200 198 C 198 188, 244 186, 248 200 C 252 216, 212 224, 204 216 C 198 210, 200 204, 200 198 Z\"/><circle class=\"gi-n d\" cx=\"214\" cy=\"202\" r=\"5\"/><circle class=\"gi-n d\" cx=\"232\" cy=\"198\" r=\"5\"/><circle class=\"gi-n d\" cx=\"226\" cy=\"213\" r=\"5\"/><text class=\"fig-s\" x=\"224\" y=\"238\" text-anchor=\"middle\">clusters ≥ 3</text><path class=\"gi-a\" d=\"M252.0 170.0 L257.1 175.1\"/><polygon class=\"gi-ah\" points=\"262.0,180.0 254.2,177.9 259.9,172.2\"/><path class=\"gi-a\" d=\"M252.0 206.0 L257.1 200.9\"/><polygon class=\"gi-ah\" points=\"262.0,196.0 259.9,203.8 254.2,198.1\"/><rect class=\"gi-llm\" x=\"262\" y=\"164\" width=\"92\" height=\"46\" rx=\"8\"/><text class=\"fig-t\" x=\"308.0\" y=\"185.0\" text-anchor=\"middle\">Local summary</text><text class=\"fig-s\" x=\"308.0\" y=\"198.0\" text-anchor=\"middle\">one per cluster</text><path class=\"gi-a\" d=\"M354.0 187.0 L359.0 187.0\"/><polygon class=\"gi-ah\" points=\"366.0,187.0 359.0,191.0 359.0,183.0\"/><rect class=\"gi-llm\" x=\"366\" y=\"164\" width=\"94\" height=\"46\" rx=\"8\"/><text class=\"fig-t\" x=\"413.0\" y=\"185.0\" text-anchor=\"middle\">Global summary</text><text class=\"fig-s\" x=\"413.0\" y=\"198.0\" text-anchor=\"middle\">≤ 300 words</text><path class=\"gi-a\" d=\"M460.0 187.0 L465.0 187.0\"/><polygon class=\"gi-ah\" points=\"472.0,187.0 465.0,191.0 465.0,183.0\"/><rect class=\"gi-hi\" x=\"472\" y=\"164\" width=\"84\" height=\"46\" rx=\"8\"/><text class=\"fig-t\" x=\"514.0\" y=\"185.0\" text-anchor=\"middle\">User summary</text><text class=\"fig-s\" x=\"514.0\" y=\"198.0\" text-anchor=\"middle\">one text</text><text class=\"fig-s\" x=\"376\" y=\"232\" text-anchor=\"middle\">paper: time phases; code: K-means clusters</text>",
+        "text": [
+          "Past documents are embedded and clustered; a graph links documents that are consecutive in time and documents in the same cluster (semantic edges need cosine > 0.3 in the code).",
+          "An LLM summarizes each group of documents and merges those summaries into one short user summary; the paper groups by time phases, the code by the same K-means clusters."
+        ],
+        "src": "paper §3.3.1-3.3.2, App. A.3, D.1; code MemGraphRunner.py L381-L468, L1047-L1207 (values follow the code)",
+        "url": "https://github.com/fishsure/MemWeaver/blob/356b910c49d00bbcc5fc9277dee997593be39124/runners/MemGraphRunner.py#L381-L468"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 240",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"40\" width=\"62\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"35.0\" y=\"62.0\" text-anchor=\"middle\">Query</text><text class=\"fig-s\" x=\"35.0\" y=\"75.0\" text-anchor=\"middle\">task input</text><path class=\"gi-a\" d=\"M66.0 64.0 L71.0 64.0\"/><polygon class=\"gi-ah\" points=\"78.0,64.0 71.0,68.0 71.0,60.0\"/><rect class=\"gi-v fig-soft\" x=\"78\" y=\"40\" width=\"86\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"121.0\" y=\"62.0\" text-anchor=\"middle\">Start node</text><text class=\"fig-s\" x=\"121.0\" y=\"75.0\" text-anchor=\"middle\">most similar item</text><path class=\"gi-a\" d=\"M164.0 64.0 L169.0 64.0\"/><polygon class=\"gi-ah\" points=\"176.0,64.0 169.0,68.0 169.0,60.0\"/><rect class=\"gi-f\" x=\"176\" y=\"34\" width=\"110\" height=\"60\" rx=\"8\"/><text class=\"fig-t\" x=\"231.0\" y=\"56.0\" text-anchor=\"middle\">Random walk</text><text class=\"fig-s\" x=\"231.0\" y=\"69.0\" text-anchor=\"middle\">≤ 10 unique nodes</text><text class=\"fig-s\" x=\"231.0\" y=\"81.0\" text-anchor=\"middle\">1 of top-3 neighbours</text><path class=\"gi-a\" d=\"M286.0 64.0 L291.0 64.0\"/><polygon class=\"gi-ah\" points=\"298.0,64.0 291.0,68.0 291.0,60.0\"/><rect class=\"gi-v fig-soft\" x=\"298\" y=\"40\" width=\"82\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"339.0\" y=\"62.0\" text-anchor=\"middle\">Rerank</text><text class=\"fig-s\" x=\"339.0\" y=\"75.0\" text-anchor=\"middle\">dense, keep 5</text><path class=\"gi-a\" d=\"M380.0 64.0 L393.0 64.0\"/><polygon class=\"gi-ah\" points=\"400.0,64.0 393.0,68.0 393.0,60.0\"/><rect class=\"gi-llm\" x=\"400\" y=\"30\" width=\"76\" height=\"68\" rx=\"8\"/><text class=\"fig-t\" x=\"438.0\" y=\"56.0\" text-anchor=\"middle\">Generate</text><text class=\"fig-s\" x=\"438.0\" y=\"69.0\" text-anchor=\"middle\">Qwen3-8B or</text><text class=\"fig-s\" x=\"438.0\" y=\"81.0\" text-anchor=\"middle\">Llama-3.1-8B</text><path class=\"gi-a\" d=\"M476.0 64.0 L481.0 64.0\"/><polygon class=\"gi-ah\" points=\"488.0,64.0 481.0,68.0 481.0,60.0\"/><rect class=\"gi-hi\" x=\"488\" y=\"40\" width=\"68\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"522.0\" y=\"62.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"522.0\" y=\"75.0\" text-anchor=\"middle\">≤ 64 tokens</text><rect class=\"gi-hi\" x=\"392\" y=\"142\" width=\"92\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"438.0\" y=\"160.0\" text-anchor=\"middle\">User summary</text><text class=\"fig-s\" x=\"438.0\" y=\"173.0\" text-anchor=\"middle\">cognitive</text><path class=\"gi-a\" d=\"M438.0 142.0 L438.0 106.0\"/><polygon class=\"gi-ah\" points=\"438.0,99.0 442.0,106.0 434.0,106.0\"/><rect class=\"gi-l\" x=\"4\" y=\"116\" width=\"370\" height=\"46\" rx=\"8\"/><text class=\"fig-t\" x=\"14\" y=\"134\" text-anchor=\"start\">step score  cos(q, v)^1.5 · e^(−0.01·gap u→v) · e^(−λ2·age v)</text><text class=\"fig-s\" x=\"14\" y=\"151\" text-anchor=\"start\">visited nodes skipped; walk stops at a dead end</text><path class=\"gi-a d\" d=\"M231.0 116.0 L231.0 102.0\"/><polygon class=\"gi-ah\" points=\"231.0,95.0 235.0,102.0 227.0,102.0\"/><text class=\"fig-s\" x=\"4\" y=\"186\" text-anchor=\"start\">fewer than 5 walked: fill with dense top from the rest</text><text class=\"fig-s\" x=\"4\" y=\"200\" text-anchor=\"start\">walk error: dense top-5 over the whole history</text><text class=\"fig-s\" x=\"4\" y=\"226\" text-anchor=\"start\">prompt = \"User summary: …\" + 5 past items + task instruction and query</text>",
+        "text": [
+          "The walk starts at the past document most similar to the query and repeatedly steps to one of the three best-scoring unvisited neighbours, for at most 10 nodes.",
+          "The visited documents are reranked by dense similarity and the top 5 go into the prompt together with the user summary."
+        ],
+        "src": "code MemGraphRunner.py L840-L920, L1264-L1437; paper §3.3.1, §3.4, App. A.3",
+        "url": "https://github.com/fishsure/MemWeaver/blob/356b910c49d00bbcc5fc9277dee997593be39124/runners/MemGraphRunner.py#L1328-L1437"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "K-means clusters",
+        "value": "5 (paper); code default 10",
+        "src": "paper App. A.3; code L39",
+        "section": "construction"
+      },
+      {
+        "label": "Semantic edge needs",
+        "value": "same cluster and cosine > 0.3",
+        "src": "code L432",
+        "section": "construction"
+      },
+      {
+        "label": "Cluster kept for a summary if",
+        "value": "≥ 3 documents",
+        "src": "code L1077",
+        "section": "construction"
+      },
+      {
+        "label": "Global summary length",
+        "value": "≤ 300 words",
+        "src": "paper App. D.1",
+        "section": "construction"
+      },
+      {
+        "label": "Walk length",
+        "value": "≤ 10 nodes",
+        "src": "paper App. A.3",
+        "section": "method"
+      },
+      {
+        "label": "alpha / lambda1 / lambda2",
+        "value": "1.5 / 0.01 / 0.02",
+        "src": "paper App. A.3",
+        "section": "method"
+      },
+      {
+        "label": "Past documents in the prompt",
+        "value": "5",
+        "src": "code ranking.py L30, run.sh",
+        "section": "method"
+      },
+      {
+        "label": "Input / output tokens",
+        "value": "3000 / 64",
+        "src": "paper App. A.2",
+        "section": "method"
+      },
+      {
+        "label": "Runs averaged",
+        "value": "5 seeds",
+        "src": "paper App. A.2",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Embed documents and query",
+        "model": "BGE-M3",
+        "kind": "retriever",
+        "src": "paper §4.1.4, App. A.3"
+      },
+      {
+        "role": "Cluster",
+        "model": "K-means",
+        "kind": "rule",
+        "src": "paper §3.3.1"
+      },
+      {
+        "role": "Random walk",
+        "model": "similarity x time-decay step score",
+        "kind": "rule",
+        "src": "paper Eq. 2; code L1328-L1437",
+        "url": "https://github.com/fishsure/MemWeaver/blob/356b910c49d00bbcc5fc9277dee997593be39124/runners/MemGraphRunner.py#L1328-L1437"
+      },
+      {
+        "role": "Rerank walked documents",
+        "model": "BGE-M3 dense score, top 5",
+        "kind": "retriever",
+        "src": "code L897-L900",
+        "url": "https://github.com/fishsure/MemWeaver/blob/356b910c49d00bbcc5fc9277dee997593be39124/runners/MemGraphRunner.py#L897-L900"
+      },
+      {
+        "role": "Local and global summaries",
+        "model": "backbone LLM (Qwen3-8B or Llama-3.1-8B)",
+        "kind": "llm",
+        "src": "paper App. A.3"
+      },
+      {
+        "role": "Generate",
+        "model": "Qwen3-8B or Llama-3.1-8B-Instruct",
+        "kind": "llm",
+        "src": "paper §4.1.4"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "LaMP-1 Acc",
+        "LaMP-3 MAE ↓",
+        "LaMP-4 R-1",
+        "LaMP-5 R-1",
+        "LaMP-7 R-1"
+      ],
+      "rows": [
+        [
+          "Full MemWeaver",
+          "0.6733",
+          "0.2800",
+          "0.1724",
+          "0.4757",
+          "0.4792"
+        ],
+        [
+          "w/o cognitive memory",
+          "0.6417",
+          "0.2988",
+          "0.1651",
+          "0.4630",
+          "0.4543"
+        ],
+        [
+          "w/o behavioral memory",
+          "0.6402",
+          "0.6400",
+          "0.1069",
+          "0.4209",
+          "0.4279"
+        ],
+        [
+          "w/o temporal edges",
+          "0.6233",
+          "0.3016",
+          "0.1636",
+          "0.4621",
+          "0.4488"
+        ],
+        [
+          "w/o semantic edges",
+          "0.6324",
+          "0.2933",
+          "0.1612",
+          "0.4560",
+          "0.4436"
+        ],
+        [
+          "w/o edge weighting",
+          "0.5708",
+          "0.3300",
+          "0.1614",
+          "0.4620",
+          "0.4431"
+        ],
+        [
+          "w/o clustering (summary)",
+          "0.6431",
+          "0.2892",
+          "0.1665",
+          "0.4625",
+          "0.4620"
+        ],
+        [
+          "w/o global summary",
+          "0.6548",
+          "0.2944",
+          "0.1653",
+          "0.4676",
+          "0.4519"
+        ]
+      ],
+      "src": "paper Table 2 (Qwen3-8B)"
+    },
+    "discussion": {
+      "takeaway": "Choosing past documents by a walk that mixes query similarity with time structure, and adding an LLM summary of the user, beat plain and trained retrievers on all six LaMP tasks with 8B models; the concrete documents matter more than the summary.",
+      "claims": [
+        {
+          "claim": "MemWeaver is best on all twelve LaMP metrics with both backbones.",
+          "evidence": "Qwen3-8B LaMP-1 Acc 0.6733 vs 0.6566 (CFRAG), LaMP-3 MAE 0.2800 vs 0.3266, LaMP-5 R-1 0.4757 vs 0.4698; t-test p < 0.05. Table 1, §4.2"
+        },
+        {
+          "claim": "Both memories are needed, with behavioral memory as the base.",
+          "evidence": "Without behavioral memory LaMP-4 R-1 falls from 0.1724 to 0.1069; without cognitive memory to 0.1651. Table 2, §4.3.1"
+        },
+        {
+          "claim": "Edge weighting and semantic edges matter more than temporal edges, although temporal edges are traversed more.",
+          "evidence": "w/o edge weighting LaMP-1 0.5708, w/o semantic 0.6324, w/o temporal 0.6233 (full 0.6733); temporal edges are the majority of traversals on every task. Table 2, Fig. 3"
+        },
+        {
+          "claim": "Incremental updates approach a full rebuild at a fraction of the cost.",
+          "evidence": "Fig. 5 (accuracy and tasks/s vs history share); no table of numbers."
+        },
+        {
+          "claim": "It also beats memory systems.",
+          "evidence": "LaMP-1 Acc 0.673 vs 0.652 (Mem0), 0.650 (MemoRAG), 0.579 (Memory-R1). Table 5, App. C.2"
+        }
+      ],
+      "limits": [
+        "The paper has no limitations section; §4.6 notes that the best recency and continuity weights depend on the task."
+      ],
+      "limits_src": "paper §4.6",
+      "reading": [
+        "The prompt holds 5 original documents plus a summary; in the released code the walk only narrows the pool before a dense top-5, so the gap to the BGE baseline (also top-k dense) comes from which documents the walk reaches and from the summary.",
+        "In the code, a node with more than 3 unvisited neighbours makes the sampling call raise, and the walk falls back to plain retrieval; with semantic edges on, dense clusters make this common. The example script turns K-means off, leaving a pure temporal chain.",
+        "In Table 1 every LaMP-1 F1 is exactly half of the accuracy, and LaMP-2 F1 (0.025-0.031) is about a fifteenth of the accuracy; the paper does not explain these F1 values.",
+        "Without behavioral memory (summary only) LaMP-3 MAE is 0.64, worse than no personalization at all (0.52), so the summary alone hurts rating prediction.",
+        "Without edge weighting LaMP-1 accuracy (0.5708) is below the Random baseline (0.58).",
+        "The appendix memory baselines (Mem0, MemoRAG, Memory-R1, Table 5) come without setup details (backbone, what is stored), so how they were run cannot be checked.",
+        "Baselines' top-k is not stated in the paper; the code default is 5."
+      ]
+    }
+  }
+}

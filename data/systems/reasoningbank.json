@@ -1,0 +1,634 @@
+{
+  "id": "reasoningbank",
+  "name": "ReasoningBank",
+  "paper": {
+    "title": "ReasoningBank: Scaling Agent Self-Evolving with Reasoning Memory",
+    "arxiv": "2509.25140",
+    "url": "https://arxiv.org/abs/2509.25140",
+    "venue": "ICLR 2026",
+    "venue_short": "ICLR",
+    "track": "main",
+    "year": 2026,
+    "code": "https://github.com/google-research/reasoning-bank"
+  },
+  "design": {
+    "construction": {
+      "unit": "memory item: title, one-line description, 1-3 sentence content; up to 3 per finished task",
+      "kept_as": "LLM-distilled strategies and lessons (the raw trajectory is stored alongside but never read)",
+      "processing": "LLM judge labels the finished trajectory success/failure; a success prompt asks why it worked, a failure prompt asks what to avoid",
+      "trigger": "session-end",
+      "writer": "the agent's own backbone LLM (Gemini-2.5-flash/pro or Claude-3.7-sonnet), temperature 1.0"
+    },
+    "organization": {
+      "structure": "flat list of per-task entries (query, trajectory, label, memory items)",
+      "stores": "one JSONL bank plus one query-embedding cache per website subset (code)",
+      "index": "gemini-embedding-001 (3072-d) embedding of each past task query"
+    },
+    "management": {
+      "operations": "append the new entry after every task; no merging, pruning or rewriting",
+      "conflicts": null,
+      "forgetting": null,
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "the new task's query, prefixed with an instruction to find helpful prior queries (code)",
+      "candidates": "cosine similarity between the new query and every past task query",
+      "selection": "top-k past tasks, k = 1 by default; all their memory items are returned",
+      "budget": "1 past task, i.e. up to 3 items (up to 5 after MaTTS parallel extraction)"
+    },
+    "use": {
+      "context": "memory items appended to the agent's system prompt with a note to decide at each step whether to use each item",
+      "reasoning": "ReAct web agent in BrowserGym, up to 30 steps; bash-only mini-SWE-agent for SWE-Bench"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "fixed-rule",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "flat",
+    "index": "vector",
+    "management": "append-only",
+    "candidates": "dense",
+    "decides": "top-k rule",
+    "note": "Items are fetched as a block by similarity of task queries (top-1 task); the item text itself is never searched."
+  },
+  "tags": {
+    "fidelity": "extracted",
+    "structure": [
+      "flat"
+    ],
+    "write_time": [
+      "extract"
+    ],
+    "selection": [
+      "dense"
+    ],
+    "memory_type": [
+      "procedural"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "web",
+      "code"
+    ]
+  },
+  "stages": {
+    "ingestion": "After each test task the agent's trajectory (think/action steps; code uses the agent's thinking as a stand-in for page observations) and final answer are collected; no ground truth is used.",
+    "construction": "The backbone LLM, prompted as a judge (temperature 0), labels the trajectory success or failure; a success-specific or failure-specific prompt then distils at most 3 memory items (title, description, content) at temperature 1.0.",
+    "organization": "Each task becomes one entry (query, trajectory, label, items) appended to a flat JSON bank; the query's embedding is cached separately. The code keeps one bank per WebArena website subset.",
+    "update": "Plain append after every task, including failures; no merging, pruning or deduplication. MaTTS instead extracts up to 5 items by contrasting k rollouts of the same task (parallel) or uses self-refinement notes (sequential).",
+    "retrieval": "The new query is embedded (gemini-embedding-001) and compared by cosine with past task queries; the memory items of the top-1 most similar past task are returned.",
+    "answer": "The items are appended to the agent's system prompt with an instruction to state at each step whether it uses each item; the ReAct agent then acts for up to 30 steps.",
+    "learning": ""
+  },
+  "summary": "Distils each finished agent task, judged by the agent itself as success or failure, into up to three short strategy or lesson items, retrieves the items of the most similar past task by query embedding, and adds memory-aware test-time scaling (MaTTS) that contrasts several rollouts of one task to write better items.",
+  "verified": false,
+  "notes": "Venue: ICLR 2026 poster (OpenReview jL7fwchScm, venue 'ICLR 2026 Poster'); arXiv comment 'Accepted to ICLR 2026'. PDF read: arXiv v2 (16 Mar 2026). Code: google-research/reasoning-bank at ed806117 (2026-05-18, HEAD), linked from the paper; covers WebArena and SWE-Bench, not Mind2Web.\nDESIGN: paper §3.2-3.3, App. A.1-A.3, B.1-B.2; code WebArena/memory_management.py, run.py, induce_memory.py, pipeline_memory.py, agents/legacy/agent.py, prompts/memory_instruction.py. trigger 'session-end' = after each task episode. fidelity 'extracted': the items that are read are LLM-distilled; the trajectory is stored verbatim but unused at retrieval. The paper counts retrieval unit as 'experiences' (past tasks), not items.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2509.25140v2 (PDF read 2026-09-30)",
+      "code": "https://github.com/google-research/reasoning-bank/tree/ed80611788292ea739f1effd31f16c53823b8a0d/",
+      "code_note": "HEAD ed806117 (2026-05-18). The first public release 1f334c1 (2026-02-26) matched the paper's Fig. 9 prompts word for word but used extraction temperature 0.7 and treated reward 0 as success (fixed in 250f51e, 2026-03-26); commit 50ce587 (2026-04-22, after paper v2) reworded the extraction prompts and started passing the judge's reasoning to the extractor. Line citations are to HEAD. Mind2Web code is not released."
+    },
+    "headline": [
+      "Memory is looked up by the similarity of task queries: the new query is matched against past queries and the items of the single closest past task are shown. The items' own text is never searched.",
+      "Failed tasks also write memory, labelled by the agent's own LLM judge, which agreed with the benchmark label 72.7% of the time on WebArena-Shopping.",
+      "The bank only grows: one entry per task, no merging or pruning."
+    ],
+    "units": [
+      {
+        "name": "Memory entry",
+        "role": "one finished task and what was learned from it",
+        "made_by": "backbone LLM (judge, then extractor)",
+        "fields": [
+          {
+            "name": "task query",
+            "what": "the task instruction; its embedding is the only retrieval key",
+            "kept_as": "verbatim",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper App. A.2; code memory_management.py L172-L215",
+            "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/memory_management.py#L172-L215"
+          },
+          {
+            "name": "memory items",
+            "what": "up to 3 Markdown items (title, one-sentence description, 1-3 sentence content), stored as the extractor output split on blank lines",
+            "kept_as": "extracted",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.2, Fig. 9; code induce_memory.py L159-L186",
+            "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/induce_memory.py#L159-L186"
+          },
+          {
+            "name": "trajectory",
+            "what": "the agent's think/action steps as run",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "paper App. A.2 (storage); code induce_memory.py L177-L186; not read by run.py",
+            "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/induce_memory.py#L177-L186"
+          },
+          {
+            "name": "label",
+            "what": "success or failure from the LLM judge; chooses the extraction prompt",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "code induce_memory.py L123-L134",
+            "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/induce_memory.py#L123-L134"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Judge",
+        "how": "the backbone LLM reads the query, the steps, the final page and the answer and outputs success or failure (temperature 0)",
+        "out": "72.7% agreement with benchmark labels on WebArena-Shopping",
+        "src": "paper App. A.1 Fig. 10, §5; code autoeval/",
+        "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/autoeval/evaluate_trajectory.py#L78-L105"
+      },
+      {
+        "step": "Extract",
+        "how": "success prompt: why did it work; failure prompt: why did it fail and what prevents it; both ask for at most 3 non-overlapping, site-independent items",
+        "params": {
+          "items": "≤ 3",
+          "temperature": "1.0"
+        },
+        "src": "paper App. A.1-A.2; code memory_instruction.py L15-L61, induce_memory.py L159-L166",
+        "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/prompts/memory_instruction.py#L15-L61"
+      },
+      {
+        "step": "Append",
+        "how": "write one JSON line per task to the website's bank; the query embedding is cached when the task starts",
+        "out": "one entry per task, success or failure",
+        "src": "paper App. A.2; code induce_memory.py L177-L186, memory_management.py L189-L197",
+        "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/induce_memory.py#L177-L186"
+      },
+      {
+        "step": "MaTTS parallel (optional)",
+        "how": "k rollouts of the same task are given together; the LLM contrasts them and writes at most 5 items",
+        "params": {
+          "k": "up to 5",
+          "items": "≤ 5"
+        },
+        "src": "paper §3.3, App. A.3 Fig. 11; code memory_instruction.py L63-L90",
+        "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/prompts/memory_instruction.py#L63-L90"
+      }
+    ],
+    "read": [
+      {
+        "step": "Embed",
+        "round": 1,
+        "input": "new task query",
+        "scores": "the query with an instruction prefix ('select relevant prior queries')",
+        "how": "gemini-embedding-001, 3072 dimensions",
+        "src": "code memory_management.py L78-L90, L203-L208",
+        "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/memory_management.py#L203-L208"
+      },
+      {
+        "step": "Match",
+        "round": 1,
+        "input": "query embedding",
+        "scores": "past task queries only (not the memory items)",
+        "how": "cosine similarity against every cached past query",
+        "src": "paper App. A.2; code memory_management.py L210-L215",
+        "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/memory_management.py#L210-L215"
+      },
+      {
+        "step": "Take top-1",
+        "round": 1,
+        "how": "the entry of the most similar past task; all its items are joined with blank lines",
+        "params": {
+          "k": "1"
+        },
+        "out": "up to 3 items",
+        "src": "paper App. A.2; code run.py L177-L193",
+        "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/run.py#L177-L193"
+      },
+      {
+        "step": "Inject",
+        "round": 1,
+        "how": "items appended to the system prompt after a note asking the agent to say at each step whether it uses each item",
+        "src": "paper App. A.2; code agents/legacy/agent.py L132-L137",
+        "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/agents/legacy/agent.py#L132-L137"
+      }
+    ],
+    "answer_context": {
+      "sees": "the memory items of the single most similar past task, inside the system prompt",
+      "format": "web-agent instructions, then \"Below are some memory items that I accumulated...\", then the extractor's Markdown output (# Memory Item i / ## Title / ## Description / ## Content)",
+      "excludes": [
+        "past trajectories",
+        "success/failure labels",
+        "items of other past tasks"
+      ],
+      "includes": [
+        "up to 3 items with title, description and content",
+        "the current page and action history (as usual for the agent)"
+      ],
+      "note": "Paper App. A.2 says each item is shown by title and content; the code passes the extractor output unchanged, so descriptions are included too.",
+      "src": "code run.py L177-L193; agents/legacy/agent.py L132-L137",
+      "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/agents/legacy/agent.py#L132-L137"
+    },
+    "compression": [
+      {
+        "what": "memory items vs the trajectory they come from",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported. The prompt caps output at 3 items of 1-3 sentences each; extraction outputs average 1,562 tokens per task including the model's reasoning (Table 5).",
+        "src": "paper App. A.1, Table 5",
+        "url": "https://arxiv.org/pdf/2509.25140"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "WebArena overall SR, Gemini-2.5-flash",
+        "value": "No memory 40.5 · Synapse 42.1 · AWM 44.1 · ReasoningBank 48.8 · +MaTTS 51.8",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "Tokens per task (WebArena, Gemini-2.5-flash)",
+        "value": "53,054 vs 50,847 without memory (+4.3%)",
+        "src": "paper Table 5"
+      },
+      {
+        "label": "LLM judge agreement with gold labels",
+        "value": "72.7% (WebArena-Shopping)",
+        "src": "paper §5"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "What the agent is shown",
+        "paper": "each item by title and content",
+        "code": "the full extractor output, including descriptions",
+        "src": "run.py L188-L193",
+        "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/run.py#L188-L193"
+      },
+      {
+        "topic": "Extraction prompt",
+        "paper": "Fig. 9: description is a one-sentence summary; extractor sees query and trajectory",
+        "code": "description says when or when not to use the item, and the judge's reasoning is appended to the input (changed 2026-04-22, after paper v2)",
+        "src": "memory_instruction.py L15-L61; induce_memory.py L145-L162",
+        "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/induce_memory.py#L145-L162"
+      },
+      {
+        "topic": "Memory scope on WebArena",
+        "paper": "one ReasoningBank accumulated over the test stream",
+        "code": "one bank file per website subset, so Multi-site tasks (29) only see memory from other Multi tasks",
+        "src": "pipeline_memory.py L60, L84",
+        "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/pipeline_memory.py#L53-L86"
+      },
+      {
+        "topic": "MaTTS",
+        "paper": "parallel self-contrast over k trajectories; sequential self-refinement",
+        "code": "the scaling script passes only the last trial's result folder, so every 'trajectory' read is the same one; the sequential prompts are defined but never called",
+        "src": "pipeline_scaling.py L72-L76; induce_scaling.py L168-L191",
+        "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/pipeline_scaling.py#L72-L76"
+      },
+      {
+        "topic": "Baselines with failures (Fig. 7)",
+        "paper": "Synapse and AWM also run with failed trajectories added",
+        "code": "the released Synapse/AWM modes write memory only for successes",
+        "src": "induce_memory.py L168-L174",
+        "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/induce_memory.py#L168-L174"
+      }
+    ],
+    "open_questions": [
+      "Because retrieval compares task queries, the gain may come from reusing advice written for a near-duplicate task (WebArena tasks share templates) rather than from general strategies; the paper does not split results by template overlap.",
+      "The +MaTTS rows use 5 rollouts per task against 1 for the baselines; Fig. 5 shows memory-free scaling gains less, but compute is not matched in Table 1."
+    ],
+    "glance": [
+      {
+        "q": "What is one memory item?",
+        "a": "A short Markdown note (title, one-sentence description, 1-3 sentences of advice) distilled by the agent's LLM from one finished task; each task yields up to three.",
+        "src": "paper §3.2, Fig. 9",
+        "url": "https://arxiv.org/pdf/2509.25140"
+      },
+      {
+        "q": "Is failure used?",
+        "a": "Yes. The agent's LLM judges its own run; failures go through a prompt that asks what went wrong and how to avoid it.",
+        "src": "paper App. A.1-A.2",
+        "url": "https://arxiv.org/pdf/2509.25140"
+      },
+      {
+        "q": "How is memory found?",
+        "a": "By comparing the new task's query with past task queries (gemini-embedding-001, cosine) and taking the items of the top-1 task.",
+        "src": "paper App. A.2; code memory_management.py L172-L215",
+        "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/memory_management.py#L172-L215"
+      },
+      {
+        "q": "Is memory ever merged or deleted?",
+        "a": "No. Every task appends one entry; the authors keep consolidation minimal on purpose.",
+        "src": "paper App. A.2",
+        "url": "https://arxiv.org/pdf/2509.25140"
+      },
+      {
+        "q": "What does the agent read?",
+        "a": "The retrieved items in its system prompt, with an instruction to say at each step whether it uses each one.",
+        "src": "code agents/legacy/agent.py L132-L137",
+        "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/agents/legacy/agent.py#L132-L137"
+      }
+    ],
+    "flow": [
+      {
+        "n": 1,
+        "round": 1,
+        "title": "Embed the new query",
+        "actor": "retriever",
+        "method": "bi-encoder",
+        "model": "gemini-embedding-001 (3072-d)",
+        "in": "task query",
+        "out": "query vector",
+        "sees": "The task instruction with an instruction prefix asking for relevant prior queries. Past queries were embedded without the prefix.",
+        "params": {},
+        "src": "memory_management.py L78-L90, L203-L208",
+        "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/memory_management.py#L203-L208",
+        "short": "Embed query",
+        "count": "query → vector"
+      },
+      {
+        "n": 2,
+        "round": 1,
+        "title": "Find the closest past task",
+        "actor": "rule",
+        "method": "cosine similarity, top-k",
+        "in": "query vector",
+        "out": "1 past task",
+        "sees": "Only past task queries; memory items and trajectories are not compared.",
+        "params": {
+          "k": "1"
+        },
+        "src": "memory_management.py L138-L170, L210-L215; run.py L177-L182",
+        "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/run.py#L177-L182",
+        "short": "Top-1 task",
+        "count": "all past tasks → 1"
+      },
+      {
+        "n": 3,
+        "round": 0,
+        "title": "Act with the items",
+        "actor": "llm",
+        "method": "ReAct agent",
+        "model": "Gemini-2.5-flash / -pro or Claude-3.7-sonnet",
+        "in": "system prompt with ≤ 3 items, page tree, history",
+        "out": "actions and a final answer",
+        "sees": "The items of that one past task, then the usual web observation, for up to 30 steps.",
+        "params": {
+          "max steps": "30",
+          "temperature": "0.7"
+        },
+        "src": "run.py L136-L140, L195-L237; agents/legacy/agent.py L132-L137",
+        "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/agents/legacy/agent.py#L132-L137",
+        "short": "Act",
+        "count": "≤ 3 items → answer"
+      },
+      {
+        "n": 4,
+        "round": 0,
+        "title": "Judge the run",
+        "actor": "llm",
+        "decision": true,
+        "method": "LLM judgement, temperature 0",
+        "model": "same backbone",
+        "in": "query, steps, final page, answer",
+        "out": "success or failure",
+        "sees": "No ground truth.",
+        "yes": "success prompt",
+        "no": "failure prompt",
+        "src": "paper App. A.1 Fig. 10",
+        "url": "https://arxiv.org/pdf/2509.25140",
+        "short": "Success?",
+        "count": "run → label"
+      },
+      {
+        "n": 5,
+        "round": 0,
+        "title": "Distil and append",
+        "actor": "llm",
+        "method": "LLM generation, temperature 1.0",
+        "model": "same backbone",
+        "in": "query, trajectory, label",
+        "out": "≤ 3 items appended",
+        "sees": "The whole trajectory (and, in current code, the judge's reasoning).",
+        "params": {
+          "items": "≤ 3"
+        },
+        "src": "induce_memory.py L145-L186",
+        "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/induce_memory.py#L145-L186",
+        "short": "Distil",
+        "count": "run → ≤ 3 items"
+      }
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 216",
+        "body": "<text class=\"fig-t\" x=\"46\" y=\"16\" text-anchor=\"middle\">Finished task</text><rect class=\"gi-ev\" x=\"6\" y=\"26\" width=\"80\" height=\"92\" rx=\"8\"/><text class=\"fig-s\" x=\"14\" y=\"42\" text-anchor=\"start\">query</text><line class=\"gi-t\" x1=\"14\" y1=\"56\" x2=\"78\" y2=\"56\"/><line class=\"gi-t\" x1=\"14\" y1=\"66\" x2=\"78\" y2=\"66\"/><line class=\"gi-t\" x1=\"14\" y1=\"78\" x2=\"78\" y2=\"78\"/><line class=\"gi-t\" x1=\"14\" y1=\"88\" x2=\"78\" y2=\"88\"/><line class=\"gi-t\" x1=\"14\" y1=\"100\" x2=\"78\" y2=\"100\"/><line class=\"gi-t\" x1=\"14\" y1=\"110\" x2=\"78\" y2=\"110\"/><text class=\"fig-s\" x=\"46\" y=\"132\" text-anchor=\"middle\">think + action steps</text><path class=\"gi-a\" d=\"M86 72 L97 72\"/><polygon class=\"gi-ah\" points=\"104,72 97,68 97,76\"/><polygon class=\"gi-llm\" points=\"142,44 180,72 142,100 104,72\"/><text class=\"fig-t\" x=\"142\" y=\"70\" text-anchor=\"middle\">Judge</text><text class=\"fig-s\" x=\"142\" y=\"83\" text-anchor=\"middle\">LLM</text><path class=\"gi-a\" d=\"M142 44 L142 30 L193 30\"/><polygon class=\"gi-ah\" points=\"200,30 193,26 193,34\"/><text class=\"fig-yes\" x=\"152\" y=\"24\" text-anchor=\"start\">success</text><rect class=\"gi-llm\" x=\"200\" y=\"10\" width=\"104\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"252\" y=\"27.0\" text-anchor=\"middle\">What worked</text><text class=\"fig-s\" x=\"252\" y=\"40.0\" text-anchor=\"middle\">≤ 3 items</text><path class=\"gi-a\" d=\"M142 100 L142 114 L193 114\"/><polygon class=\"gi-ah\" points=\"200,114 193,110 193,118\"/><text class=\"fig-no\" x=\"152\" y=\"108\" text-anchor=\"start\">failure</text><rect class=\"gi-llm\" x=\"200\" y=\"94\" width=\"104\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"252\" y=\"111.0\" text-anchor=\"middle\">What went wrong</text><text class=\"fig-s\" x=\"252\" y=\"124.0\" text-anchor=\"middle\">≤ 3 lessons</text><text class=\"fig-s\" x=\"252\" y=\"150\" text-anchor=\"middle\">extractor: same LLM, T 1.0</text><path class=\"gi-a\" d=\"M304 30 L317 30\"/><polygon class=\"gi-ah\" points=\"324,30 317,26 317,34\"/><path class=\"gi-a\" d=\"M304 114 L317 114\"/><polygon class=\"gi-ah\" points=\"324,114 317,110 317,118\"/><rect class=\"gi-ev\" x=\"324\" y=\"10\" width=\"120\" height=\"160\" rx=\"10\"/><text class=\"fig-t\" x=\"384\" y=\"26\" text-anchor=\"middle\">Memory entry</text><rect class=\"gi-v fig-soft\" x=\"332\" y=\"34\" width=\"104\" height=\"24\" rx=\"6\"/><text class=\"fig-t\" x=\"340\" y=\"50\" text-anchor=\"start\">task query</text><text class=\"fig-s\" x=\"428\" y=\"50\" text-anchor=\"end\">key</text><rect class=\"gi-hi\" x=\"332\" y=\"64\" width=\"104\" height=\"64\" rx=\"6\"/><text class=\"fig-t\" x=\"340\" y=\"79\" text-anchor=\"start\">item × ≤ 3</text><text class=\"fig-s\" x=\"428\" y=\"79\" text-anchor=\"end\">read</text><text class=\"fig-s\" x=\"340\" y=\"93\" text-anchor=\"start\">title</text><text class=\"fig-s\" x=\"340\" y=\"105\" text-anchor=\"start\">description</text><text class=\"fig-s\" x=\"340\" y=\"117\" text-anchor=\"start\">content, 1-3 lines</text><rect class=\"gi-ev d\" x=\"332\" y=\"134\" width=\"104\" height=\"28\" rx=\"6\"/><text class=\"fig-s\" x=\"340\" y=\"146\" text-anchor=\"start\">trajectory, label:</text><text class=\"fig-s\" x=\"340\" y=\"157\" text-anchor=\"start\">kept, never read</text><path class=\"gi-a\" d=\"M444 90 L455 90\"/><polygon class=\"gi-ah\" points=\"462,90 455,86 455,94\"/><text class=\"fig-t\" x=\"508\" y=\"16\" text-anchor=\"middle\">ReasoningBank</text><rect class=\"gi-f\" x=\"462\" y=\"26\" width=\"92\" height=\"144\" rx=\"8\"/><rect class=\"gi-ev\" x=\"470\" y=\"36\" width=\"76\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"478\" y1=\"44\" x2=\"536\" y2=\"44\"/><rect class=\"gi-ev\" x=\"470\" y=\"58\" width=\"76\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"478\" y1=\"66\" x2=\"536\" y2=\"66\"/><rect class=\"gi-ev\" x=\"470\" y=\"80\" width=\"76\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"478\" y1=\"88\" x2=\"536\" y2=\"88\"/><rect class=\"gi-ev\" x=\"470\" y=\"102\" width=\"76\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"478\" y1=\"110\" x2=\"536\" y2=\"110\"/><text class=\"fig-s\" x=\"508\" y=\"136\" text-anchor=\"middle\">append only,</text><text class=\"fig-s\" x=\"508\" y=\"149\" text-anchor=\"middle\">no merging;</text><text class=\"fig-s\" x=\"508\" y=\"162\" text-anchor=\"middle\">one file per site</text><text class=\"fig-s\" x=\"142\" y=\"186\" text-anchor=\"middle\">judge reads query, steps, final page and answer; T 0</text><text class=\"fig-s\" x=\"280\" y=\"206\" text-anchor=\"middle\">no ground truth: the label is the agent's own verdict (72.7% agree with the gold label on Shopping)</text>",
+        "text": [
+          "After every task the agent's own LLM judges the run as a success or failure and distils up to three short advice items with a matching prompt.",
+          "Each task becomes one entry, keyed by its query, appended to a bank that is never merged or pruned."
+        ],
+        "src": "paper §3.2, App. A.1-A.2; code induce_memory.py L117-L186",
+        "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/induce_memory.py#L117-L186"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 246",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"38\" width=\"70\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"39\" y=\"57.0\" text-anchor=\"middle\">New task</text><text class=\"fig-s\" x=\"39\" y=\"70.0\" text-anchor=\"middle\">query text</text><path class=\"gi-a\" d=\"M74 60 L79 60\"/><polygon class=\"gi-ah\" points=\"86,60 79,56 79,64\"/><rect class=\"gi-v fig-soft\" x=\"86\" y=\"38\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"134\" y=\"57.0\" text-anchor=\"middle\">Embed</text><text class=\"fig-s\" x=\"134\" y=\"70.0\" text-anchor=\"middle\">+ instruction</text><text class=\"fig-s\" x=\"134\" y=\"98\" text-anchor=\"middle\">gemini-embedding-001</text><path class=\"gi-a\" d=\"M182 60 L187 60\"/><polygon class=\"gi-ah\" points=\"194,60 187,56 187,64\"/><rect class=\"gi-v fig-soft\" x=\"194\" y=\"38\" width=\"100\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"244\" y=\"57.0\" text-anchor=\"middle\">Cosine</text><text class=\"fig-s\" x=\"244\" y=\"70.0\" text-anchor=\"middle\">vs past queries</text><text class=\"fig-s\" x=\"244\" y=\"98\" text-anchor=\"middle\">items are not searched</text><path class=\"gi-a\" d=\"M294 60 L299 60\"/><polygon class=\"gi-ah\" points=\"306,60 299,56 299,64\"/><rect class=\"gi-f\" x=\"306\" y=\"38\" width=\"78\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"345\" y=\"57.0\" text-anchor=\"middle\">top-1 task</text><text class=\"fig-s\" x=\"345\" y=\"70.0\" text-anchor=\"middle\">its ≤ 3 items</text><path class=\"gi-a\" d=\"M384 60 L397 60\"/><polygon class=\"gi-ah\" points=\"404,60 397,56 397,64\"/><text class=\"fig-t\" x=\"479\" y=\"16\" text-anchor=\"middle\">Agent prompt</text><rect class=\"gi-f\" x=\"404\" y=\"26\" width=\"150\" height=\"150\" rx=\"8\"/><rect class=\"gi-ev\" x=\"412\" y=\"34\" width=\"134\" height=\"22\" rx=\"5\"/><text class=\"fig-s\" x=\"420\" y=\"49\" text-anchor=\"start\">web-agent instructions</text><rect class=\"gi-ev\" x=\"412\" y=\"60\" width=\"134\" height=\"32\" rx=\"5\"/><text class=\"fig-s\" x=\"420\" y=\"73\" text-anchor=\"start\">\"say at each step if you</text><text class=\"fig-s\" x=\"420\" y=\"85\" text-anchor=\"start\">use each item\"</text><rect class=\"gi-hi\" x=\"412\" y=\"96\" width=\"134\" height=\"26\" rx=\"5\"/><text class=\"fig-t\" x=\"420\" y=\"113\" text-anchor=\"start\">retrieved items</text><rect class=\"gi-ev\" x=\"412\" y=\"126\" width=\"134\" height=\"42\" rx=\"5\"/><text class=\"fig-s\" x=\"420\" y=\"141\" text-anchor=\"start\">page accessibility tree</text><text class=\"fig-s\" x=\"420\" y=\"155\" text-anchor=\"start\">+ action history</text><path class=\"gi-a\" d=\"M479 176 L479 185\"/><polygon class=\"gi-ah\" points=\"479,192 475,185 483,185\"/><rect class=\"gi-llm\" x=\"424\" y=\"192\" width=\"110\" height=\"32\" rx=\"8\"/><text class=\"fig-t\" x=\"479\" y=\"212.0\" text-anchor=\"middle\">ReAct agent</text><text class=\"fig-s\" x=\"479\" y=\"240\" text-anchor=\"middle\">≤ 30 steps, T 0.7</text><path class=\"gi-a d\" d=\"M424 208 L40 208 L40 89\"/><polygon class=\"gi-ah\" points=\"40,82 36,89 44,89\"/><text class=\"fig-s\" x=\"232\" y=\"202\" text-anchor=\"middle\">after the task: judge, extract, append (build figure)</text><text class=\"fig-s\" x=\"190\" y=\"130\" text-anchor=\"middle\">no reranker or LLM filter; k = 1 by default</text><text class=\"fig-s\" x=\"190\" y=\"146\" text-anchor=\"middle\">k = 2, 3, 4 lowered success (Fig. 13)</text>",
+        "text": [
+          "The new query is embedded and compared with past task queries; the items of the single closest task are put into the agent's system prompt.",
+          "The agent is told to say at each step whether it uses each item; after the task a new entry is written."
+        ],
+        "src": "paper App. A.2; code memory_management.py L172-L215, run.py L161-L193",
+        "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/memory_management.py#L172-L215"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Items per task",
+        "value": "≤ 3 (≤ 5 with MaTTS parallel)",
+        "src": "paper App. A.1-A.3",
+        "section": "construction"
+      },
+      {
+        "label": "Extractor / judge temperature",
+        "value": "1.0 / 0.0",
+        "src": "paper App. A.2",
+        "section": "construction"
+      },
+      {
+        "label": "Judge agrees with gold label",
+        "value": "72.7% (WebArena-Shopping)",
+        "src": "paper §5",
+        "section": "construction"
+      },
+      {
+        "label": "Past tasks retrieved",
+        "value": "1 (k = 1 default)",
+        "src": "paper App. A.2",
+        "section": "method"
+      },
+      {
+        "label": "Embedding",
+        "value": "gemini-embedding-001, 3072-d, cosine",
+        "src": "paper App. A.2; code memory_management.py L78-L90",
+        "section": "method"
+      },
+      {
+        "label": "Agent step limit",
+        "value": "30 (WebArena)",
+        "src": "paper App. B.1",
+        "section": "method"
+      },
+      {
+        "label": "Tokens per task",
+        "value": "53.1k vs 50.8k with no memory (+4.3%)",
+        "src": "paper Table 5",
+        "section": "results"
+      },
+      {
+        "label": "Memory overhead per task",
+        "value": "judge 2.2k + extraction 1.6k tokens",
+        "src": "paper Table 5",
+        "section": "results"
+      },
+      {
+        "label": "Fewer steps on solved tasks",
+        "value": "up to 2.1 (Shopping 6.8 → 4.7)",
+        "src": "paper Table 4",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "WebArena-Shopping SR"
+      ],
+      "rows": [
+        [
+          "No memory",
+          "39.0"
+        ],
+        [
+          "ReasoningBank, successes only",
+          "46.5"
+        ],
+        [
+          "ReasoningBank, successes + failures (default, k = 1)",
+          "49.7"
+        ],
+        [
+          "top-2 past tasks",
+          "46.0"
+        ],
+        [
+          "top-3 past tasks",
+          "45.5"
+        ],
+        [
+          "top-4 past tasks",
+          "44.4"
+        ],
+        [
+          "Synapse, successes only / + failures",
+          "40.6 / 41.7"
+        ],
+        [
+          "AWM, successes only / + failures",
+          "44.4 / 42.2"
+        ]
+      ],
+      "src": "paper Fig. 7, Fig. 13 (Gemini-2.5-flash)"
+    },
+    "components": [
+      {
+        "role": "Agent",
+        "model": "Gemini-2.5-flash, Gemini-2.5-pro or Claude-3.7-sonnet (Gemma-3-12B in App. C.4)",
+        "kind": "llm",
+        "src": "paper §4.1, App. B.1"
+      },
+      {
+        "role": "Judge (success / failure)",
+        "model": "same backbone, temperature 0",
+        "kind": "llm",
+        "src": "paper App. A.2"
+      },
+      {
+        "role": "Memory extractor",
+        "model": "same backbone, temperature 1.0",
+        "kind": "llm",
+        "src": "paper App. A.2"
+      },
+      {
+        "role": "Query embedding",
+        "model": "gemini-embedding-001 (3072-d)",
+        "kind": "retriever",
+        "src": "paper App. A.2; code memory_management.py L78-L90",
+        "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/memory_management.py#L78-L90"
+      },
+      {
+        "role": "Pick top-1 past task",
+        "model": "cosine similarity rule",
+        "kind": "rule",
+        "src": "code run.py L177-L182",
+        "url": "https://github.com/google-research/reasoning-bank/blob/ed80611788292ea739f1effd31f16c53823b8a0d/WebArena/run.py#L177-L182"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Storing short, self-judged lessons from both successful and failed runs, instead of raw trajectories or success-only workflows, gives a web or coding agent a few points more success with fewer steps, and extra rollouts per task help more when they feed this memory.",
+      "claims": [
+        {
+          "claim": "Beats memory-free and trajectory/workflow memory on every backbone.",
+          "evidence": "WebArena overall SR +8.3 / +7.2 / +4.6 over No Memory for Gemini-2.5-flash / -pro / Claude-3.7 (48.8, 53.9, 46.3). Table 1, §4.2"
+        },
+        {
+          "claim": "Also helps on Mind2Web and SWE-Bench-Verified.",
+          "evidence": "Mind2Web cross-domain step SR 36.6 vs 31.9 (flash); SWE-Bench-Verified resolve rate 38.8 vs 34.2 (flash), 57.4 vs 54.0 (pro). Tables 2-3"
+        },
+        {
+          "claim": "Learning from failures matters.",
+          "evidence": "WebArena-Shopping 46.5 with successes only, 49.7 with failures; AWM drops 44.4 → 42.2 when failures are added. Fig. 7, §5"
+        },
+        {
+          "claim": "Memory-aware scaling beats plain scaling.",
+          "evidence": "At k = 5 parallel MaTTS 55.1 vs 52.4 for vanilla TTS and 42.2 without memory (Best-of-N, Shopping). Fig. 4, §4.3"
+        },
+        {
+          "claim": "Cheaper per task despite the extra LLM calls.",
+          "evidence": "53.1k vs 50.8k tokens per task (+4.3%) for +20.5% relative SR; fewer steps, most on solved tasks (up to 2.1). Table 5, Table 4"
+        }
+      ],
+      "limits": [
+        "Only memory content is studied; episodic or hierarchical memory designs are not compared.",
+        "Retrieval (embedding similarity) and consolidation (append) are deliberately simple.",
+        "Success and failure labels come from an LLM judge and can be wrong on ambiguous tasks."
+      ],
+      "limits_src": "paper App. E",
+      "reading": [
+        "The key used for lookup is the past task's query, not the stored strategy text, so the method retrieves by task similarity exactly like the trajectory baseline Synapse; only what is shown differs (App. B.1 says all methods share retrieval and consolidation).",
+        "More retrieved tasks hurt: k = 1 gives 49.7 on Shopping and k = 4 gives 44.4 (Fig. 13), so each prompt carries at most three items.",
+        "Memory is written from the test stream itself with self-judged labels; the code runs tasks in task-id order and keeps a separate bank for each WebArena site, including the 29-task Multi subset.",
+        "The judge agreed with gold labels 72.7% of the time; Fig. 8 simulates noisier and cleaner labels and reports small changes, with gold labels best.",
+        "+MaTTS rows in Table 1 use 5 rollouts per task and Best-of-N selection in Fig. 4; baselines use one rollout.",
+        "The released code covers WebArena and SWE-Bench only; the MaTTS scripts read a single trial folder, so the parallel self-contrast numbers cannot be reproduced from them as released."
+      ]
+    },
+    "abstract": {
+      "text": "ReasoningBank is a memory for LLM agents that face a stream of tasks and have no ground truth at test time. After each task the agent judges its own run, and an LLM distils short, reusable strategies from successes and cautionary lessons from failures; for a new task, the lessons of the most similar past task are placed in the prompt. The authors also propose memory-aware test-time scaling (MaTTS), which spends extra rollouts on each task and contrasts them to write better memory. On WebArena, Mind2Web and SWE-Bench-Verified it beats memory-free agents and trajectory or workflow memories in success rate and step count.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2509.25140"
+    },
+    "sections": {
+      "Memory architecture": "§3.2-3.3, Fig. 2-3",
+      "Results": "§4.2-4.4, Tables 1-3",
+      "Ablation": "§5, App. C.1",
+      "Discussion": "§5, App. D, App. E (Limitations)",
+      "Details": "§4.1, App. A-B"
+    }
+  }
+}

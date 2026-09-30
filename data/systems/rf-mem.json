@@ -1,0 +1,507 @@
+{
+  "id": "rf-mem",
+  "name": "RF-Mem",
+  "paper": {
+    "title": "Evoking User Memory: Personalizing LLM via Recollection-Familiarity Adaptive Retrieval",
+    "arxiv": "2603.09250",
+    "url": "https://arxiv.org/abs/2603.09250",
+    "venue": "ICLR 2026",
+    "venue_short": "ICLR",
+    "track": "main",
+    "year": 2026,
+    "code": "https://github.com/Applied-Machine-Learning-Lab/ICLR2026_RF-Mem"
+  },
+  "design": {
+    "construction": {
+      "unit": "raw chunk: one user query + one assistant reply (PersonaMem) or one session (PersonaBench, LongMemEval)",
+      "kept_as": "verbatim dialogue text",
+      "processing": "none; chunks are embedded as they are",
+      "trigger": "other",
+      "writer": null
+    },
+    "organization": {
+      "structure": "flat list of chunks",
+      "stores": "one FAISS inner-product index per user history",
+      "index": "sentence-embedding vectors (multi-qa-MiniLM-L6-cos-v1 in the main runs; MPNet and BGE also tested)"
+    },
+    "management": {
+      "operations": null,
+      "conflicts": null,
+      "forgetting": null,
+      "timing": "none"
+    },
+    "retrieval": {
+      "query": "question embedding; in recollection rounds, the query is mixed with cluster centroids (α-mix plus the original query)",
+      "candidates": "probe top-10 by cosine; the mean score and softmax entropy decide between one-shot top-K (familiarity) and iterative retrieve-cluster-mix (recollection)",
+      "selection": "familiarity: top-K; recollection: KMeans into B clusters per round, keep B best branches, collect new chunks until K",
+      "budget": "K = 10 chunks on PersonaMem (≈3.6k tokens at 32K)"
+    },
+    "use": {
+      "context": "retrieved raw chunks joined before the question, instruction and options",
+      "reasoning": "single answer call (multiple choice)"
+    },
+    "control": {
+      "construction": "none",
+      "management": "none",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "flat",
+    "index": "vector",
+    "management": "append-only",
+    "candidates": "dense",
+    "decides": "top-k rule",
+    "note": "A retrieval-only method over an unchanged embedding index; the gate and the recollection loop are fixed rules on similarity scores, with no LLM or reranker."
+  },
+  "tags": {
+    "fidelity": "verbatim",
+    "structure": [
+      "flat"
+    ],
+    "write_time": [
+      "none"
+    ],
+    "selection": [
+      "dense"
+    ],
+    "memory_type": [
+      "episodic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "conversation"
+    ]
+  },
+  "stages": {
+    "ingestion": "User history is cut into chunks: a user query plus the assistant reply for PersonaMem, one session for PersonaBench and LongMemEval.",
+    "construction": "",
+    "organization": "Chunks are embedded with a sentence encoder into one flat inner-product index; nothing is summarized, linked or updated.",
+    "update": "",
+    "retrieval": "A top-10 probe gives a mean cosine and a softmax entropy; a high mean or low entropy takes the one-shot top-K path, otherwise a recollection loop retrieves (B+r)·F chunks, clusters them with KMeans, mixes each centroid into the query and searches again until K new chunks are gathered.",
+    "answer": "The retrieved raw chunks are placed before the question, a fixed multiple-choice instruction and the options, and the LLM picks one option.",
+    "learning": ""
+  },
+  "summary": "A retriever-only memory method: a probe's mean score and entropy route each question either to plain top-K search or to an embedding-space loop that clusters hits and mixes centroids into the query, with no LLM in retrieval.",
+  "verified": false,
+  "notes": "Venue: ICLR 2026 poster (OpenReview f7p0F2X6XN, venue 'ICLR 2026 Poster'); arXiv comment 'Accepted by ICLR 2026'. Code checked at d6a2cb3416e8320bcb1439921d319729aeccec8e (2026-02-25, latest commit). The released repo has per-dataset scripts; the PersonaMem path (personamem_data/) is taken as the reference for the generation results. DESIGN: §2.1-2.3, App. B, E; code EmbdRetri.py, main_batch.py, utils.py.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2603.09250v1 (PDF read 2026-09-30)",
+      "code": "https://github.com/Applied-Machine-Learning-Lab/ICLR2026_RF-Mem/tree/d6a2cb3416e8320bcb1439921d319729aeccec8e/",
+      "code_note": "Latest commit d6a2cb34 (2026-02-25), after the ICLR camera-ready. Scripts sweep α and τ rather than fixing them. As released, personamem_data/main_batch.py reads cmd_args.rag, which the argument parser never defines, and LongMemEval/run.sh calls a file named RF_emem.py that does not exist, so the scripts need small fixes to run. Data files are stored with Git LFS."
+    },
+    "headline": [
+      "Nothing is written or rewritten: memory is the raw dialogue, cut into chunks and embedded. The method is only the retriever.",
+      "The gate and the recollection loop use embeddings only (cosine, entropy, KMeans, vector mixing); no LLM or reranker runs before the answer.",
+      "Baselines are the same index read other ways (dense top-K, recollection always on, full context, no memory); no other memory system is compared."
+    ],
+    "units": [
+      {
+        "name": "Chunk",
+        "role": "the retrievable memory item",
+        "made_by": "rule: pair each user turn with the following assistant turn (PersonaMem); one session per chunk elsewhere",
+        "fields": [
+          {
+            "name": "text",
+            "what": "\"User: …\\n\\nAssistant: …\" as written in the dialogue; consecutive turns by the same role are merged",
+            "kept_as": "verbatim",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "code EmbdRetri.py L31-L105",
+            "url": "https://github.com/Applied-Machine-Learning-Lab/ICLR2026_RF-Mem/blob/d6a2cb3416e8320bcb1439921d319729aeccec8e/RF_mem/personamem_data/retri_mdoel/EmbdRetri.py#L31-L105"
+          },
+          {
+            "name": "embedding",
+            "what": "unit-normalized sentence embedding in a FAISS IndexFlatIP",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code EmbdRetri.py L118-L132",
+            "url": "https://github.com/Applied-Machine-Learning-Lab/ICLR2026_RF-Mem/blob/d6a2cb3416e8320bcb1439921d319729aeccec8e/RF_mem/personamem_data/retri_mdoel/EmbdRetri.py#L118-L132"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Chunk",
+        "how": "user turn + next assistant turn become one chunk (PersonaMem); for PersonaBench and LongMemEval each session is one chunk (LongMemEval: date plus all turn contents as JSON)",
+        "src": "paper App. B; code EmbdRetri.py L49-L105, LongMemEval RF_mem.py L151-L165",
+        "url": "https://github.com/Applied-Machine-Learning-Lab/ICLR2026_RF-Mem/blob/d6a2cb3416e8320bcb1439921d319729aeccec8e/RF_mem/personamem_data/retri_mdoel/EmbdRetri.py#L49-L105"
+      },
+      {
+        "step": "Embed",
+        "how": "sentence encoder, normalized, stored in a flat inner-product index",
+        "params": {
+          "encoder": "multi-qa-MiniLM-L6-cos-v1 (main)"
+        },
+        "src": "paper App. B; code EmbdRetri.py L118-L132",
+        "url": "https://github.com/Applied-Machine-Learning-Lab/ICLR2026_RF-Mem/blob/d6a2cb3416e8320bcb1439921d319729aeccec8e/RF_mem/personamem_data/retri_mdoel/EmbdRetri.py#L118-L132"
+      }
+    ],
+    "read": [
+      {
+        "step": "Probe",
+        "round": 0,
+        "input": "question",
+        "scores": "chunk text embeddings",
+        "how": "top-10 cosine search; mean score and softmax entropy (temperature 20) of the 10 scores",
+        "params": {
+          "probe k": "10",
+          "λ": "20"
+        },
+        "src": "paper §2.1; code utils.py L153-L177, main_batch.py L100-L101",
+        "url": "https://github.com/Applied-Machine-Learning-Lab/ICLR2026_RF-Mem/blob/d6a2cb3416e8320bcb1439921d319729aeccec8e/RF_mem/personamem_data/utils.py#L153-L177"
+      },
+      {
+        "step": "Gate",
+        "round": 0,
+        "how": "mean ≥ θhigh → familiarity; mean ≤ θlow → recollection; otherwise entropy < τ → familiarity, else recollection",
+        "params": {
+          "θhigh": "0.6",
+          "θlow": "0.3 (PersonaMem), 0.0 (PersonaBench, LongMemEval)",
+          "τ": "swept in the scripts"
+        },
+        "src": "paper Eq. 3, App. B; code main_batch.py L101",
+        "url": "https://github.com/Applied-Machine-Learning-Lab/ICLR2026_RF-Mem/blob/d6a2cb3416e8320bcb1439921d319729aeccec8e/RF_mem/personamem_data/main_batch.py#L100-L101"
+      },
+      {
+        "step": "Familiarity",
+        "round": 1,
+        "input": "question",
+        "how": "top-K by cosine, dropping chunks under 0.3",
+        "params": {
+          "K": "10",
+          "floor": "0.3"
+        },
+        "src": "paper §2.2; code main_batch.py L112-L117, EmbdRetri.py L139-L149",
+        "url": "https://github.com/Applied-Machine-Learning-Lab/ICLR2026_RF-Mem/blob/d6a2cb3416e8320bcb1439921d319729aeccec8e/RF_mem/personamem_data/main_batch.py#L112-L117"
+      },
+      {
+        "step": "Recollection: search",
+        "round": 1,
+        "input": "current branch query",
+        "how": "retrieve (B+r)·F chunks per branch, drop chunks already collected or under 0.3",
+        "params": {
+          "B": "3",
+          "F": "2",
+          "N": "6, 8, 10, …"
+        },
+        "src": "paper §2.3; code EmbdRetri.py L228-L238",
+        "url": "https://github.com/Applied-Machine-Learning-Lab/ICLR2026_RF-Mem/blob/d6a2cb3416e8320bcb1439921d319729aeccec8e/RF_mem/personamem_data/retri_mdoel/EmbdRetri.py#L228-L238"
+      },
+      {
+        "step": "Recollection: cluster and mix",
+        "round": 1,
+        "how": "KMeans into min(B, n) clusters; each centroid gives a new query norm(α·q + (1-α)·centroid + q0)",
+        "params": {
+          "α": "swept 0.1-1.0 in run.sh"
+        },
+        "src": "paper Eq. 5-6; code EmbdRetri.py L282-L296",
+        "url": "https://github.com/Applied-Machine-Learning-Lab/ICLR2026_RF-Mem/blob/d6a2cb3416e8320bcb1439921d319729aeccec8e/RF_mem/personamem_data/retri_mdoel/EmbdRetri.py#L282-L296"
+      },
+      {
+        "step": "Recollection: beam and stop",
+        "round": 1,
+        "how": "keep the B branches with the highest summed scores, add their chunks, stop once 10 unique chunks are collected or after 10 rounds; return the first 10 in the order found",
+        "params": {
+          "max rounds": "10 (= topk)",
+          "K": "10"
+        },
+        "src": "code EmbdRetri.py L300-L327, main_batch.py L120",
+        "url": "https://github.com/Applied-Machine-Learning-Lab/ICLR2026_RF-Mem/blob/d6a2cb3416e8320bcb1439921d319729aeccec8e/RF_mem/personamem_data/retri_mdoel/EmbdRetri.py#L300-L327"
+      }
+    ],
+    "answer_context": {
+      "sees": "up to 10 raw dialogue chunks",
+      "format": "chunks joined by newlines, then the question, the fixed multiple-choice instruction and the four options, all in one user message",
+      "excludes": [
+        "summaries",
+        "similarity scores"
+      ],
+      "note": "The answer model is gpt-4.1-mini in the released PersonaMem script (called through a third-party API endpoint), with a local Qwen3-8B option; the paper only says 'advanced LLM'.",
+      "src": "code main_batch.py L40-L52, L129, api_model.py L37-L50; paper App. C",
+      "url": "https://github.com/Applied-Machine-Learning-Lab/ICLR2026_RF-Mem/blob/d6a2cb3416e8320bcb1439921d319729aeccec8e/RF_mem/personamem_data/main_batch.py#L40-L52",
+      "includes": [
+        "retrieved chunks, verbatim"
+      ]
+    },
+    "compression": [
+      {
+        "what": "answer context vs full history, PersonaMem 32K",
+        "kept": 3.5666,
+        "of": 24.6578,
+        "unit": "k tokens",
+        "basis": "Table 1 Avg. Tokens: RF-Mem 3,566.6 vs Full Context 24,657.8",
+        "src": "paper Table 1",
+        "url": "https://arxiv.org/pdf/2603.09250"
+      },
+      {
+        "what": "answer context vs full history, PersonaMem 128K",
+        "kept": 3.5655,
+        "of": 115.6014,
+        "unit": "k tokens",
+        "basis": "Table 1 Avg. Tokens: RF-Mem 3,565.5 vs Full Context 115,601.4",
+        "src": "paper Table 1",
+        "url": "https://arxiv.org/pdf/2603.09250"
+      },
+      {
+        "what": "answer context vs full history, PersonaMem 1M",
+        "kept": 3.8278,
+        "of": 912.1485,
+        "unit": "k tokens",
+        "basis": "Table 1 Avg. Tokens: RF-Mem 3,827.8 vs Full Context 912,148.5 (out of context)",
+        "src": "paper Table 1",
+        "url": "https://arxiv.org/pdf/2603.09250"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Retrieval latency, PersonaMem 32K",
+        "value": "dense 3.14 ms · RF-Mem 5.09 ms · recollection 7.09 ms",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "PersonaBench routing (MiniLM)",
+        "value": "60 familiarity / 203 recollection",
+        "src": "paper Table 17"
+      },
+      {
+        "label": "PersonaBench routing (MPNet / BGE)",
+        "value": "15 / 248 · 140 / 123",
+        "src": "paper Table 17"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Entropy",
+        "paper": "H(p) = −Σ p log p over the K probe scores (Eq. 2)",
+        "code": "the same sum divided by K (numpy mean), so thresholds are on H/K",
+        "src": "utils.py L153-L158",
+        "url": "https://github.com/Applied-Machine-Learning-Lab/ICLR2026_RF-Mem/blob/d6a2cb3416e8320bcb1439921d319729aeccec8e/RF_mem/personamem_data/utils.py#L153-L158"
+      },
+      {
+        "topic": "Final recollection set",
+        "paper": "Top-K of the union of all rounds",
+        "code": "first K chunks in the order they were collected, not re-sorted by similarity",
+        "src": "EmbdRetri.py L316-L327",
+        "url": "https://github.com/Applied-Machine-Learning-Lab/ICLR2026_RF-Mem/blob/d6a2cb3416e8320bcb1439921d319729aeccec8e/RF_mem/personamem_data/retri_mdoel/EmbdRetri.py#L316-L327"
+      },
+      {
+        "topic": "Score floor",
+        "paper": "not stated for the main runs (Alg. 2: 'optionally filter by a floor')",
+        "code": "both paths drop chunks with cosine < 0.3 on PersonaMem, so familiarity can return fewer than K",
+        "src": "main_batch.py L114-L120",
+        "url": "https://github.com/Applied-Machine-Learning-Lab/ICLR2026_RF-Mem/blob/d6a2cb3416e8320bcb1439921d319729aeccec8e/RF_mem/personamem_data/main_batch.py#L112-L123"
+      },
+      {
+        "topic": "Answer model",
+        "paper": "'advanced LLM'",
+        "code": "gpt-4.1-mini (API) or a local Qwen3-8B",
+        "src": "main_batch.py L40-L52",
+        "url": "https://github.com/Applied-Machine-Learning-Lab/ICLR2026_RF-Mem/blob/d6a2cb3416e8320bcb1439921d319729aeccec8e/RF_mem/personamem_data/main_batch.py#L40-L52"
+      },
+      {
+        "topic": "α and τ",
+        "paper": "said to be documented in App. B, which gives λ, B, F and θ but not α or τ",
+        "code": "run.sh sweeps α 0.1-1.0 and τ −0.1-0.25 (PersonaMem); LongMemEval script uses α 0.7, τ 0.10",
+        "src": "personamem_data/run.sh L14-L15",
+        "url": "https://github.com/Applied-Machine-Learning-Lab/ICLR2026_RF-Mem/blob/d6a2cb3416e8320bcb1439921d319729aeccec8e/RF_mem/personamem_data/run.sh#L14-L15"
+      }
+    ],
+    "open_questions": [
+      "α and τ are swept in the scripts and the chosen values are not reported, so it is unclear whether the RF-Mem rows use settings picked on the test questions.",
+      "PersonaBench and LongMemEval report only recall of sessions, not answer accuracy, so the retrieval gains there are not shown to change answers.",
+      "Under MiniLM, 203 of 263 PersonaBench questions (77%) go to recollection, so the gate mostly selects the slow path there."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 230",
+        "body": "<text class=\"fig-t\" x=\"52\" y=\"16\" text-anchor=\"middle\">Dialogue</text><rect class=\"gi-ev\" x=\"10\" y=\"26\" width=\"64\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"18\" y1=\"35\" x2=\"64\" y2=\"35\"/><rect class=\"gi-ev\" x=\"30\" y=\"50\" width=\"64\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"38\" y1=\"59\" x2=\"84\" y2=\"59\"/><rect class=\"gi-ev\" x=\"10\" y=\"84\" width=\"64\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"18\" y1=\"93\" x2=\"64\" y2=\"93\"/><rect class=\"gi-ev\" x=\"30\" y=\"108\" width=\"64\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"38\" y1=\"117\" x2=\"84\" y2=\"117\"/><rect class=\"gi-ev\" x=\"10\" y=\"142\" width=\"64\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"18\" y1=\"151\" x2=\"64\" y2=\"151\"/><rect class=\"gi-ev\" x=\"30\" y=\"166\" width=\"64\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"38\" y1=\"175\" x2=\"84\" y2=\"175\"/><line class=\"gi-e d\" x1=\"4\" y1=\"76\" x2=\"100\" y2=\"76\"/><line class=\"gi-e d\" x1=\"4\" y1=\"134\" x2=\"100\" y2=\"134\"/><text class=\"fig-s\" x=\"52\" y=\"204\" text-anchor=\"middle\">one query + one reply</text><text class=\"fig-s\" x=\"52\" y=\"216\" text-anchor=\"middle\">per chunk</text><path class=\"gi-a\" d=\"M106.0 105.0 L133.0 105.0\"/><polygon class=\"gi-ah\" points=\"140.0,105.0 133.0,109.0 133.0,101.0\"/><rect class=\"gi-ev\" x=\"140\" y=\"42\" width=\"140\" height=\"126\" rx=\"10\"/><text class=\"fig-t\" x=\"210\" y=\"60\" text-anchor=\"middle\">Memory chunk</text><rect class=\"gi-hi\" x=\"150\" y=\"70\" width=\"120\" height=\"44\" rx=\"6\"/><text class=\"fig-s\" x=\"158\" y=\"86\" text-anchor=\"start\">\"User: … Assistant: …\"</text><text class=\"fig-s\" x=\"158\" y=\"100\" text-anchor=\"start\">raw text, unchanged</text><text class=\"fig-s\" x=\"158\" y=\"134\" text-anchor=\"start\">no LLM, no summary,</text><text class=\"fig-s\" x=\"158\" y=\"147\" text-anchor=\"start\">no extraction</text><path class=\"gi-a\" d=\"M280.0 105.0 L311.0 105.0\"/><polygon class=\"gi-ah\" points=\"318.0,105.0 311.0,109.0 311.0,101.0\"/><rect class=\"gi-v fig-soft\" x=\"318\" y=\"83\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"366.0\" y=\"102.0\" text-anchor=\"middle\">Encode</text><text class=\"fig-s\" x=\"366.0\" y=\"115.0\" text-anchor=\"middle\">MiniLM-L6 (main)</text><path class=\"gi-a\" d=\"M414.0 105.0 L437.0 105.0\"/><polygon class=\"gi-ah\" points=\"444.0,105.0 437.0,109.0 437.0,101.0\"/><rect class=\"gi-f\" x=\"444\" y=\"42\" width=\"110\" height=\"126\" rx=\"10\"/><text class=\"fig-t\" x=\"499\" y=\"60\" text-anchor=\"middle\">Flat vector index</text><rect class=\"gi-v\" x=\"456\" y=\"72\" width=\"14\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"474\" y=\"72\" width=\"14\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"492\" y=\"72\" width=\"14\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"510\" y=\"72\" width=\"14\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"528\" y=\"72\" width=\"14\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"456\" y=\"88\" width=\"14\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"474\" y=\"88\" width=\"14\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"492\" y=\"88\" width=\"14\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"510\" y=\"88\" width=\"14\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"528\" y=\"88\" width=\"14\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"456\" y=\"104\" width=\"14\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"474\" y=\"104\" width=\"14\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"492\" y=\"104\" width=\"14\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"510\" y=\"104\" width=\"14\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"528\" y=\"104\" width=\"14\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"456\" y=\"120\" width=\"14\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"474\" y=\"120\" width=\"14\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"492\" y=\"120\" width=\"14\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"510\" y=\"120\" width=\"14\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"528\" y=\"120\" width=\"14\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"456\" y=\"136\" width=\"14\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"474\" y=\"136\" width=\"14\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"492\" y=\"136\" width=\"14\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"510\" y=\"136\" width=\"14\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"528\" y=\"136\" width=\"14\" height=\"10\" rx=\"2\"/><text class=\"fig-s\" x=\"499\" y=\"160\" text-anchor=\"middle\">FAISS inner product</text><text class=\"fig-s\" x=\"330\" y=\"204\" text-anchor=\"middle\">PersonaMem: turn-pair chunks. PersonaBench and LongMemEval:</text><text class=\"fig-s\" x=\"330\" y=\"217\" text-anchor=\"middle\">one chunk per session. The index is never updated or rewritten.</text>",
+        "text": [
+          "There is no construction step: the dialogue is cut into raw chunks (a user turn with its reply, or a whole session) and embedded as is.",
+          "One flat vector index per user is the whole memory; nothing is summarized, linked or updated."
+        ],
+        "src": "paper App. B; code EmbdRetri.py L31-L132",
+        "url": "https://github.com/Applied-Machine-Learning-Lab/ICLR2026_RF-Mem/blob/d6a2cb3416e8320bcb1439921d319729aeccec8e/RF_mem/personamem_data/retri_mdoel/EmbdRetri.py#L31-L132"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 262",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"30\" width=\"62\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"35.0\" y=\"56.0\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M66.0 52.0 L75.0 52.0\"/><polygon class=\"gi-ah\" points=\"82.0,52.0 75.0,56.0 75.0,48.0\"/><rect class=\"gi-v fig-soft\" x=\"82\" y=\"30\" width=\"84\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"124.0\" y=\"49.0\" text-anchor=\"middle\">Probe</text><text class=\"fig-s\" x=\"124.0\" y=\"62.0\" text-anchor=\"middle\">top-10 cosine</text><path class=\"gi-a\" d=\"M166.0 52.0 L175.0 52.0\"/><polygon class=\"gi-ah\" points=\"182.0,52.0 175.0,56.0 175.0,48.0\"/><polygon class=\"gi-llm fig-soft\" points=\"236,18 290,52 236,86 182,52\"/><text class=\"fig-t\" x=\"236\" y=\"49\" text-anchor=\"middle\">Familiar?</text><text class=\"fig-s\" x=\"236\" y=\"62\" text-anchor=\"middle\">mean, entropy</text><text class=\"fig-yes\" x=\"298\" y=\"34\" text-anchor=\"start\">mean ≥ 0.6</text><text class=\"fig-yes\" x=\"298\" y=\"46\" text-anchor=\"start\">or H ≤ τ</text><path class=\"gi-a\" d=\"M290.0 52.0 L383.0 52.0\"/><polygon class=\"gi-ah\" points=\"390.0,52.0 383.0,56.0 383.0,48.0\"/><rect class=\"gi-v fig-soft\" x=\"390\" y=\"30\" width=\"84\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"432.0\" y=\"49.0\" text-anchor=\"middle\">Familiarity</text><text class=\"fig-s\" x=\"432.0\" y=\"62.0\" text-anchor=\"middle\">top-10, cos ≥ 0.3</text><path class=\"gi-a\" d=\"M474.0 52.0 L483.0 52.0\"/><polygon class=\"gi-ah\" points=\"490.0,52.0 483.0,56.0 483.0,48.0\"/><rect class=\"gi-hi\" x=\"490\" y=\"30\" width=\"66\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"523.0\" y=\"49.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"523.0\" y=\"62.0\" text-anchor=\"middle\">≤ 10 chunks</text><path class=\"gi-a\" d=\"M236.0 86.0 L236.0 111.0\"/><polygon class=\"gi-ah\" points=\"236.0,118.0 232.0,111.0 240.0,111.0\"/><text class=\"fig-no\" x=\"244\" y=\"104\" text-anchor=\"start\">mean ≤ 0.3 or H > τ</text><rect class=\"gi-v fig-soft\" x=\"150\" y=\"118\" width=\"100\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"200.0\" y=\"137.0\" text-anchor=\"middle\">Search</text><text class=\"fig-s\" x=\"200.0\" y=\"150.0\" text-anchor=\"middle\">top (B+r)·F</text><path class=\"gi-a\" d=\"M250.0 140.0 L261.0 140.0\"/><polygon class=\"gi-ah\" points=\"268.0,140.0 261.0,144.0 261.0,136.0\"/><rect class=\"gi-f\" x=\"268\" y=\"118\" width=\"86\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"311.0\" y=\"137.0\" text-anchor=\"middle\">KMeans</text><text class=\"fig-s\" x=\"311.0\" y=\"150.0\" text-anchor=\"middle\">B clusters</text><path class=\"gi-a\" d=\"M354.0 140.0 L365.0 140.0\"/><polygon class=\"gi-ah\" points=\"372.0,140.0 365.0,144.0 365.0,136.0\"/><rect class=\"gi-w\" x=\"372\" y=\"118\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"420.0\" y=\"137.0\" text-anchor=\"middle\">α-mix</text><text class=\"fig-s\" x=\"420.0\" y=\"150.0\" text-anchor=\"middle\">query + centroid</text><path class=\"gi-a\" d=\"M420 162 L420 188 L200 188\"/><path class=\"gi-a\" d=\"M200.0 188.0 L200.0 169.0\"/><polygon class=\"gi-ah\" points=\"200.0,162.0 204.0,169.0 196.0,169.0\"/><text class=\"fig-s\" x=\"310\" y=\"202\" text-anchor=\"middle\">keep best B branches; next round r+1</text><text class=\"fig-s\" x=\"84\" y=\"136\" text-anchor=\"middle\">B=3, F=2</text><text class=\"fig-s\" x=\"84\" y=\"149\" text-anchor=\"middle\">N = 6, 8, 10 …</text><path class=\"gi-a\" d=\"M468 128 L523 128\"/><path class=\"gi-a\" d=\"M523.0 128.0 L523.0 81.0\"/><polygon class=\"gi-ah\" points=\"523.0,74.0 527.0,81.0 519.0,81.0\"/><text class=\"fig-s\" x=\"518\" y=\"104\" text-anchor=\"end\">10 unique</text><text class=\"fig-s\" x=\"280\" y=\"236\" text-anchor=\"middle\">no LLM anywhere in retrieval; recollection stops at 10 unique chunks or 10 rounds</text><text class=\"fig-s\" x=\"280\" y=\"250\" text-anchor=\"middle\">(values from the PersonaMem run script and code)</text>",
+        "text": [
+          "A top-10 probe measures how familiar the question is from the mean cosine and the entropy of the scores; familiar questions get plain top-10 search.",
+          "Otherwise hits are clustered, each centroid is mixed into the query, and the search repeats until 10 new chunks are found."
+        ],
+        "src": "paper §2.1-2.3, App. B; code utils.py L153-L177, EmbdRetri.py L191-L330, main_batch.py L100-L123",
+        "url": "https://github.com/Applied-Machine-Learning-Lab/ICLR2026_RF-Mem/blob/d6a2cb3416e8320bcb1439921d319729aeccec8e/RF_mem/personamem_data/retri_mdoel/EmbdRetri.py#L191-L330"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Chunk",
+        "value": "user turn + assistant reply (PersonaMem); one session elsewhere",
+        "src": "paper App. B",
+        "section": "construction"
+      },
+      {
+        "label": "Gate",
+        "value": "probe top-10; mean ≥ 0.6 fast, ≤ 0.3 slow, else entropy vs τ",
+        "src": "paper App. B; code main_batch.py L101",
+        "section": "method"
+      },
+      {
+        "label": "Recollection breadth",
+        "value": "B = 3 branches, F = 2 (PersonaMem); B = 4, F = 1 (LongMemEval)",
+        "src": "paper App. B",
+        "section": "method"
+      },
+      {
+        "label": "Chunks to the answer model",
+        "value": "10",
+        "src": "code personamem_data/run.sh L18",
+        "url": "https://github.com/Applied-Machine-Learning-Lab/ICLR2026_RF-Mem/blob/d6a2cb3416e8320bcb1439921d319729aeccec8e/RF_mem/personamem_data/run.sh#L18",
+        "section": "method"
+      },
+      {
+        "label": "Answer context",
+        "value": "3.6k tokens vs 24.7k full context at 32K",
+        "src": "paper Table 1",
+        "section": "results"
+      },
+      {
+        "label": "Retrieval latency",
+        "value": "4.3-6.3 ms per question on PersonaMem",
+        "src": "paper Table 1",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Embed chunks and questions",
+        "model": "multi-qa-MiniLM-L6-cos-v1 (also all-mpnet-base-v2, bge-base-en-v1.5)",
+        "kind": "retriever",
+        "src": "paper App. B, Tables 2-3"
+      },
+      {
+        "role": "Gate: familiar or not",
+        "model": "rule on mean cosine and entropy",
+        "kind": "rule",
+        "src": "paper Eq. 3; code utils.py L160-L177",
+        "url": "https://github.com/Applied-Machine-Learning-Lab/ICLR2026_RF-Mem/blob/d6a2cb3416e8320bcb1439921d319729aeccec8e/RF_mem/personamem_data/utils.py#L160-L177"
+      },
+      {
+        "role": "Recollection loop",
+        "model": "KMeans + α-mix in embedding space",
+        "kind": "rule",
+        "src": "paper §2.3; code EmbdRetri.py L191-L330",
+        "url": "https://github.com/Applied-Machine-Learning-Lab/ICLR2026_RF-Mem/blob/d6a2cb3416e8320bcb1439921d319729aeccec8e/RF_mem/personamem_data/retri_mdoel/EmbdRetri.py#L191-L330"
+      },
+      {
+        "role": "Answer",
+        "model": "gpt-4.1-mini in the released script ('advanced LLM' in the paper)",
+        "kind": "llm",
+        "src": "code main_batch.py L40-L45",
+        "url": "https://github.com/Applied-Machine-Learning-Lab/ICLR2026_RF-Mem/blob/d6a2cb3416e8320bcb1439921d319729aeccec8e/RF_mem/personamem_data/main_batch.py#L40-L45"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "PersonaMem 32K",
+        "128K",
+        "1M"
+      ],
+      "rows": [
+        [
+          "RF-Mem (gated)",
+          "0.6350",
+          "0.5394",
+          "0.4589"
+        ],
+        [
+          "Recollection always",
+          "0.6214",
+          "0.5288",
+          "0.4544"
+        ],
+        [
+          "Familiarity always (dense top-K)",
+          "0.5908",
+          "0.5259",
+          "0.4518"
+        ],
+        [
+          "Full context",
+          "0.6129",
+          "0.3231",
+          "out of context"
+        ],
+        [
+          "No memory",
+          "0.3854",
+          "0.3124",
+          "0.2730"
+        ]
+      ],
+      "src": "paper Table 1 (overall accuracy)"
+    },
+    "discussion": {
+      "takeaway": "Deciding per question whether to do a plain top-K search or a few embedding-space expansion rounds gives small but consistent gains over always doing either, at near dense-retrieval latency.",
+      "claims": [
+        {
+          "claim": "Best overall accuracy at every corpus size with compact inputs.",
+          "evidence": "PersonaMem 0.6350 / 0.5394 / 0.4589 at 32K / 128K / 1M vs dense 0.5908 / 0.5259 / 0.4518; full context 0.6129 at 32K with 24.7k tokens vs 3.6k. Table 1"
+        },
+        {
+          "claim": "Gating is cheaper than always recollecting and at least as accurate.",
+          "evidence": "Latency 5.09 vs 7.09 ms (32K), 4.27 vs 7.86 ms (128K), 6.28 vs 8.12 ms (1M). Table 1, §3.2"
+        },
+        {
+          "claim": "Familiarity suits fact lookups, recollection suits context-heavy questions.",
+          "evidence": "PersonaBench Pref-Hard Recall@10 0.6267 (recollection) vs 0.5561 (familiarity) under MiniLM. Table 2, §3.3"
+        },
+        {
+          "claim": "Robust retrieval across encoders.",
+          "evidence": "RF-Mem matches or beats both modes in overall Recall@5/10 on PersonaBench and LongMemEval-S/M for MiniLM, MPNet and BGE. Tables 2-3"
+        },
+        {
+          "claim": "Works as a layer over other memory designs.",
+          "evidence": "Best overall with a MemoryBank summary index (0.5314), HyDE expansion (Recall@10 0.5194) and Search-o1 (0.6146). Tables 4-6"
+        }
+      ],
+      "limits": [
+        "Evaluated only on text dialogue memory.",
+        "List entropy and similarity scores are rough proxies for task difficulty and semantic ambiguity.",
+        "The index is static: no temporal updates or conflicts across sessions are modeled.",
+        "Better surfacing of old history may expose sensitive information."
+      ],
+      "limits_src": "paper App. H",
+      "reading": [
+        "Gains over dense retrieval shrink with corpus size: +0.044 at 32K, +0.0135 at 128K, +0.0071 at 1M overall accuracy (Table 1).",
+        "The code's entropy is the paper's H divided by K (mean instead of sum), and its recollection output is the first 10 chunks collected rather than the top 10 by score.",
+        "App. B lists all-MiniLM-L6-v2 as a PersonaBench encoder while Tables 2, 17 name all-mpnet-base-v2; §3.2 gives 7.12 ms for 1M recollection while Table 1 says 8.12 ms.",
+        "The released PersonaMem script calls gpt-4.1-mini, which the paper never names; α and τ are swept in the scripts and the reported choice is not stated.",
+        "Only the question is embedded, with no LLM query rewriting, so the comparison is against dense top-K on the same index rather than against other memory systems."
+      ]
+    },
+    "abstract": {
+      "text": "RF-Mem borrows the recollection-familiarity idea from memory research to decide how hard a personalized LLM should search its user history. A quick probe search yields a mean similarity and an entropy over the scores; if the question looks familiar the system returns the top-K chunks at once, and otherwise it runs a few rounds that cluster the hits, blend each cluster centroid into the query and search again. Everything happens in embedding space over raw dialogue chunks, with no LLM in the loop. On PersonaMem, PersonaBench and LongMemEval the authors report higher accuracy or recall than plain dense retrieval and full-context prompting at close to one-shot latency.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2603.09250"
+    },
+    "sections": {
+      "Memory architecture": "§2",
+      "Results": "§3.2-3.3",
+      "Ablation": "§3.2 (Table 1 modes), §3.4, App. D",
+      "Discussion": "§5, App. H",
+      "Details": "§3.1, App. A-C, E"
+    }
+  }
+}

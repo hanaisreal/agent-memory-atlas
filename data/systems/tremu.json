@@ -1,0 +1,435 @@
+{
+  "id": "tremu",
+  "name": "TReMu",
+  "paper": {
+    "title": "TReMu: Towards Neuro-Symbolic Temporal Reasoning for LLM-Agents with Memory in Multi-Session Dialogues",
+    "arxiv": "2502.01630",
+    "url": "https://arxiv.org/abs/2502.01630",
+    "venue": "Findings of ACL 2025",
+    "venue_short": "ACL",
+    "track": "findings",
+    "year": 2025,
+    "code": null
+  },
+  "design": {
+    "construction": {
+      "unit": "memory piece: summary + time + start/end line numbers",
+      "kept_as": "LLM summaries of the session and of each mentioned event, dated by inferred event time; raw lines linked by line numbers",
+      "processing": "one LLM call per session (timeline summarization): session summary at the session date plus one summary per mentioned event at its inferred date or date range",
+      "trigger": "session-end",
+      "writer": "backbone LLM (GPT-4o, GPT-4o-mini or GPT-3.5-Turbo)"
+    },
+    "organization": {
+      "structure": "timeline: pieces grouped by inferred date",
+      "stores": "one memorization pool per conversation",
+      "index": "inferred date (no embedding index described)"
+    },
+    "management": {
+      "operations": "new pieces added to the pool and organised on the timeline (f_org in Alg. 1)",
+      "conflicts": null,
+      "forgetting": null,
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "the temporal question",
+      "candidates": "all memory pieces, shown to an LLM as numbered options",
+      "selection": "LLM selects one or more option numbers (prompt inherited from MemoChat)",
+      "budget": null
+    },
+    "use": {
+      "context": "selected pieces (summary, time, related dialogue lines) + question + options + generated Python code and its output",
+      "reasoning": "LLM writes Python (datetime, dateutil, weekRange helpers), code is executed (regenerated on error), then a final LLM call picks the option"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": null,
+      "retrieval": "prompted-llm"
+    }
+  },
+  "classify": {
+    "structure": "flat",
+    "index": "none",
+    "management": "append-only",
+    "candidates": "LLM routing",
+    "decides": "LLM decides",
+    "note": "The timeline groups pieces by date, but retrieval does not use the dates as an index: an LLM reads every piece as a numbered option and picks some. Structure kept as flat because the paper describes no levels or links beyond the date grouping."
+  },
+  "tags": {
+    "fidelity": "verbatim+derived",
+    "structure": [
+      "flat"
+    ],
+    "write_time": [
+      "summarize",
+      "extract"
+    ],
+    "selection": [
+      "model-reads"
+    ],
+    "memory_type": [
+      "episodic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "conversation"
+    ]
+  },
+  "stages": {
+    "ingestion": "Each dialogue session is given to the LLM as a numbered-line conversation with its session timestamp.",
+    "construction": "Timeline summarization: the LLM writes a summary of the session at the session date and, for every event the speakers place at another time, a separate summary linked to the inferred date (or a date range for vague expressions such as 'last week'), each with the start and end line numbers it covers.",
+    "organization": "Memory pieces are arranged as a timeline: events at the same inferred time are grouped and indexed by that time.",
+    "update": "",
+    "retrieval": "For a question, an LLM is shown the question and all memory pieces as numbered options and returns the numbers of the relevant ones.",
+    "answer": "The LLM translates the question, options and retrieved evidence into Python code using datetime/dateutil and provided helpers (weekRange, lastWeekendRange); the code is executed (and regenerated if it fails), and a final LLM call reads the evidence, code and output and picks one option (A-E, including 'Unanswerable').",
+    "learning": ""
+  },
+  "summary": "Temporal QA over multi-session dialogue with time-aware memory (per-session summaries plus one summary per mentioned event at its inferred date) and neuro-symbolic reasoning, where the LLM writes and runs Python date code before choosing the answer; also contributes a 600-question LoCoMo-based temporal benchmark.",
+  "verified": false,
+  "notes": "Venue verified on ACL Anthology: Findings of ACL 2025, pages 18974-18988 (2025.findings-acl.972). PDF read: arXiv v2 (24 Sep 2025). Code: the paper says code and data will be released (Limitations) but gives no link; no official repository found on GitHub (searched 2026-09-30). Prompts (App. C-D, Figs. 11-14) are images in the PDF and were read from the rendered pages. The benchmark is new (no id in benchmarks.json): proposed in .cache/annot/new_benchmarks_tremu.json as 'tremu-temporal'. Retrieval prompt (Fig. 12) still says 'Topic Options', i.e. MemoChat's topic-selection prompt applied to memory pieces. control.management left null: the paper does not say whether the timeline organisation is a rule or an LLM step.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2502.01630v2 (PDF read 2026-09-30); ACL Anthology 2025.findings-acl.972 checked for venue",
+      "code": null,
+      "code_note": "No code: the paper promises a release but links none, and no official repository was found. Everything below comes from the paper text, Algorithm 1 and the prompt figures (Figs. 3-4, 11-14)."
+    },
+    "sections": {
+      "Memory architecture": "§3.2 (Alg. 1)",
+      "Results": "§4.2, Tables 5-7",
+      "Ablation": "§4.3",
+      "Discussion": "§4.4-4.5, §7 Limitations",
+      "Details": "§2, §4.1, App. C-D"
+    },
+    "abstract": {
+      "text": "TReMu targets temporal questions about long multi-session conversations, where people refer to events with relative times and across sessions. The authors build a 600-question multiple-choice benchmark by augmenting LoCoMo dialogues with GPT-4o and manual checking, covering when an event happened, which of two happened first, and how far apart they were, plus unanswerable questions. Their method writes memory as a timeline: each session is summarised and every mentioned event gets its own summary dated by when it happened. At question time an LLM picks relevant memory, writes Python date code that is executed, and then chooses the answer; with GPT-4o accuracy rises from 29.83 (standard prompting) to 77.67.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2502.01630"
+    },
+    "headline": [
+      "Memory separates when an event was mentioned from when it happened: each mentioned event is stored at its inferred date, not the session date.",
+      "There is no embedding search: an LLM reads all memory pieces as numbered options and picks the relevant ones.",
+      "The answer is chosen after the LLM writes and runs Python date arithmetic; the benchmark is multiple choice, so the method is not tested on free-form answers."
+    ],
+    "units": [
+      {
+        "name": "Memory piece",
+        "role": "one summarised event (or the whole session) tied to a date",
+        "made_by": "backbone LLM with the time-aware memorization prompt (Fig. 11), once per session",
+        "fields": [
+          {
+            "name": "time",
+            "what": "session date for the session summary; inferred date (mm/dd/yyyy) or range ('During 07/24/2022 to 07/30/2022') for mentioned events",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper §3.2.1, Fig. 11, Table 4",
+            "url": "https://arxiv.org/pdf/2502.01630"
+          },
+          {
+            "name": "summary",
+            "what": "paragraph summary of the session, or a short summary of one mentioned event from the perspective of its own date",
+            "kept_as": "summarized",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper Fig. 11, Table 4",
+            "url": "https://arxiv.org/pdf/2502.01630"
+          },
+          {
+            "name": "start / end line",
+            "what": "line numbers of the conversation the summary covers",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper Fig. 11 (step 3, 'chat range')",
+            "url": "https://arxiv.org/pdf/2502.01630"
+          },
+          {
+            "name": "related dialogue",
+            "what": "the original turns in that line range, each marked with its timestamp; shown with the retrieved piece",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper Figs. 3-4 ('Related Dialogue'), Fig. 14",
+            "url": "https://arxiv.org/pdf/2502.01630"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Summarise session",
+        "how": "LLM reads one session (numbered lines, session timestamp) and writes a paragraph summary at the session date",
+        "out": "JSON list of {time, summary, start, end}",
+        "src": "paper §3.2.1, Fig. 11",
+        "url": "https://arxiv.org/pdf/2502.01630"
+      },
+      {
+        "step": "Date mentioned events",
+        "how": "for each event the speakers place at another time, the same call writes a separate summary linked to the inferred date; vague times become a date range",
+        "out": "e.g. 5 dated pieces from one LoCoMo session (Table 4)",
+        "src": "paper §3.2.1, Fig. 11, Table 4",
+        "url": "https://arxiv.org/pdf/2502.01630"
+      },
+      {
+        "step": "Organise timeline",
+        "how": "group events that happen at the same time and index them by inferred time",
+        "note": "the paper gives no prompt or rule for this step",
+        "src": "paper §3.2.1, Alg. 1 (f_org)",
+        "url": "https://arxiv.org/pdf/2502.01630"
+      }
+    ],
+    "read": [
+      {
+        "step": "Select memory",
+        "round": 1,
+        "input": "question",
+        "scores": "question vs every memory piece, read together by the LLM",
+        "how": "LLM gets the question and all memory pieces as numbered options and returns the chosen numbers ('N#M')",
+        "params": {
+          "k": "any number the LLM picks"
+        },
+        "src": "paper App. D, Fig. 12",
+        "url": "https://arxiv.org/pdf/2502.01630"
+      },
+      {
+        "step": "Write code",
+        "round": 1,
+        "input": "question + options + selected evidence",
+        "how": "few-shot prompt; the LLM writes Python with datetime/dateutil and helpers weekRange and lastWeekendRange, defining separate variables for when an event was mentioned and when it happened; an event with no inferable time is set to None",
+        "src": "paper §3.2.2, Fig. 13",
+        "url": "https://arxiv.org/pdf/2502.01630"
+      },
+      {
+        "step": "Execute",
+        "round": 1,
+        "how": "run the code; if it fails, regenerate it",
+        "out": "failure rate 1.80% (GPT-4o), 7.83% (GPT-4o-mini), 14.16% (GPT-3.5-Turbo)",
+        "src": "paper §4.4, Fig. 2",
+        "url": "https://arxiv.org/pdf/2502.01630"
+      },
+      {
+        "step": "Choose option",
+        "round": 1,
+        "how": "LLM reads evidence, question, options and the code with its output, and returns one letter A-E",
+        "src": "paper Fig. 14",
+        "url": "https://arxiv.org/pdf/2502.01630"
+      }
+    ],
+    "answer_context": {
+      "sees": "selected memory pieces (summary, time and the related dialogue turns with timestamps), the question, the answer options, and the generated code with its printed output",
+      "format": "'Related Evidence: <MEMORY> Query Question: <QUERY> Answer Options: <OPTIONS> Rationales: <CODE>', output JSON {\"final answer\": letter}",
+      "excludes": [
+        "memory pieces not selected",
+        "the rest of the dialogue"
+      ],
+      "includes": [
+        "selected summaries with dates",
+        "their dialogue lines",
+        "Python code and its output"
+      ],
+      "src": "paper Fig. 14, Figs. 3-4",
+      "url": "https://arxiv.org/pdf/2502.01630"
+    },
+    "compression": [
+      {
+        "what": "retrieved evidence vs one LoCoMo conversation",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported: the paper gives no memory size, number of pieces per session or context length. LoCoMo conversations average 9,209.2 tokens (Table 1).",
+        "src": "paper Table 1",
+        "url": "https://arxiv.org/pdf/2502.01630"
+      }
+    ],
+    "paper_vs_code": [],
+    "open_questions": [
+      "The retrieval step is never ablated on its own: Timeline + CoT changes both the stored memory and keeps LLM selection, so how much of the gain comes from dated event pieces versus the linked raw dialogue lines is not separated.",
+      "SP and CoT read the whole dialogue while memory methods read selected pieces; GPT-4o and GPT-4o-mini fit LoCoMo in context, and there memory alone (MemoChat) scores below CoT.",
+      "The paper does not report how many memory pieces are produced or retrieved, or the token cost of the three LLM calls per question."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 232",
+        "body": "<text class=\"fig-t\" x=\"58\" y=\"16\" text-anchor=\"middle\">Session i</text><rect class=\"gi-ev\" x=\"14\" y=\"28\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"22\" y1=\"37.0\" x2=\"72\" y2=\"37.0\"/><rect class=\"gi-ev\" x=\"30\" y=\"52\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"38\" y1=\"61.0\" x2=\"88\" y2=\"61.0\"/><rect class=\"gi-ev\" x=\"14\" y=\"76\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"22\" y1=\"85.0\" x2=\"72\" y2=\"85.0\"/><rect class=\"gi-ev\" x=\"30\" y=\"100\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"38\" y1=\"109.0\" x2=\"88\" y2=\"109.0\"/><rect class=\"gi-ev\" x=\"14\" y=\"124\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"22\" y1=\"133.0\" x2=\"72\" y2=\"133.0\"/><rect class=\"gi-ev\" x=\"30\" y=\"148\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"38\" y1=\"157.0\" x2=\"88\" y2=\"157.0\"/><rect class=\"gi-r\" x=\"20\" y=\"174\" width=\"76\" height=\"18\" rx=\"4\"/><text class=\"fig-s\" x=\"58\" y=\"187\" text-anchor=\"middle\">date 01/28/2020</text><text class=\"fig-s\" x=\"58\" y=\"212\" text-anchor=\"middle\">numbered lines,</text><text class=\"fig-s\" x=\"58\" y=\"224\" text-anchor=\"middle\">with session date</text><path class=\"gi-a\" d=\"M110 100 L153 100\"/><polygon class=\"gi-ah\" points=\"160,100 153,96 153,104\"/><rect class=\"gi-llm\" x=\"116\" y=\"82\" width=\"36\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"134\" y=\"92\" text-anchor=\"middle\">LLM</text><text class=\"fig-s\" x=\"135\" y=\"116\" text-anchor=\"middle\">one call</text><text class=\"fig-s\" x=\"135\" y=\"127\" text-anchor=\"middle\">per session</text><text class=\"fig-t\" x=\"252\" y=\"16\" text-anchor=\"middle\">Memory pieces (JSON)</text><rect class=\"gi-hi\" x=\"164\" y=\"26\" width=\"176\" height=\"50\" rx=\"6\"/><text class=\"fig-t\" x=\"172\" y=\"41\" text-anchor=\"start\">session summary</text><text class=\"fig-s\" x=\"172\" y=\"55\" text-anchor=\"start\">time: session date 01/28/2020</text><text class=\"fig-s\" x=\"172\" y=\"68\" text-anchor=\"start\">start/end line numbers</text><rect class=\"gi-ev\" x=\"164\" y=\"84\" width=\"176\" height=\"50\" rx=\"6\"/><text class=\"fig-t\" x=\"172\" y=\"99\" text-anchor=\"start\">event summary</text><text class=\"fig-s\" x=\"172\" y=\"113\" text-anchor=\"start\">time: 01/25/2020 (\"last Saturday\")</text><text class=\"fig-s\" x=\"172\" y=\"126\" text-anchor=\"start\">start/end line numbers</text><rect class=\"gi-ev\" x=\"164\" y=\"142\" width=\"176\" height=\"50\" rx=\"6\"/><text class=\"fig-t\" x=\"172\" y=\"157\" text-anchor=\"start\">event summary</text><text class=\"fig-s\" x=\"172\" y=\"171\" text-anchor=\"start\">time: \"During 07/24 to 07/30/2022\"</text><text class=\"fig-s\" x=\"172\" y=\"184\" text-anchor=\"start\">vague dates become a range</text><text class=\"fig-s\" x=\"252\" y=\"212\" text-anchor=\"middle\">one piece per mentioned event,</text><text class=\"fig-s\" x=\"252\" y=\"224\" text-anchor=\"middle\">dated when it happened, not when said</text><path class=\"gi-a\" d=\"M346 100 L377 100\"/><polygon class=\"gi-ah\" points=\"384,100 377,96 377,104\"/><text class=\"fig-s\" x=\"365\" y=\"90\" text-anchor=\"middle\">group</text><text class=\"fig-t\" x=\"470\" y=\"16\" text-anchor=\"middle\">Timeline memory</text><line class=\"gi-l\" x1=\"394\" y1=\"150\" x2=\"552\" y2=\"150\"/><circle class=\"gi-n\" cx=\"404\" cy=\"150\" r=\"5\"/><text class=\"fig-s\" x=\"404\" y=\"170\" text-anchor=\"middle\">01/20</text><circle class=\"gi-n\" cx=\"438\" cy=\"150\" r=\"5\"/><text class=\"fig-s\" x=\"438\" y=\"170\" text-anchor=\"middle\">01/24</text><circle class=\"gi-n\" cx=\"472\" cy=\"150\" r=\"5\"/><text class=\"fig-s\" x=\"472\" y=\"170\" text-anchor=\"middle\">01/25</text><circle class=\"gi-n\" cx=\"506\" cy=\"150\" r=\"5\"/><text class=\"fig-s\" x=\"506\" y=\"170\" text-anchor=\"middle\">01/27</text><circle class=\"gi-n\" cx=\"540\" cy=\"150\" r=\"5\"/><text class=\"fig-s\" x=\"540\" y=\"170\" text-anchor=\"middle\">01/28</text><rect class=\"gi-r\" x=\"393\" y=\"128\" width=\"22\" height=\"14\" rx=\"3\"/><rect class=\"gi-r\" x=\"427\" y=\"128\" width=\"22\" height=\"14\" rx=\"3\"/><rect class=\"gi-r\" x=\"461\" y=\"128\" width=\"22\" height=\"14\" rx=\"3\"/><rect class=\"gi-r\" x=\"495\" y=\"128\" width=\"22\" height=\"14\" rx=\"3\"/><rect class=\"gi-hi\" x=\"529\" y=\"128\" width=\"22\" height=\"14\" rx=\"3\"/><rect class=\"gi-r\" x=\"529\" y=\"108\" width=\"22\" height=\"14\" rx=\"3\"/><text class=\"fig-s\" x=\"470\" y=\"58\" text-anchor=\"middle\">pieces from all sessions,</text><text class=\"fig-s\" x=\"470\" y=\"70\" text-anchor=\"middle\">grouped under the same date</text><text class=\"fig-s\" x=\"470\" y=\"198\" text-anchor=\"middle\">indexed by inferred date</text><text class=\"fig-s\" x=\"470\" y=\"212\" text-anchor=\"middle\">(organisation step: paper gives</text><text class=\"fig-s\" x=\"470\" y=\"224\" text-anchor=\"middle\">no rule or prompt for it)</text>",
+        "text": [
+          "One LLM call per session writes a summary at the session date and a separate summary for each event the speakers place at another time, dated when it happened.",
+          "The pieces, each with its line range, are grouped on a timeline by inferred date."
+        ],
+        "src": "paper §3.2.1, Fig. 11, Tables 3-4",
+        "url": "https://arxiv.org/pdf/2502.01630"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 232",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"30\" width=\"62\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"35.0\" y=\"52.0\" text-anchor=\"middle\">Question</text><text class=\"fig-s\" x=\"35.0\" y=\"65.0\" text-anchor=\"middle\">+ options</text><path class=\"gi-a\" d=\"M66 54 L71 54\"/><polygon class=\"gi-ah\" points=\"78,54 71,50 71,58\"/><rect class=\"gi-llm\" x=\"78\" y=\"30\" width=\"86\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"121.0\" y=\"46.0\" text-anchor=\"middle\">Pick pieces</text><text class=\"fig-s\" x=\"121.0\" y=\"59.0\" text-anchor=\"middle\">LLM reads all</text><text class=\"fig-s\" x=\"121.0\" y=\"71.0\" text-anchor=\"middle\">as numbered list</text><path class=\"gi-a\" d=\"M164 54 L169 54\"/><polygon class=\"gi-ah\" points=\"176,54 169,50 169,58\"/><rect class=\"gi-f\" x=\"176\" y=\"30\" width=\"92\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"222.0\" y=\"46.0\" text-anchor=\"middle\">Evidence</text><text class=\"fig-s\" x=\"222.0\" y=\"59.0\" text-anchor=\"middle\">summary + date</text><text class=\"fig-s\" x=\"222.0\" y=\"71.0\" text-anchor=\"middle\">+ dialogue lines</text><path class=\"gi-a\" d=\"M268 54 L273 54\"/><polygon class=\"gi-ah\" points=\"280,54 273,50 273,58\"/><rect class=\"gi-llm\" x=\"280\" y=\"30\" width=\"86\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"323.0\" y=\"46.0\" text-anchor=\"middle\">Write Python</text><text class=\"fig-s\" x=\"323.0\" y=\"59.0\" text-anchor=\"middle\">few-shot examples</text><text class=\"fig-s\" x=\"323.0\" y=\"71.0\" text-anchor=\"middle\">date helpers</text><path class=\"gi-a\" d=\"M366 54 L371 54\"/><polygon class=\"gi-ah\" points=\"378,54 371,50 371,58\"/><polygon class=\"gi-f\" points=\"414,28 450,54 414,80 378,54\"/><text class=\"fig-t\" x=\"414\" y=\"53\" text-anchor=\"middle\">Runs?</text><text class=\"fig-s\" x=\"414\" y=\"65\" text-anchor=\"middle\">execute</text><path class=\"gi-a\" d=\"M450 54 L463 54\"/><polygon class=\"gi-ah\" points=\"470,54 463,50 463,58\"/><text class=\"fig-yes\" x=\"460\" y=\"47\" text-anchor=\"middle\">Yes</text><rect class=\"gi-hi\" x=\"470\" y=\"26\" width=\"86\" height=\"56\" rx=\"8\"/><text class=\"fig-t\" x=\"513\" y=\"46\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"513\" y=\"59\" text-anchor=\"middle\">LLM picks A-E</text><text class=\"fig-s\" x=\"513\" y=\"71\" text-anchor=\"middle\">or Unanswerable</text><path class=\"gi-a\" d=\"M414 80 L414 104 L323 104 L323 85\"/><polygon class=\"gi-ah\" points=\"323,78 319,85 327,85\"/><text class=\"fig-no\" x=\"420\" y=\"100\" text-anchor=\"start\">No: regenerate</text><text class=\"fig-s\" x=\"420\" y=\"114\" text-anchor=\"start\">fails 1.8-14.2%</text><text class=\"fig-s\" x=\"420\" y=\"126\" text-anchor=\"start\">of the time</text><path class=\"gi-a d\" d=\"M222 78 L222 150 L513 150 L513 89\"/><polygon class=\"gi-ah\" points=\"513,82 509,89 517,89\"/><text class=\"fig-s\" x=\"240\" y=\"144\" text-anchor=\"start\">answer call re-reads evidence, code and output</text><rect class=\"gi-ev\" x=\"4\" y=\"164\" width=\"552\" height=\"62\" rx=\"8\"/><text class=\"gi-lbl\" x=\"14\" y=\"180\" text-anchor=\"start\">Generated code (paper Fig. 4)</text><text class=\"fig-s\" x=\"14\" y=\"196\" text-anchor=\"start\">t_share = date(2020, 3, 16)   # when it was said (session date)</text><text class=\"fig-s\" x=\"14\" y=\"208\" text-anchor=\"start\">t_start = t_share - relativedelta(weeks=1)   # \"last week\"</text><text class=\"fig-s\" x=\"14\" y=\"220\" text-anchor=\"start\">week_start, week_end = weekRange(t_start); print(each option in range?)</text><text class=\"fig-s\" x=\"400\" y=\"196\" text-anchor=\"start\">libraries: datetime,</text><text class=\"fig-s\" x=\"400\" y=\"208\" text-anchor=\"start\">dateutil + helpers</text><text class=\"fig-s\" x=\"400\" y=\"220\" text-anchor=\"start\">weekRange, lastWeekendRange</text>",
+        "text": [
+          "An LLM reads all memory pieces as numbered options and picks the relevant ones; with their dialogue lines they become evidence for writing Python date code.",
+          "The code is run (and rewritten if it fails), and a last LLM call reads evidence, code and output to choose the option."
+        ],
+        "src": "paper §3.2.2, §4.4, Figs. 2, 4, 12-14",
+        "url": "https://arxiv.org/pdf/2502.01630"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Benchmark questions",
+        "value": "600: 264 anchoring, 102 precedence, 234 interval (112 unanswerable)",
+        "src": "paper Table 2",
+        "section": "construction"
+      },
+      {
+        "label": "Options per question",
+        "value": "5 (anchoring, interval) · 3 (precedence)",
+        "src": "paper Table 2",
+        "section": "construction"
+      },
+      {
+        "label": "LoCoMo conversation",
+        "value": "304.9 turns, 19.3 sessions, 9,209.2 tokens (avg)",
+        "src": "paper Table 1",
+        "section": "construction"
+      },
+      {
+        "label": "Memory writing",
+        "value": "1 LLM call per session",
+        "src": "paper Alg. 1, Fig. 11",
+        "section": "construction"
+      },
+      {
+        "label": "Memory selected",
+        "value": "LLM picks any number of pieces from all of them",
+        "src": "paper Fig. 12",
+        "section": "method"
+      },
+      {
+        "label": "LLM calls per question",
+        "value": "3 (select, code, answer) + regenerations",
+        "src": "paper Alg. 1, §4.4",
+        "section": "method"
+      },
+      {
+        "label": "Code execution failures",
+        "value": "1.80% · 7.83% · 14.16% (GPT-4o · 4o-mini · 3.5)",
+        "src": "paper Fig. 2",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Write timeline memory",
+        "model": "backbone LLM (GPT-4o-2024-05-13, GPT-4o-mini-2024-07-18 or GPT-3.5-Turbo-0125)",
+        "kind": "llm",
+        "src": "paper §4.1, Fig. 11"
+      },
+      {
+        "role": "Select memory pieces",
+        "model": "same backbone LLM",
+        "kind": "llm",
+        "src": "paper Fig. 12"
+      },
+      {
+        "role": "Write Python date code",
+        "model": "same backbone LLM, few-shot",
+        "kind": "llm",
+        "src": "paper §3.2.2, Fig. 13"
+      },
+      {
+        "role": "Execute code",
+        "model": "Python interpreter with datetime, dateutil and helper functions",
+        "kind": "rule",
+        "src": "paper §3.2.2"
+      },
+      {
+        "role": "Choose answer",
+        "model": "same backbone LLM",
+        "kind": "llm",
+        "src": "paper Fig. 14"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "GPT-4o",
+        "GPT-4o-mini",
+        "GPT-3.5-Turbo"
+      ],
+      "rows": [
+        [
+          "Standard prompting (full dialogue)",
+          "29.83",
+          "29.00",
+          "23.83"
+        ],
+        [
+          "CoT (full dialogue)",
+          "61.67",
+          "45.67",
+          "25.83"
+        ],
+        [
+          "MemoChat memory + CoT",
+          "41.67",
+          "28.00",
+          "28.50"
+        ],
+        [
+          "Timeline memory + CoT",
+          "71.50",
+          "49.67",
+          "30.67"
+        ],
+        [
+          "TReMu (timeline + code)",
+          "77.67",
+          "51.17",
+          "33.67"
+        ]
+      ],
+      "src": "paper Tables 5-7 (overall accuracy), §4.3"
+    },
+    "discussion": {
+      "takeaway": "Storing each mentioned event at the date it happened, then doing the date arithmetic in executed Python, lifts GPT-4o from 29.83 to 77.67 accuracy on a new LoCoMo-based temporal multiple-choice benchmark.",
+      "claims": [
+        {
+          "claim": "Temporal reasoning across sessions is hard for current LLMs.",
+          "evidence": "GPT-4o 29.83 with SP and 61.67 with CoT; GPT-3.5-Turbo 23.83 and 25.83 (Tables 5, 7, §4.2)."
+        },
+        {
+          "claim": "TReMu beats all baselines on accuracy and unanswerable F1 with all three LLMs.",
+          "evidence": "Overall 77.67 / 51.17 / 33.67 vs best baseline 71.50 / 49.67 / 30.67 (Timeline + CoT); F1 64.42 / 44.44 / 35.60 (Tables 5-7)."
+        },
+        {
+          "claim": "Time-aware memorization beats standard session summaries.",
+          "evidence": "Timeline + CoT vs MemoChat + CoT: 71.50 vs 41.67 (GPT-4o), 49.67 vs 28.00, 30.67 vs 28.50 (§4.3)."
+        },
+        {
+          "claim": "Executed code helps beyond CoT on the same memory.",
+          "evidence": "TReMu vs Timeline + CoT: +6.17 (GPT-4o), +1.50 (4o-mini), +3.00 (3.5) (§4.3)."
+        },
+        {
+          "claim": "Code generation is reliable.",
+          "evidence": "Execution failures 1.80% to 14.16% (Fig. 2, §4.4)."
+        }
+      ],
+      "limits": [
+        "Evaluation is multiple choice rather than open-ended dialogue, because free-form temporal answers are hard to score.",
+        "Only closed models are tested; most open models could not fit LoCoMo dialogues (about 10% fit Llama-3-70B) or follow the output format."
+      ],
+      "limits_src": "paper §7 Limitations, §4.1",
+      "reading": [
+        "The benchmark was built by the same authors with GPT-4o (event extraction, linking, QA writing) plus manual review, and TReMu's memory is also written by an LLM prompted to date events; no other memory system except MemoChat is tested on it.",
+        "Gains shrink with weaker models: over Timeline + CoT, TReMu adds 6.17 points with GPT-4o but 1.50 with GPT-4o-mini; it loses on precedence with GPT-4o-mini (46.08 vs 59.80) and GPT-3.5-Turbo (37.25 vs 44.12), and on interval with GPT-3.5-Turbo (22.22 vs 22.65).",
+        "With GPT-4o-mini TReMu's unanswerable recall is 92.86 but precision 29.21, so part of its accuracy may come from answering 'Unanswerable' often; the paper does not discuss this.",
+        "Memory methods (MemoChat, MemoChat + CoT) score below full-dialogue CoT for GPT-4o and GPT-4o-mini (§4.2); the memory advantage appears only once dated event pieces are added.",
+        "For GPT-3.5-Turbo, dialogues longer than its window are cut by dropping earlier turns for SP and CoT, so those baselines see less text than memory methods."
+      ]
+    }
+  }
+}

@@ -9,7 +9,8 @@
   "what": "10 very long two-speaker conversations (~300 turns, up to 35 sessions each) with QA in five categories.",
   "versions": {
    "original": "The released locomo10.json.",
-   "refined": "LoCoMo Refined (mem-eval-suite): cleaned answers plus a stricter judge prompt."
+   "refined": "LoCoMo Refined (mem-eval-suite): cleaned answers plus a stricter judge prompt.",
+   "secom-gpt4-generated-qa": "version as reported by secom; see that results file's notes"
   },
   "pitfalls": [
    "Category 5 (adversarial) is usually dropped, leaving about 1,540 of 1,986 questions; papers that keep it are not comparable with those that drop it.",
@@ -72,7 +73,9 @@
   "versions": {
    "32k": "32K-token contexts.",
    "128k": "128K-token contexts.",
-   "1M": "1M-token contexts."
+   "1M": "1M-token contexts.",
+   "1m": "version as reported by qumem; see that results file's notes",
+   "all": "version as reported by qumem; see that results file's notes"
   },
   "pitfalls": [
    "Context length (32K / 128K / 1M) changes difficulty; record it as the version.",
@@ -87,7 +90,9 @@
   "url": "https://github.com/bowen-upenn/PersonaMem-v2",
   "code": "https://github.com/bowen-upenn/PersonaMem-v2",
   "what": "Second version of PersonaMem with implicit personas.",
-  "versions": {},
+  "versions": {
+   "32k": "version as reported by evermemos; see that results file's notes"
+  },
   "pitfalls": [
    "Not comparable with PersonaMem v1 scores."
   ]
@@ -100,7 +105,11 @@
   "url": "https://arxiv.org/abs/2107.07567",
   "code": null,
   "what": "Multi-session open-domain dialogues; memory papers often use it for response generation or derived QA.",
-  "versions": {},
+  "versions": {
+   "dmr": "version as reported by memgpt; see that results file's notes",
+   "conversation-opener": "version as reported by memgpt; see that results file's notes",
+   "original": "version as reported by theanine; see that results file's notes"
+  },
   "pitfalls": [
    "Papers derive different QA sets from MSC (e.g. MemGPT's deep memory retrieval task); record which one in 'subset'."
   ]
@@ -124,7 +133,19 @@
   "url": "https://arxiv.org/abs/2507.05257",
   "code": null,
   "what": "Accurate retrieval, test-time learning, long-range understanding and conflict resolution.",
-  "versions": {},
+  "versions": {
+   "FactConsolidation": "version as reported by mindmemos; see that results file's notes",
+   "RULER-QA1 (Single-Doc)": "version as reported by mem; see that results file's notes",
+   "RULER-QA2 (Multi-Doc)": "version as reported by mem; see that results file's notes",
+   "LME(S*)": "version as reported by mem; see that results file's notes",
+   "TREC-Coarse": "version as reported by mem; see that results file's notes",
+   "NLU": "version as reported by mem; see that results file's notes",
+   "TREC-Fine": "version as reported by mem; see that results file's notes",
+   "Clinic150": "version as reported by mem; see that results file's notes",
+   "Banking77": "version as reported by mem; see that results file's notes",
+   "InfBench-Sum": "version as reported by mem; see that results file's notes",
+   "average of 9": "version as reported by mem; see that results file's notes"
+  },
   "pitfalls": []
  },
  {
@@ -153,7 +174,9 @@
   "url": null,
   "code": null,
   "what": "Real-time dialogue simulation benchmark used by A-Mem. Link not yet verified.",
-  "versions": {},
+  "versions": {
+   "v1.1": "version as reported by higmem; see that results file's notes"
+  },
   "pitfalls": []
  },
  {
@@ -164,7 +187,9 @@
   "url": "https://arxiv.org/abs/2305.10250",
   "code": null,
   "what": "Multi-day dialogue set introduced with MemoryBank; MemoryOS reports judge-based scores on it.",
-  "versions": {},
+  "versions": {
+   "original": "version as reported by memoryos; see that results file's notes"
+  },
   "pitfalls": []
  },
  {
@@ -175,7 +200,9 @@
   "url": null,
   "code": null,
   "what": "Long-term real-world conversation dataset used by H-Mem. Link not yet verified.",
-  "versions": {},
+  "versions": {
+   "original": "version as reported by h; see that results file's notes"
+  },
   "pitfalls": []
  },
  {
@@ -186,7 +213,1889 @@
   "url": "https://arxiv.org/abs/2502.05589",
   "code": "https://github.com/microsoft/SeCom",
   "what": "Long multi-session conversations assembled from MT-Bench+ with QA, introduced in the SeCom paper.",
-  "versions": {},
+  "versions": {
+   "original": "version as reported by secom; see that results file's notes"
+  },
   "pitfalls": []
+ },
+ {
+  "id": "alfworld",
+  "name": "ALFWorld",
+  "title": "ALFWorld: Aligning Text and Embodied Environments for Interactive Learning",
+  "arxiv": "2010.03768",
+  "url": "https://arxiv.org/abs/2010.03768",
+  "code": null,
+  "what": "Text-based household environments where an agent follows instructions over many steps; six task types such as pick-and-place, clean, heat and cool (as described in AgeMem App. C.1).",
+  "versions": {
+   "original": "As released; AgeMem does not state which split or how many games it evaluates."
+  },
+  "pitfalls": [
+   "Scored by success rate; the split and the number of evaluated games vary between papers.",
+   "Not a memory benchmark by design: what an agent can store before the task depends on each paper's setup."
+  ]
+ },
+ {
+  "id": "sciworld",
+  "name": "ScienceWorld",
+  "title": "ScienceWorld: Is your Agent Smarter than a 5th Grader?",
+  "arxiv": "2203.07540",
+  "url": "https://arxiv.org/abs/2203.07540",
+  "code": null,
+  "what": "Interactive text simulator of science experiments (physics, chemistry, biology) requiring multi-step procedures (as described in AgeMem App. C.1).",
+  "versions": {
+   "original": "As released; AgeMem does not state the task subset."
+  },
+  "pitfalls": [
+   "Papers report either a success rate or a partial score; AgeMem reports success rate (SR)."
+  ]
+ },
+ {
+  "id": "pddl",
+  "name": "PDDL (AgentBoard)",
+  "title": "AgentBoard: An Analytical Evaluation Board of Multi-turn LLM Agents",
+  "arxiv": "2401.13178",
+  "url": "https://arxiv.org/abs/2401.13178",
+  "code": null,
+  "what": "Symbolic planning problems written in the Planning Domain Definition Language, from the AgentBoard suite; agents must produce action sequences that reach a goal state.",
+  "versions": {
+   "original": "AgentBoard PDDL tasks; AgeMem cites Chang et al. 2024 (AgentBoard).",
+   "AgentBoard": "version as reported by hiagent; see that results file's notes"
+  },
+  "pitfalls": [
+   "Scored by progress rate (PR), not success rate; not comparable with success-rate numbers."
+  ]
+ },
+ {
+  "id": "babyai",
+  "name": "BabyAI",
+  "title": "BabyAI: A Platform to Study the Sample Efficiency of Grounded Language Learning",
+  "arxiv": "1810.08272",
+  "url": "https://arxiv.org/abs/1810.08272",
+  "code": null,
+  "what": "Grid-world navigation levels with compositional natural-language instructions (as described in AgeMem App. C.1).",
+  "versions": {
+   "original": "As released; AgeMem does not state which levels are used."
+  },
+  "pitfalls": [
+   "The levels and the text interface used by LLM-agent papers differ; check them before comparing."
+  ]
+ },
+ {
+  "id": "hotpotqa",
+  "name": "HotpotQA",
+  "title": "HotpotQA: A Dataset for Diverse, Explainable Multi-hop Question Answering",
+  "arxiv": "1809.09600",
+  "url": "https://arxiv.org/abs/1809.09600",
+  "code": null,
+  "what": "Multi-hop Wikipedia questions (about 90k training questions) annotated with supporting-fact sentences.",
+  "versions": {
+   "original": "As released (distractor and fullwiki settings); AgeMem's released config uses fullwiki, train split for RL and test split for evaluation.",
+   "memagent-56k": "MemAgent (arXiv 2507.02259) curated set, ~56K-token contexts",
+   "memagent-224k": "same, ~224K-token contexts",
+   "memagent-448k": "same, ~448K-token contexts",
+   "memagent-7k": "MemAgent (arXiv 2507.02259) RULER-HQA set, ~7K tokens of context",
+   "memagent-14k": "MemAgent (arXiv 2507.02259) RULER-HQA set, ~14K tokens of context",
+   "memagent-28k": "MemAgent (arXiv 2507.02259) RULER-HQA set, ~28K tokens of context",
+   "memagent-112k": "MemAgent (arXiv 2507.02259) RULER-HQA set, ~112K tokens of context",
+   "memagent-896k": "MemAgent (arXiv 2507.02259) RULER-HQA set, ~896K tokens of context",
+   "memagent-1.75m": "MemAgent (arXiv 2507.02259) RULER-HQA set, ~1.75M tokens of context",
+   "memagent-3.5m": "MemAgent (arXiv 2507.02259) RULER-HQA set, ~3.5M tokens of context"
+  },
+  "pitfalls": [
+   "Distractor and fullwiki settings are different tasks.",
+   "Scores differ by metric: EM/F1 vs an LLM judge (AgeMem uses a Qwen-Max judge on a 0-1 scale).",
+   "In memory papers the paragraphs are fed as pre-task context the agent may store, which is not the standard reading-comprehension setup.",
+   "The original HotpotQA and MemAgent's distractor-padded version are different tasks; check the context length.",
+   "F1/EM normalisation differs between evaluation scripts.",
+   "Settings (distractor vs full-wiki, subset size, agent tools) vary across papers and are often not reported."
+  ]
+ },
+ {
+  "id": "novelqa",
+  "name": "NovelQA",
+  "title": "NovelQA: Benchmarking Question Answering on Documents Exceeding 200K Tokens",
+  "arxiv": null,
+  "url": "https://github.com/NovelQA/novelqa.github.io",
+  "code": "https://github.com/NovelQA/novelqa.github.io",
+  "what": "Question answering over whole novels (on average more than 200K tokens each); CAM's split has 89 novels and 2,305 questions, annotated by complexity (single-hop, multi-hop, detail) and aspect.",
+  "versions": {
+   "generative": "Free-form answers scored with ROUGE and an LLM judge (as in CAM Table 2).",
+   "multichoice": "Four options A-D; the CAM code's default QA mode."
+  },
+  "pitfalls": [
+   "Full texts and gold answers are not public; access is by request to the authors.",
+   "Generative and multiple-choice settings are not comparable."
+  ]
+ },
+ {
+  "id": "qmsum",
+  "name": "QMSum",
+  "title": "QMSum: A New Benchmark for Query-based Multi-domain Meeting Summarization",
+  "arxiv": null,
+  "url": "https://github.com/Yale-LILY/QMSum",
+  "code": "https://github.com/Yale-LILY/QMSum",
+  "what": "Query-based summarization of meeting transcripts (around 10K words each); CAM uses 232 transcripts and 1,808 queries.",
+  "versions": {
+   "original": "version as reported by cam; see that results file's notes"
+  },
+  "pitfalls": [
+   "ROUGE and LLM-judge accuracy can rank systems differently."
+  ]
+ },
+ {
+  "id": "fables",
+  "name": "FABLES",
+  "title": "FABLES: Evaluating Faithfulness and Content Selection in Book-Length Summarization",
+  "arxiv": null,
+  "url": "https://github.com/mungg/FABLES",
+  "code": "https://github.com/mungg/FABLES",
+  "what": "Claim verification against book-length documents (more than 120K tokens on average); CAM uses 26 documents and 3,158 claims, reporting F1 for the true and false labels separately.",
+  "versions": {
+   "original": "version as reported by cam; see that results file's notes"
+  },
+  "pitfalls": [
+   "CAM removes unanswerable claims before evaluation.",
+   "Documents and labels are released only on request."
+  ]
+ },
+ {
+  "id": "multihop-rag",
+  "name": "MultiHop-RAG",
+  "title": "MultiHop-RAG: Benchmarking Retrieval-Augmented Generation for Multi-Hop Queries",
+  "arxiv": "2401.15391",
+  "url": "https://arxiv.org/abs/2401.15391",
+  "code": "https://github.com/yixuantt/MultiHop-RAG",
+  "what": "Multi-hop questions over a corpus of 609 news articles (about 2K tokens each) in six categories; short answers scored by exact match and F1.",
+  "versions": {
+   "original": "version as reported by cam; see that results file's notes"
+  },
+  "pitfalls": [
+   "CAM removes unanswerable questions (2,255 kept)."
+  ]
+ },
+ {
+  "id": "odsum",
+  "name": "ODSum",
+  "title": "ODSum: New Benchmarks for Open Domain Multi-Document Summarization",
+  "arxiv": "2309.08960",
+  "url": "https://arxiv.org/abs/2309.08960",
+  "code": "https://github.com/yale-nlp/ODSum",
+  "what": "Open-domain query-based summarization over many documents.",
+  "versions": {
+   "story": "ODSum-Story: 1,190 story documents (~809 tokens each), 635 queries in CAM.",
+   "meeting": "ODSum-Meeting: 232 meeting documents (~7,176 tokens each), 436 queries in CAM."
+  },
+  "pitfalls": [
+   "Story and Meeting are separate subsets; always record which."
+  ]
+ },
+ {
+  "id": "multi-agent-crafter",
+  "name": "Multi-Agent Crafter",
+  "title": "Multi-Agent Crafter (MAC), introduced in the DAMCS paper",
+  "arxiv": "2502.05453",
+  "url": "https://arxiv.org/abs/2502.05453",
+  "code": "https://github.com/HappyEureka/mcrafter",
+  "what": "Multi-agent extension of the Crafter survival game: n agents with separate observations and inventories can share items and must climb a 10-task crafting chain to obtain a diamond as fast as possible; scored by average steps to complete each task.",
+  "versions": {
+   "diamond task (paper's environment)": "1, 2 or 6 agents; average steps per task over ten runs (DAMCS Table 1)"
+  },
+  "pitfalls": [
+   "Lower is better (steps, not accuracy).",
+   "Only the DAMCS authors report results; LLM rows use GPT-4o."
+  ]
+ },
+ {
+  "id": "ovo-bench",
+  "name": "OVO-Bench",
+  "title": "OVO-Bench: How Far is Your Video-LLMs from Real-World Online Video Understanding?",
+  "arxiv": null,
+  "url": null,
+  "code": null,
+  "what": "Online video QA where a model may use only the video before the question time; 12 tasks in three groups: Real-Time Visual Perception, Backward Tracing and Forward Active Responding.",
+  "versions": {},
+  "pitfalls": [
+   "EventMemAgent's overall score is the mean of the three group averages; check that other papers aggregate the same way.",
+   "Frame budgets differ widely across reported models (32 frames, 64 frames, 1-2 fps).",
+   "EventMemAgent cites it as CVPR 2025 without an arXiv id or code link; fill these from the benchmark paper."
+  ]
+ },
+ {
+  "id": "streamingbench",
+  "name": "StreamingBench",
+  "title": "StreamingBench: Assessing the Gap for MLLMs to Achieve Streaming Video Understanding",
+  "arxiv": "2411.03628",
+  "url": "https://arxiv.org/abs/2411.03628",
+  "code": null,
+  "what": "Streaming video QA; EventMemAgent reports its real-time visual understanding part (10 task columns: OP, CR, CS, ATP, EU, TR, PR, SU, ACP, CT) plus an overall score.",
+  "versions": {
+   "real-time": "Real-time visual understanding tasks only."
+  },
+  "pitfalls": [
+   "Weighted accuracy and task-macro accuracy differ; EventMemAgent's overall column is weighted accuracy (its repo docs)."
+  ]
+ },
+ {
+  "id": "ruler",
+  "name": "RULER",
+  "title": "RULER: What's the Real Context Size of Your Long-Context Language Models?",
+  "arxiv": "2404.06654",
+  "url": "https://arxiv.org/abs/2404.06654",
+  "code": null,
+  "what": "Synthetic long-context tasks at configurable lengths: retrieval (needle), multi-hop tracing of variable assignments, aggregation, and QA.",
+  "versions": {
+   "128k": "128K-token setting",
+   "niah-8k": "needle-in-a-haystack tasks at ~8K tokens, as run by MemAgent",
+   "niah-16k": "needle-in-a-haystack tasks at ~16K tokens, as run by MemAgent",
+   "niah-32k": "needle-in-a-haystack tasks at ~32K tokens, as run by MemAgent",
+   "niah-64k": "needle-in-a-haystack tasks at ~64K tokens, as run by MemAgent",
+   "niah-128k": "needle-in-a-haystack tasks at ~128K tokens, as run by MemAgent",
+   "niah-256k": "needle-in-a-haystack tasks at ~256K tokens, as run by MemAgent",
+   "niah-512k": "needle-in-a-haystack tasks at ~512K tokens, as run by MemAgent"
+  },
+  "pitfalls": [
+   "Papers report subsets of the task groups and different lengths; per-group accuracies are only comparable at the same length and task mix."
+  ]
+ },
+ {
+  "id": "narrativeqa",
+  "name": "NarrativeQA",
+  "title": "The NarrativeQA Reading Comprehension Challenge",
+  "arxiv": null,
+  "url": null,
+  "code": null,
+  "what": "Questions over whole books or movie scripts, answered from the full text.",
+  "versions": {
+   "original": "full-document setting (TACL 2018)"
+  },
+  "pitfalls": [
+   "Memory papers often score a random subset (e.g. 300 questions in GAM) that is not released, so numbers across papers are not directly comparable."
+  ]
+ },
+ {
+  "id": "babilong",
+  "name": "BABILong",
+  "title": "BABILong: Testing the Limits of LLMs with Long Context Reasoning-in-a-Haystack",
+  "arxiv": "2406.10149",
+  "url": "https://arxiv.org/abs/2406.10149",
+  "code": null,
+  "what": "bAbI reasoning tasks (qa1-qa20) whose supporting facts are scattered through long distractor text of a chosen length.",
+  "versions": {
+   "10 cases per cell": "ILM-TR paper: qa1-qa5, lengths 0k-128k, 10 test cases per task and length"
+  },
+  "pitfalls": [
+   "Papers often evaluate a subset of tasks and lengths with few samples."
+  ]
+ },
+ {
+  "id": "m-niah",
+  "name": "Multi-Needle In A Haystack",
+  "title": "LLMTest_NeedleInAHaystack (multi-needle variant, Kamradt 2024)",
+  "arxiv": null,
+  "url": null,
+  "code": null,
+  "what": "Several related sentences (needles) are inserted into a long text at chosen depths; the question needs all of them.",
+  "versions": {
+   "3 needles": "ILM-TR paper: 3 pizza-ingredient needles, 150k-500k tokens, 5 depths; cell scored 1/3/7/10 by keywords found"
+  },
+  "pitfalls": [
+   "Needles, haystack text and scoring vary between papers."
+  ]
+ },
+ {
+  "id": "memalpha",
+  "name": "Memalpha dataset",
+  "title": "Mem-α training and validation data (SQuAD, HotpotQA, PerLTQA, LongMemEval-train, NLU, TREC-Coarse, PubMed-RCT, BookSum rebuilt as chunked multi-turn inputs)",
+  "arxiv": "2509.25911",
+  "url": "https://huggingface.co/datasets/YuWangX/Memalpha",
+  "code": "https://github.com/wangyu-ustc/Mem-alpha",
+  "what": "Instances of about 8-23 chunks (roughly 400-1,900 tokens per chunk, at most 30K tokens in total) followed by questions; covers accurate retrieval, test-time learning (classification from labelled examples) and long-range understanding (summary keyword hit).",
+  "versions": {
+   "validation": "463 instances from 7 sources, same distribution as training (Mem-α Table 6-7)."
+  },
+  "pitfalls": [
+   "Built by the Mem-α authors and matches their training distribution; results on it are in-distribution for Mem-α.",
+   "Each source uses a different metric (SubEM, EM, keyword hit), so the average mixes scales."
+  ]
+ },
+ {
+  "id": "fever",
+  "name": "FEVER",
+  "title": "FEVER: a large-scale dataset for Fact Extraction and VERification",
+  "arxiv": "1803.05355",
+  "url": "https://arxiv.org/abs/1803.05355",
+  "code": null,
+  "what": "Human-written claims about Wikipedia entities labelled Supported, Refuted or NotEnoughInfo; used as a fact-verification task for agents.",
+  "versions": {
+   "original": "version as reported by expel; see that results file's notes",
+   "KILT dev": "version as reported by knowledgeeditor; see that results file's notes"
+  },
+  "pitfalls": [
+   "Agent-memory papers evaluate their own subsets with their own agent loop; the number of claims and the retrieval tool are often not stated."
+  ]
+ },
+ {
+  "id": "deepresearch-bench",
+  "name": "DeepResearch Bench",
+  "title": "DeepResearch Bench: A Comprehensive Benchmark for Deep Research Agents",
+  "arxiv": "2506.11763",
+  "url": "https://arxiv.org/abs/2506.11763",
+  "code": null,
+  "what": "100 PhD-level research tasks from 22 fields. RACE scores report quality against a reference report (comprehensiveness, insight, instruction following, readability); FACT scores citation accuracy and effective citations per task.",
+  "versions": {
+   "original": "100 tasks, official RACE/FACT with Gemini-2.5-pro judge"
+  },
+  "pitfalls": [
+   "RACE is relative to a reference report and judged by an LLM; the judge model changes scores.",
+   "Leaderboard numbers for proprietary agents are copied, not rerun."
+  ]
+ },
+ {
+  "id": "deepconsult",
+  "name": "DeepConsult",
+  "title": "Deep Consult (ydc-deep-research-evals)",
+  "arxiv": null,
+  "url": "https://github.com/Su-Sea/ydc-deep-research-evals",
+  "code": "https://github.com/Su-Sea/ydc-deep-research-evals",
+  "what": "Business and consulting research prompts; reports are judged pairwise against an OpenAI deep-research baseline (win/tie/lose rates plus an average quality score on a 0-10 scale).",
+  "versions": {
+   "original": "pairwise vs openai-deepresearch, GPT-4.1 judge"
+  },
+  "pitfalls": [
+   "Scores are relative to one fixed baseline report set; the baseline itself scores 0/100/0 by construction."
+  ]
+ },
+ {
+  "id": "deepresearchgym",
+  "name": "DeepResearchGym",
+  "title": "DeepResearchGym: A Free, Transparent, and Reproducible Evaluation Sandbox for Deep Research",
+  "arxiv": "2505.19253",
+  "url": "https://arxiv.org/abs/2505.19253",
+  "code": null,
+  "what": "Evaluation sandbox; 100 queries sampled from Researchy Questions, reports judged by an LLM on clarity, depth, balance, breadth, support and insightfulness.",
+  "versions": {
+   "original": "100 Researchy Questions queries, GPT-4.1-mini judge"
+  },
+  "pitfalls": [
+   "Several dimensions saturate near 100 for strong systems, so differences are small."
+  ]
+ },
+ {
+  "id": "latentneeds-bench",
+  "name": "LatentNeeds-Bench",
+  "title": "PASK: Toward Intent-Aware Proactive Agents with Long-Term Memory (benchmark introduced in the paper)",
+  "arxiv": "2604.08000",
+  "url": "https://arxiv.org/abs/2604.08000",
+  "code": "https://github.com/xzf-thu/Pask",
+  "what": "Turn-level proactive demand detection on real speech transcripts: 100 sessions (3,936 turns) across 10 subcategories of work, learning and daily life; at each turn a model must reply with help or output [NO_DEMAND]. 41.9% of turns carry an annotated demand (Requirement or Insight type).",
+  "versions": {
+   "original": "Evaluation split of 100 sessions, 10 per subcategory (§6.1.1)."
+  },
+  "pitfalls": [
+   "Scores are balanced accuracy (mean of demand and non-demand accuracy), judged by an LLM; the paper names GPT-5.2 while the released config uses gpt-4.1-mini.",
+   "Each model is reported at its best of three prompt levels, so rows use different prompts.",
+   "A reply on a non-demand turn can still count as correct if the judge finds it valuable.",
+   "Long recordings are split into 60-turn parts; later parts get a short LLM summary of earlier parts as 'memory', the same for every model.",
+   "The benchmark data file is not in the repository at the checked commit (data/ is git-ignored); only per-model outputs and scores are released."
+  ]
+ },
+ {
+  "id": "zh-4o",
+  "name": "ZH-4O",
+  "title": "MOOM: Maintenance, Organization and Optimization of Memory in Ultra-Long Role-Playing Dialogues",
+  "arxiv": "2509.11860",
+  "url": "https://arxiv.org/abs/2509.11860",
+  "code": "https://github.com/cows21/MOOM-Roleplay-Dialogue",
+  "what": "Chinese role-playing benchmark of 28 real human-LLM sessions (about 600 turns each) with 1,068 multiple-choice probing questions on memory (as described in TeleMem §4).",
+  "versions": {
+   "original": "As released with MOOM; TeleMem's repo ships a LoCoMo-format copy at data/zh4o/data.json (28 samples, 1,068 questions)."
+  },
+  "pitfalls": [
+   "Multiple choice: chance accuracy is well above zero and answers are parsed as a single letter.",
+   "Chinese only; memory prompts written for English data may not transfer."
+  ]
+ },
+ {
+  "id": "appworld",
+  "name": "AppWorld",
+  "title": "AppWorld: A Controllable World of Apps and People for Benchmarking Interactive Coding Agents",
+  "arxiv": "2407.18901",
+  "url": "https://arxiv.org/abs/2407.18901",
+  "code": "https://github.com/stonybrooknlp/appworld",
+  "what": "Tasks over nine simulated everyday apps (Spotify, Venmo, SimpleNote, Gmail, ...) with 457 APIs and about 100 simulated users; agents write API calls over many steps.",
+  "versions": {
+   "test-normal": "official test-normal split (168 tasks in ACON)",
+   "test-challenge": "version as reported by ace; see that results file's notes",
+   "test-normal + test-challenge": "version as reported by ace; see that results file's notes"
+  },
+  "pitfalls": [
+   "Scores are task goal completion; report which split (test-normal vs test-challenge) and the difficulty levels."
+  ]
+ },
+ {
+  "id": "officebench",
+  "name": "OfficeBench",
+  "title": "OfficeBench: Benchmarking Language Agents across Multiple Applications for Office Automation",
+  "arxiv": "2407.19056",
+  "url": "https://arxiv.org/abs/2407.19056",
+  "code": null,
+  "what": "Office automation tasks that span one to three apps (Word, Excel, PDF, calendar, email, shell).",
+  "versions": {
+   "text-only, authors' split": "ACON: OCR tasks removed, random 1:1 train/test split (92/95), ambiguous tasks removed"
+  },
+  "pitfalls": [
+   "No official split; ACON's split and task filtering are its own, so scores are not comparable across papers."
+  ]
+ },
+ {
+  "id": "multi-objective-qa",
+  "name": "Multi-objective QA",
+  "title": "MEM1: Learning to Synergize Memory and Reasoning for Efficient Long-Horizon Agents",
+  "arxiv": "2506.15841",
+  "url": "https://arxiv.org/abs/2506.15841",
+  "code": null,
+  "what": "Several NaturalQuestions questions bundled into one task; the agent searches Wikipedia and must answer all of them at the end.",
+  "versions": {
+   "8-objective": "8 questions per task (ACON: 100 train / 100 test tasks, BM25 over 2018 Wikipedia)"
+  },
+  "pitfalls": [
+   "Number of objectives per task changes difficulty; check it before comparing."
+  ]
+ },
+ {
+  "id": "counterfact",
+  "name": "CounterFact",
+  "title": "Locating and Editing Factual Associations in GPT",
+  "arxiv": "2202.05262",
+  "url": "https://arxiv.org/abs/2202.05262",
+  "code": "https://github.com/kmeng01/rome",
+  "what": "Counterfactual factual rewrites (subject, relation, new object) with paraphrase prompts, neighborhood prompts about related subjects, and generation prompts for fluency and consistency.",
+  "versions": {
+   "mcf": "MultiCounterFact as distributed with MEMIT and used by AlphaEdit (--ds_name=mcf), 2,000 random records edited in batches of 100."
+  },
+  "pitfalls": [
+   "Efficacy, generalization and specificity compare probabilities of the new vs original object, not generated answers.",
+   "Fluency is an n-gram entropy (~600 for fluent text), not a percentage.",
+   "Results depend strongly on the number of sequential edits and the batch size."
+  ]
+ },
+ {
+  "id": "webarena",
+  "name": "WebArena",
+  "title": "WebArena: A Realistic Web Environment for Building Autonomous Agents",
+  "arxiv": "2307.13854",
+  "url": "https://arxiv.org/abs/2307.13854",
+  "code": "https://github.com/web-arena-x/webarena",
+  "what": "812 tasks on self-hosted websites (shopping, shopping admin, Reddit-like forum, GitLab, map), scored by programmatic success checks.",
+  "versions": {
+   "original": "The 812-task release."
+  },
+  "pitfalls": [
+   "Tasks come from templates (up to five tasks per template), so learning methods can gain by reusing a template's solution; cross-template success is a stricter view.",
+   "Agents differ in observation space and harness (e.g. BrowserGym vs the original), which moves scores by several points.",
+   "Some papers report per-site splits only, and the 'Average' is sometimes a task-weighted mean, sometimes not."
+  ]
+ },
+ {
+  "id": "visualwebarena",
+  "name": "VisualWebArena",
+  "title": "VisualWebArena: Evaluating Multimodal Agents on Realistic Visual Web Tasks",
+  "arxiv": "2401.13649",
+  "url": "https://arxiv.org/abs/2401.13649",
+  "code": "https://github.com/web-arena-x/visualwebarena",
+  "what": "910 multimodal web tasks on classifieds, shopping and forum sites, many needing images in the goal or page.",
+  "versions": {
+   "original": "The 910-task release."
+  },
+  "pitfalls": [
+   "Results depend on the observation format (Set-of-Marks screenshots, accessibility tree) and step limit.",
+   "Search-based methods spend far more tokens per task than single-trajectory agents."
+  ]
+ },
+ {
+  "id": "infinitebench",
+  "name": "∞Bench (InfiniteBench)",
+  "title": "∞Bench: Extending Long Context Evaluation Beyond 100K Tokens",
+  "arxiv": "2402.13718",
+  "url": "https://arxiv.org/abs/2402.13718",
+  "code": "https://github.com/OpenBMB/InfiniteBench",
+  "what": "Long-context tasks averaging over 100k tokens; the novel QA tasks En.QA (free-form answers) and En.MC (multiple choice) are the ones memory and RAG papers use.",
+  "versions": {
+   "original": "As released; EM-LLM uses six tasks (Code.Debug, Math.Find, En.MC, Retrieve.KV, Retrieve.PassKey, Retrieve.Number) and also an extended passkey test up to 10.2M tokens."
+  },
+  "pitfalls": [
+   "En.QA and En.MC are separate tasks with different metrics (F1/EM vs accuracy); keep them apart via the subset field.",
+   "Averages depend on which tasks are included.",
+   "Passkey and number retrieval are near 100% for most methods, which lifts averages."
+  ]
+ },
+ {
+  "id": "detectiveqa",
+  "name": "DetectiveQA",
+  "title": "DetectiveQA: Evaluating Long-Context Reasoning on Detective Novels",
+  "arxiv": "2409.02465",
+  "url": "https://arxiv.org/abs/2409.02465",
+  "code": null,
+  "what": "Multiple-choice questions on detective novels averaging over 100k tokens, asking who did it, how and why.",
+  "versions": {
+   "original": "2024 release"
+  },
+  "pitfalls": [
+   "ComoRAG scores a random 20% of stories that is not released."
+  ]
+ },
+ {
+  "id": "toolbench",
+  "name": "ToolBench",
+  "title": "ToolLLM: Facilitating Large Language Models to Master 16000+ Real-world APIs",
+  "arxiv": "2307.16789",
+  "url": "https://arxiv.org/abs/2307.16789",
+  "code": null,
+  "what": "Tasks over 16,000+ real RapidAPI tools in 49 categories; DeepAgent uses the G3 multi-tool subset with 100 test cases (App. A.2).",
+  "versions": {
+   "original": "As released; DeepAgent reports the G3 subset, with ground-truth tools or open-set retrieval over the full toolset.",
+   "G3": "I3-Instruction (G3) test queries: multi-tool requests across categories"
+  },
+  "pitfalls": [
+   "Real APIs change or fail over time, so reruns are unstable.",
+   "Labeled-tool and open-set retrieval settings are different tasks.",
+   "Success and path metrics are defined per paper.",
+   "Live RapidAPI endpoints change or fail over time, so reruns of the same method drift.",
+   "Papers use different subsets (I1/I2/I3) and small samples of them; DRAFT uses 100 I3 queries.",
+   "Win rate is a ChatGPT pairwise judgement against a reference method and depends on the evaluator model."
+  ]
+ },
+ {
+  "id": "api-bank",
+  "name": "API-Bank",
+  "title": "API-Bank: A Comprehensive Benchmark for Tool-Augmented LLMs",
+  "arxiv": "2304.08244",
+  "url": "https://arxiv.org/abs/2304.08244",
+  "code": null,
+  "what": "Runnable tool-use benchmark with 73 APIs and 314 dialogues (753 calls), testing planning, retrieval and calling (DeepAgent §4.1).",
+  "versions": {
+   "original": "As released; level/subset used by DeepAgent not stated."
+  },
+  "pitfalls": [
+   "Levels (call, retrieve+call, plan+retrieve+call) are often mixed or unreported."
+  ]
+ },
+ {
+  "id": "restbench",
+  "name": "RestBench",
+  "title": "RestGPT: Connecting Large Language Models with Real-World Applications via RESTful APIs",
+  "arxiv": "2306.06624",
+  "url": "https://arxiv.org/abs/2306.06624",
+  "code": null,
+  "what": "Real REST API scenarios: TMDB (100 questions, 54 tools, 2.3 calls each) and Spotify (57 questions, 40 tools, 2.6 calls each), per DeepAgent App. A.2.",
+  "versions": {
+   "tmdb": "TMDB movie-database scenario",
+   "spotify": "Spotify player scenario",
+   "TMDB": "TMDB scenario",
+   "Spotify": "Spotify scenario"
+  },
+  "pitfalls": [
+   "TMDB and Spotify are separate scenarios with different sizes; Spotify needs a live account.",
+   "Correct Path Rate only checks that the gold APIs appear in order among the calls, not that the final answer is right.",
+   "Small test sets (about 100 TMDB and 57 Spotify queries), so single queries move scores by 1-2 points."
+  ]
+ },
+ {
+  "id": "toolhop",
+  "name": "ToolHop",
+  "title": "ToolHop: A Query-Driven Benchmark for Evaluating Large Language Models in Multi-Hop Tool Use",
+  "arxiv": "2501.02506",
+  "url": "https://arxiv.org/abs/2501.02506",
+  "code": null,
+  "what": "995 multi-hop questions over 3,912 locally executable tools, needing 3-7 sequential calls (DeepAgent App. A.2).",
+  "versions": {
+   "original": "As released."
+  },
+  "pitfalls": [
+   "Answer correctness and path scores are reported separately."
+  ]
+ },
+ {
+  "id": "webshop",
+  "name": "WebShop",
+  "title": "WebShop: Towards Scalable Real-World Web Interaction with Grounded Language Agents",
+  "arxiv": "2207.01206",
+  "url": "https://arxiv.org/abs/2207.01206",
+  "code": null,
+  "what": "Simulated shopping site with 12,087 instructions over 1.18M products; the agent searches and clicks to buy a matching item.",
+  "versions": {
+   "original": "As released; ReAct, Reflexion and ExpeL evaluate the same 100 tasks."
+  },
+  "pitfalls": [
+   "Success rate and average score are different metrics.",
+   "Number of evaluated instructions is often unstated.",
+   "Success rate and mean reward are different metrics.",
+   "ExpeL fixes prices to the average value and shows 10 items per page instead of 3, so its numbers are on a modified environment."
+  ]
+ },
+ {
+  "id": "gaia",
+  "name": "GAIA",
+  "title": "GAIA: a benchmark for General AI Assistants",
+  "arxiv": "2311.12983",
+  "url": "https://arxiv.org/abs/2311.12983",
+  "code": null,
+  "what": "466 real-world assistant questions needing web browsing, code, multimodal input and files; 300 held out as test (DeepAgent App. A.2).",
+  "versions": {
+   "original": "papers often use the text-only validation subset"
+  },
+  "pitfalls": [
+   "Validation and test sets differ; many papers report a text-only subset.",
+   "Scores depend strongly on the search and browsing tools used.",
+   "Which split and subset is used is often unstated."
+  ]
+ },
+ {
+  "id": "hle",
+  "name": "Humanity's Last Exam",
+  "title": "Humanity's Last Exam",
+  "arxiv": "2501.14249",
+  "url": "https://arxiv.org/abs/2501.14249",
+  "code": null,
+  "what": "2,500 very hard graduate-level multi-disciplinary questions, text and multimodal.",
+  "versions": {
+   "original": "full question set as used by the reporting paper; text-only subsets are common"
+  },
+  "pitfalls": [
+   "Papers often evaluate subsets (text-only or sampled).",
+   "Tool access (search, code) changes what is measured.",
+   "Papers differ on text-only vs full set and on the grading model; IterResearch does not state which it used."
+  ]
+ },
+ {
+  "id": "longbench",
+  "name": "LongBench",
+  "title": "LongBench: A Bilingual, Multitask Benchmark for Long Context Understanding",
+  "arxiv": "2308.14508",
+  "url": "https://arxiv.org/abs/2308.14508",
+  "code": null,
+  "what": "Long-context tasks grouped into single-doc QA, multi-doc QA, summarisation, few-shot learning, retrieval and code; EM-LLM reports 15 tasks.",
+  "versions": {
+   "original": "As released; EM-LLM reports 15 tasks and six grouped averages (average example length 12K ± 10K tokens with Mistral's tokenizer, App. D.3).",
+   "v1": "LongBench v1 (ACL 2024); MemAgent uses the five QA sets as LongBench-QA and GovReport + QMSum as LongBench-SUM"
+  },
+  "pitfalls": [
+   "Each task has its own metric (F1, ROUGE-L, classification, retrieval, code similarity in the EM-LLM scorer), so averages mix scales.",
+   "Papers pick different task subsets; check which tasks enter an average.",
+   "Papers pick different subsets and metrics (MemAgent scores QA with sub-EM and summaries with ROUGE recall, not the LongBench F1 / ROUGE-L F defaults).",
+   "Question counts per subset are often not stated."
+  ]
+ },
+ {
+  "id": "longfact",
+  "name": "LongFact",
+  "title": "Long-form factuality in large language models",
+  "arxiv": "2403.18802",
+  "url": "https://arxiv.org/abs/2403.18802",
+  "code": null,
+  "what": "GPT-4-generated prompts asking for detailed long-form answers about a specific object or concept across topics; EWE uses the 250 LongFact-Objects prompts.",
+  "versions": {},
+  "pitfalls": [
+   "Scored with claim-level factuality metrics (SAFE, VeriScore) whose recall cap and knowledge source differ across papers."
+  ]
+ },
+ {
+  "id": "fava",
+  "name": "FAVA",
+  "title": "Fine-grained Hallucination Detection and Editing for Language Models",
+  "arxiv": "2401.06855",
+  "url": "https://arxiv.org/abs/2401.06855",
+  "code": null,
+  "what": "Information-seeking queries that need long factual answers, drawn from Open Assistant, No Robots, WebNLG and author-written prompts; EWE uses 141 of them (selection from FLAME).",
+  "versions": {},
+  "pitfalls": [
+   "Papers use different subsets of the 200 queries."
+  ]
+ },
+ {
+  "id": "alpacafact",
+  "name": "AlpacaFact",
+  "title": "FLAME: Factuality-Aware Alignment for Large Language Models (fact-seeking subset of AlpacaFarm)",
+  "arxiv": "2405.01525",
+  "url": "https://arxiv.org/abs/2405.01525",
+  "code": null,
+  "what": "241 fact-seeking instructions selected from the 805 AlpacaFarm evaluation instructions.",
+  "versions": {},
+  "pitfalls": [
+   "A subset defined by FLAME; not a standalone release."
+  ]
+ },
+ {
+  "id": "biography",
+  "name": "Biography (FActScore)",
+  "title": "FActScore: Fine-grained Atomic Evaluation of Factual Precision in Long Form Text Generation",
+  "arxiv": "2305.14251",
+  "url": "https://arxiv.org/abs/2305.14251",
+  "code": null,
+  "what": "'Tell me a bio of <person>' prompts for people with Wikipedia pages, used to score factual precision of generated biographies.",
+  "versions": {},
+  "pitfalls": [
+   "Prompt counts vary by paper (EWE says 181 in §4.1 and 183 in App. A).",
+   "FActScore (Wikipedia) and VeriScore (Google snippets) scores are not comparable."
+  ]
+ },
+ {
+  "id": "jericho",
+  "name": "Jericho (AgentBoard)",
+  "title": "Interactive Fiction Games: A Colossal Adventure",
+  "arxiv": null,
+  "url": "https://doi.org/10.1609/aaai.v34i05.6297",
+  "code": "https://github.com/microsoft/jericho",
+  "what": "Text adventure games in which an agent navigates and interacts with a fictional world through typed commands; HiAgent uses the AgentBoard version, scored by progress rate over annotated subgoals and success rate.",
+  "versions": {
+   "AgentBoard": "AgentBoard's Jericho task (HiAgent's config lists 20 games); max 30 steps in HiAgent."
+  },
+  "pitfalls": [
+   "Progress rate and success rate depend on AgentBoard's subgoal annotations and the step limit; not comparable with game-score numbers from the original Jericho paper."
+  ]
+ },
+ {
+  "id": "browsecomp",
+  "name": "BrowseComp",
+  "title": "BrowseComp: A Simple Yet Challenging Benchmark for Browsing Agents",
+  "arxiv": "2504.12516",
+  "url": "https://arxiv.org/abs/2504.12516",
+  "code": "https://github.com/openai/simple-evals",
+  "what": "1,266 questions whose short answers require persistent web navigation to find entangled, hard-to-find facts.",
+  "versions": {
+   "original": "1,266 questions",
+   "200 subset": "a 200-question subset used for scaling curves"
+  },
+  "pitfalls": [
+   "Scores depend heavily on the search back-end and the turn budget."
+  ]
+ },
+ {
+  "id": "browsecomp-zh",
+  "name": "BrowseComp-ZH",
+  "title": "BrowseComp-ZH: Benchmarking Web Browsing Ability of Large Language Models in Chinese",
+  "arxiv": "2504.19314",
+  "url": "https://arxiv.org/abs/2504.19314",
+  "code": null,
+  "what": "289 multi-hop questions over the Chinese web in 11 domains, each built backwards from a short verifiable answer.",
+  "versions": {
+   "original": "289 questions"
+  },
+  "pitfalls": [
+   "Search back-end and region settings change results."
+  ]
+ },
+ {
+  "id": "xbench-deepsearch",
+  "name": "xbench-DeepSearch",
+  "title": "Xbench-DeepSearch",
+  "arxiv": null,
+  "url": "https://xbench.org/agi/aisearch",
+  "code": null,
+  "what": "Deep-search agent benchmark from the xbench team (Chinese-language search tasks).",
+  "versions": {
+   "original": "as released by xbench"
+  },
+  "pitfalls": [
+   "No paper; version and grading details are not stated by reporting papers."
+  ]
+ },
+ {
+  "id": "seal-0",
+  "name": "SEAL-0",
+  "title": "SealQA: Raising the Bar for Reasoning in Search-Augmented Language Models",
+  "arxiv": "2506.01062",
+  "url": "https://arxiv.org/abs/2506.01062",
+  "code": null,
+  "what": "Main SealQA split: fact-seeking questions where web search returns conflicting, noisy or unhelpful results and chat models score near zero.",
+  "versions": {
+   "original": "Seal-0 split"
+  },
+  "pitfalls": [
+   "Small, adversarially filtered set, so a few questions move the score a lot."
+  ]
+ },
+ {
+  "id": "zsre",
+  "name": "zsRE (Zero-Shot Relation Extraction)",
+  "title": "Zero-Shot Relation Extraction via Reading Comprehension",
+  "arxiv": "1706.04115",
+  "url": "https://arxiv.org/abs/1706.04115",
+  "code": null,
+  "what": "Relation questions about entities (e.g. 'What is the capital of X?') with human-written question paraphrases; used closed-book as a QA and knowledge-editing benchmark.",
+  "versions": {
+   "re-split (paper)": "KnowledgeEditor re-splits zsRE so train and validation share relation types: 244,173 train and 27,644 validation instances with paraphrases (App. B.2).",
+   "mend-split": "The MEND train/test split (163,196 / 19,086) as packaged in EasyEdit (zsre_mend_edit.json), used by WISE; edit sets are random 1K or 3K samples of the test split.",
+   "memit-eval": "zsre_mend_eval.json as distributed with ROME/MEMIT (also the MEND split), used by AlphaEdit: 2,000 random records edited in batches of 100."
+  },
+  "pitfalls": [
+   "The original split is zero-shot over relations; the KnowledgeEditor re-split is not, so accuracies differ across splits.",
+   "Knowledge-editing papers report success, retain and paraphrase accuracy, not answer accuracy.",
+   "Scores are usually token-level top-1 accuracy with the gold prefix given, not exact match of a generated answer.",
+   "Editors are compared at a fixed number of sequential edits T and batch size; numbers at different T or batch size are not comparable.",
+   "Unedited models already score about 22-39% on edit prompts under token-level accuracy (WISE Table 3, AlphaEdit Table 1), so efficacy is not measured from zero."
+  ]
+ },
+ {
+  "id": "sorting",
+  "name": "Sorting (∞-former task)",
+  "title": "∞-former: Infinite Memory Transformer (sorting task)",
+  "arxiv": "2109.00301",
+  "url": "https://arxiv.org/abs/2109.00301",
+  "code": "https://github.com/deep-spin/infinite-former",
+  "what": "Synthetic task: read a long sequence of symbols and output them sorted by how often each occurred; the frequencies change along the sequence, so early tokens must be remembered.",
+  "versions": {
+   "infinite-former script": "Memoria paper: data generated with the ∞-former generate_data.py script, 20 symbols, 1K-32K tokens (48K in the ablation)"
+  },
+  "pitfalls": [
+   "Accuracy depends on both total length and segment length; compare only equal (segments × segment length) settings."
+  ]
+ },
+ {
+  "id": "wikitext-103",
+  "name": "WikiText-103",
+  "title": "Pointer Sentinel Mixture Models",
+  "arxiv": null,
+  "url": "https://openreview.net/forum?id=Byj72udxe",
+  "code": null,
+  "what": "Word-level language modeling benchmark; reported as test perplexity.",
+  "versions": {
+   "raw": "WikiText-103 (Raw), as used by Memoria with the GPT-2 tokenizer"
+  },
+  "pitfalls": [
+   "Perplexities depend on tokenizer, model size and segment/memory length; papers train their own baselines."
+  ]
+ },
+ {
+  "id": "pg-19",
+  "name": "PG-19",
+  "title": "Compressive Transformers for Long-Range Sequence Modelling (PG-19 corpus)",
+  "arxiv": null,
+  "url": "https://openreview.net/forum?id=SylKikSYDH",
+  "code": null,
+  "what": "Language modeling over long books; reported as perplexity.",
+  "versions": {
+   "first 2,000 training books": "Memoria and ∞-former train on only the first 2,000 books"
+  },
+  "pitfalls": [
+   "Subsets of the training books and tokenizers differ across papers."
+  ]
+ },
+ {
+  "id": "enwik8",
+  "name": "enwik8",
+  "title": "Large Text Compression Benchmark (enwik8)",
+  "arxiv": null,
+  "url": "http://www.mattmahoney.net/dc/text.html",
+  "code": null,
+  "what": "Character-level language modeling benchmark; reported in bits per character.",
+  "versions": {
+   "original": "as released"
+  },
+  "pitfalls": [
+   "Lower BPC is better; papers usually report a single run."
+  ]
+ },
+ {
+  "id": "hyperpartisan",
+  "name": "Hyperpartisan",
+  "title": "SemEval-2019 Task 4: Hyperpartisan News Detection",
+  "arxiv": null,
+  "url": "https://aclanthology.org/S19-2145",
+  "code": null,
+  "what": "Long news articles labelled as hyperpartisan or not; binary document classification.",
+  "versions": {
+   "original": "Memoria reports validation and test splits separately because their distributions differ"
+  },
+  "pitfalls": [
+   "Validation and test distributions differ (Memoria §5.3), so report both; Memoria averages five runs."
+  ]
+ },
+ {
+  "id": "travelplanner",
+  "name": "TravelPlanner",
+  "title": "TravelPlanner: A Benchmark for Real-World Planning with Language Agents",
+  "arxiv": "2402.01622",
+  "url": "https://arxiv.org/abs/2402.01622",
+  "code": null,
+  "what": "Tool-use planning benchmark: an agent gathers flight, accommodation, restaurant, attraction and distance information with tools and writes a multi-day travel plan under commonsense and hard (user-stated) constraints (as described in Memp §4.1, App. C).",
+  "versions": {
+   "original": "As released; Memp evaluates on the test set in a two-stage mode (App. C)."
+  },
+  "pitfalls": [
+   "Plans are converted to JSON by an LLM (GPT-4o in Memp) before rule-based checking, so the converter can affect scores.",
+   "Papers report different constraint pass rates (commonsense, hard constraint, delivery, final pass) and micro or macro variants; Memp does not say which variant #CS and #HC are.",
+   "Not a memory benchmark by design: what can be stored depends on each paper's use of training trajectories."
+  ]
+ },
+ {
+  "id": "nq",
+  "name": "Natural Questions",
+  "title": "Natural Questions: A Benchmark for Question Answering Research",
+  "arxiv": null,
+  "url": null,
+  "code": null,
+  "what": "Real anonymised Google queries with Wikipedia answers; used for open-domain QA with a retriever.",
+  "versions": {
+   "original": "As released; search-agent papers use the FlashRAG test split."
+  },
+  "pitfalls": [
+   "EM vs F1 and answer normalisation differ between papers.",
+   "Retriever and corpus (2018 Wikipedia dump) must match for comparison."
+  ]
+ },
+ {
+  "id": "triviaqa",
+  "name": "TriviaQA",
+  "title": "TriviaQA: A Large Scale Distantly Supervised Challenge Dataset for Reading Comprehension",
+  "arxiv": "1705.03551",
+  "url": "https://arxiv.org/abs/1705.03551",
+  "code": null,
+  "what": "Trivia questions with evidence documents; used here as open-domain QA over Wikipedia.",
+  "versions": {
+   "original": "As released; FlashRAG test split in MemSearcher's released eval script."
+  },
+  "pitfalls": [
+   "Web and Wikipedia settings differ.",
+   "EM normalisation differs between papers."
+  ]
+ },
+ {
+  "id": "popqa",
+  "name": "PopQA",
+  "title": "When Not to Trust Language Models: Investigating Effectiveness of Parametric and Non-Parametric Memories",
+  "arxiv": "2212.10511",
+  "url": "https://arxiv.org/abs/2212.10511",
+  "code": null,
+  "what": "14k questions about long-tail entities.",
+  "versions": {
+   "original": "As released; FlashRAG test split in MemSearcher's released eval script."
+  },
+  "pitfalls": [
+   "Some papers use a sampled subset."
+  ]
+ },
+ {
+  "id": "2wikimultihopqa",
+  "name": "2WikiMultiHopQA",
+  "title": "Constructing A Multi-hop QA Dataset for Comprehensive Evaluation of Reasoning Steps",
+  "arxiv": "2011.01060",
+  "url": "https://arxiv.org/abs/2011.01060",
+  "code": null,
+  "what": "Multi-hop questions built from Wikipedia and Wikidata that require several reasoning steps.",
+  "versions": {
+   "original": "As released; dev split in MemSearcher's released eval script."
+  },
+  "pitfalls": [
+   "Dev split is used as test in most search-agent papers.",
+   "Subset sizes vary."
+  ]
+ },
+ {
+  "id": "musique",
+  "name": "MuSiQue",
+  "title": "MuSiQue: Multihop Questions via Single-hop Question Composition",
+  "arxiv": "2108.00573",
+  "url": "https://arxiv.org/abs/2108.00573",
+  "code": null,
+  "what": "2-4 hop questions composed from single-hop ones so that shortcuts do not work.",
+  "versions": {
+   "original": "As released (answerable); dev split in MemSearcher's released eval script."
+  },
+  "pitfalls": [
+   "Answerable-only vs full versions differ.",
+   "Dev split used as test."
+  ]
+ },
+ {
+  "id": "bamboogle",
+  "name": "Bamboogle",
+  "title": "Measuring and Narrowing the Compositionality Gap in Language Models",
+  "arxiv": "2210.03350",
+  "url": "https://arxiv.org/abs/2210.03350",
+  "code": null,
+  "what": "125 hand-written two-hop questions that a single search cannot answer.",
+  "versions": {
+   "original": "As released (125 questions)."
+  },
+  "pitfalls": [
+   "Very small, so single-question differences move the score by 0.8 points."
+  ]
+ },
+ {
+  "id": "esconv",
+  "name": "ESConv",
+  "title": "Towards Emotional Support Dialog Systems",
+  "arxiv": "2106.01144",
+  "url": "https://arxiv.org/abs/2106.01144",
+  "code": null,
+  "what": "Emotional-support conversations between a help-seeker and a supporter annotated with 8 support strategies; used in PRINCIPLES as seeds for LLM self-play where an agent tries to resolve a simulated patient's problem.",
+  "versions": {
+   "original": "PRINCIPLES: 130 test episodes seeded with the patient's situation; success judged by a gpt-4o critic (App. F.1)."
+  },
+  "pitfalls": [
+   "Self-play scores depend on the user-simulator and critic models: PRINCIPLES reports Standard SR 91.54 with a gpt-3.5-turbo critic vs 55.83 with gpt-4o (Table 8).",
+   "Scores are success rate and average turns of simulated dialogues, not metrics on the human dialogues."
+  ]
+ },
+ {
+  "id": "extes",
+  "name": "ExTES",
+  "title": "Building Emotional Support Chatbots in the Era of LLMs",
+  "arxiv": "2308.11584",
+  "url": "https://arxiv.org/abs/2308.11584",
+  "code": null,
+  "what": "Extended emotional-support dialogue dataset with a larger strategy set (16 strategies as listed in PRINCIPLES Table 15); used for LLM self-play.",
+  "versions": {
+   "original": "PRINCIPLES: 130 test episodes; success judged by a gpt-4o critic (App. F.1)."
+  },
+  "pitfalls": [
+   "Self-play success depends on the simulator and critic models (see ESConv)."
+  ]
+ },
+ {
+  "id": "p4g",
+  "name": "PersuasionForGood (P4G)",
+  "title": "Persuasion for Good: Towards a Personalized Persuasive Dialogue System for Social Good",
+  "arxiv": "1906.06725",
+  "url": "https://arxiv.org/abs/1906.06725",
+  "code": null,
+  "what": "Persuasion dialogues in which a persuader asks a persuadee to donate to Save the Children, annotated with persuasion strategies; used as seeds for LLM self-play.",
+  "versions": {
+   "original": "PRINCIPLES: 120 test episodes started from the first two utterances; success judged by a gpt-4o critic (App. F.1)."
+  },
+  "pitfalls": [
+   "A single goal (one charity) lets a small fixed strategy set do well; top systems are within a few points (PRINCIPLES §4.2).",
+   "Self-play success depends on the simulator and critic models."
+  ]
+ },
+ {
+  "id": "p4gplus",
+  "name": "P4G+",
+  "title": "PRINCIPLES: Synthetic Strategy Memory for Proactive Dialogue Agents (P4G+ introduced in the paper)",
+  "arxiv": "2509.17459",
+  "url": "https://huggingface.co/datasets/LangAGI-Lab/P4GPlus",
+  "code": "https://github.com/kimnamssya/Principles",
+  "what": "LLM-generated extension of P4G with varied organizations, personas, situations and donation barriers (e.g. financial limits); 10 original P4G strategies plus 6 from Cialdini's Influence (PRINCIPLES App. F.3).",
+  "versions": {
+   "original": "120 test episodes in PRINCIPLES (App. F.1); the repository ships 78 training and 120 test cases."
+  },
+  "pitfalls": [
+   "Synthetic scenarios generated by an LLM; only evaluated by LLM self-play with a gpt-4o critic."
+  ]
+ },
+ {
+  "id": "humaneval",
+  "name": "HumanEval",
+  "title": "Evaluating Large Language Models Trained on Code",
+  "arxiv": "2107.03374",
+  "url": "https://arxiv.org/abs/2107.03374",
+  "code": "https://github.com/openai/human-eval",
+  "what": "164 hand-written Python programming problems (function signature and docstring) checked by hidden unit tests.",
+  "versions": {
+   "python": "As released.",
+   "rust": "Translated to Rust with MultiPL-E; Reflexion uses the 50 hardest problems."
+  },
+  "pitfalls": [
+   "Pass@1 depends on whether the method may see hidden tests; Reflexion only uses self-written tests.",
+   "Rust numbers in Reflexion are on a 50-problem subset."
+  ]
+ },
+ {
+  "id": "mbpp",
+  "name": "MBPP",
+  "title": "Program Synthesis with Large Language Models",
+  "arxiv": "2108.07732",
+  "url": "https://arxiv.org/abs/2108.07732",
+  "code": null,
+  "what": "Crowd-sourced entry-level Python programming problems with test cases.",
+  "versions": {
+   "python": "As released.",
+   "rust": "Translated to Rust with MultiPL-E."
+  },
+  "pitfalls": [
+   "Reflexion does not state which MBPP subset or split it evaluates."
+  ]
+ },
+ {
+  "id": "leetcode-hard",
+  "name": "LeetcodeHardGym",
+  "title": "Reflexion: Language Agents with Verbal Reinforcement Learning (benchmark introduced in the paper)",
+  "arxiv": "2303.11366",
+  "url": "https://arxiv.org/abs/2303.11366",
+  "code": "https://github.com/noahshinn/reflexion",
+  "what": "40 LeetCode hard-rated problems released after 8 October 2022, as an interactive code-generation environment in 19 languages.",
+  "versions": {
+   "python": "Python version used in Reflexion Table 1."
+  },
+  "pitfalls": [
+   "Only 40 problems, so one problem is 2.5 points."
+  ]
+ },
+ {
+  "id": "pinchbench",
+  "name": "PinchBench",
+  "title": "PinchBench: Real-world benchmarks for AI coding agents",
+  "arxiv": null,
+  "url": "https://github.com/pinchbench/skill/commit/0347a7f1736a9c33b5fe831e27d1d6ee9b576221",
+  "code": "https://github.com/pinchbench/skill",
+  "what": "Real-world agent tasks graded by task-specific checks on the delivered outputs; the TokenPilot snapshot has 123 tasks in 11 categories (productivity, research, writing, coding, analysis, CSV, log and meeting analysis, memory, skills, integrations).",
+  "versions": {
+   "snapshot 0347a7f": "frozen snapshot used by TokenPilot, 123 tasks"
+  },
+  "pitfalls": [
+   "The upstream repo updates continuously; results need a pinned snapshot.",
+   "Some categories have 2-6 tasks, so category scores are noisy."
+  ]
+ },
+ {
+  "id": "claw-eval",
+  "name": "Claw-Eval",
+  "title": "Claw-Eval: Towards Trustworthy Evaluation of Autonomous Agents",
+  "arxiv": "2604.06132",
+  "url": "https://arxiv.org/abs/2604.06132",
+  "code": null,
+  "what": "Containerized agent evaluation with 300 human-verified tasks in three groups, graded from execution traces, audit logs and environment snapshots on completion, safety and robustness.",
+  "versions": {
+   "General group": "161 service-orchestration and analytical tasks (as used by TokenPilot)"
+  },
+  "pitfalls": [
+   "Scores are rubric-based partial credit, with safety as a multiplicative gate."
+  ]
+ },
+ {
+  "id": "selfcheckgpt-hallucination",
+  "name": "SelfCheckGPT hallucination editing",
+  "title": "SelfCheckGPT: Zero-Resource Black-Box Hallucination Detection for Generative Large Language Models",
+  "arxiv": "2303.08896",
+  "url": "https://arxiv.org/abs/2303.08896",
+  "code": null,
+  "what": "GPT-3 Wikipedia-style biographies with inaccurate sentences; editing replaces them with the real Wikipedia sentences (setup from GRACE). Reliability is perplexity on the corrected sentence; locality uses pretraining-style text.",
+  "versions": {
+   "wise-600": "WISE's version: prompts over 254 tokens dropped (906 of 1,392 kept), split 306 train / 600 test; locality text from RedPajama."
+  },
+  "pitfalls": [
+   "Reliability is perplexity (lower is better), not a success rate.",
+   "There is no paraphrase set, so no generalization metric."
+  ]
+ },
+ {
+  "id": "temporal-edit",
+  "name": "Temporal (canonical-example editing)",
+  "title": "Model Editing with Canonical Examples",
+  "arxiv": "2402.06155",
+  "url": "https://arxiv.org/abs/2402.06155",
+  "code": null,
+  "what": "Edits about entities that emerged after 2019: the model is edited with a GPT-4-written paragraph and tested on the entity's real Wikipedia continuation (out-of-distribution generalization); locality text from the Pile.",
+  "versions": {
+   "hewitt-2024": "As used by WISE with GPT-J-6B, T = 10 and 75 edits; success when the loss on the real continuation is below -log(0.8)."
+  },
+  "pitfalls": [
+   "Uses GPT-J-6B because newer models may already know the entities.",
+   "Success is a loss threshold, not an exact match."
+  ]
+ },
+ {
+  "id": "dmr-recall-tasks",
+  "name": "Hou et al. recall tasks",
+  "title": "\"My agent understands me better\" (CHI EA '24), own evaluation set",
+  "arxiv": "2404.00573",
+  "url": "https://arxiv.org/abs/2404.00573",
+  "code": null,
+  "what": "10 tasks built from the authors' own conversation logs; each has 4 timestamped candidate events tagged with topics and keywords, and the model's scores are compared with the one correct event by a softmax squared-error loss.",
+  "versions": {
+   "original": "as in the paper; not released"
+  },
+  "pitfalls": [
+   "Not public, 10 items only.",
+   "Loss is on memory scores, not on generated answers; lower is better."
+  ]
+ },
+ {
+  "id": "emg-rag-assistant",
+  "name": "EMG-RAG assistant data (Huawei, proprietary)",
+  "title": "Crafting Personalized Agents through Retrieval-Augmented Generation on Editable Memory Graphs",
+  "arxiv": "2409.19401",
+  "url": "https://arxiv.org/abs/2409.19401",
+  "code": null,
+  "what": "Proprietary smartphone-assistant data (chats and OCR'd screenshots, Mar-Jun 2024) turned into memories by GPT-4; GPT-4 also writes QA pairs with required memories. Tasks: question answering (ROUGE, BLEU), autofill forms and user services (reminder, travel; exact match). 2,000 training and 500 test users.",
+  "versions": {
+   "original": "Static evaluation (EMG-RAG Table 2).",
+   "continuous edits, week 1-4": "Memories edited over four weeks, scored per week (Table 3).",
+   "continuous edits, week 1": "version as reported by emg-rag; see that results file's notes",
+   "continuous edits, week 2": "version as reported by emg-rag; see that results file's notes",
+   "continuous edits, week 3": "version as reported by emg-rag; see that results file's notes",
+   "continuous edits, week 4": "version as reported by emg-rag; see that results file's notes"
+  },
+  "pitfalls": [
+   "Not public; results cannot be reproduced or compared across papers.",
+   "References and required-memory labels are GPT-4 outputs."
+  ]
+ },
+ {
+  "id": "re-docred",
+  "name": "Re-DocRED",
+  "title": "Revisiting DocRED - Addressing the False Negative Problem in Relation Extraction",
+  "arxiv": "2205.12696",
+  "url": "https://arxiv.org/abs/2205.12696",
+  "code": null,
+  "what": "DocRED Wikipedia documents re-annotated with Wikidata-style entity mentions, coreference and 96 relation types, adding many relations DocRED missed. MemLLM uses it to build write/read training data and to measure language-modeling perplexity with a memory.",
+  "versions": {
+   "memllm-ppl": "MemLLM (arXiv 2404.11672) perplexity evaluation: OVERALL, TARGET (entities a memory read could supply) and ENTITY perplexity over Re-DocRED eval documents, with memory reads placed before target entities."
+  },
+  "pitfalls": [
+   "Perplexity, lower is better; not a 0-100 score.",
+   "MemLLM's numbers depend on what fills the memory (its own writes over Wikipedia vs gold triples); compare only rows with the same memory content.",
+   "MemLLM scores memory reads only at the evaluation data's read positions, so its PPL is an upper bound by the authors' own account."
+  ]
+ },
+ {
+  "id": "memorybank-probing",
+  "name": "MemoryBank probing questions",
+  "title": "MemoryBank: Enhancing Large Language Models with Long-Term Memory",
+  "arxiv": "2305.10250",
+  "url": "https://arxiv.org/abs/2305.10250",
+  "code": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend",
+  "what": "Simulated 10-day conversations of 15 ChatGPT-played users with set personalities and topics, in English and Chinese, plus hand-written probing questions about earlier days; answers scored by human annotators for retrieval accuracy, correctness, coherence and ranking (MemoryBank §4.2).",
+  "versions": {
+   "en": "English memory store and 97 probing questions (paper; the repo file has 100).",
+   "cn": "Chinese memory store and 97 probing questions (paper; the repo file has 100)."
+  },
+  "pitfalls": [
+   "Scores are human labels from the authors' own annotation; no judge prompt or annotator count is given.",
+   "The ranking score (1/rank among three variants) only compares systems ranked together.",
+   "Later papers reuse the store with different questions or LLM judges."
+  ]
+ },
+ {
+  "id": "cmv-persuasion",
+  "name": "CMV (PRIME)",
+  "title": "PRIME: Large Language Model Personalization with Cognitive Dual-Memory and Personalized Thought Process (dataset in §3)",
+  "arxiv": "2507.04607",
+  "url": "https://arxiv.org/abs/2507.04607",
+  "code": "https://github.com/launchnlp/LM_Personalization",
+  "what": "Personalization as ranking on Reddit r/ChangeMyView: given a user's new post and candidate replies, rank the reply that received the user's delta. 133 evaluation queries (2023-2024) from 41 active users, with 7,514 historical threads (2013-2022).",
+  "versions": {
+   "original": "The released evaluation_data.json (133 queries) with history_data.json and target_authors_collection.json."
+  },
+  "pitfalls": [
+   "Queries were filtered to those Llama-3.1-8B and Qwen2.5-7B get wrong without history (Hit@1 <= 0.3, Hit@3 <= 0.5), so non-personalized scores of those models are low by construction.",
+   "Metrics are Hit@1, Hit@3, DCG@3, MRR and their average; the number of negatives per query differs between the data (47.5 on average) and the 9 sampled negatives used in the paper's preliminary study."
+  ]
+ },
+ {
+  "id": "lamp",
+  "name": "LaMP",
+  "title": "LaMP: When Large Language Models Meet Personalization",
+  "arxiv": "2304.11406",
+  "url": "https://arxiv.org/abs/2304.11406",
+  "code": "https://github.com/LaMP-Benchmark/LaMP",
+  "what": "Seven personalization tasks (three classification, four generation) with per-user profiles. PRIME uses LaMP-1 to LaMP-5 (citation identification, movie tagging, product rating, news headline and scholarly title generation) and drops LaMP-6 (private data) and LaMP-7.",
+  "versions": {
+   "LaMP-1": "citation identification (accuracy, F1)",
+   "LaMP-2": "movie tagging (accuracy, F1)",
+   "LaMP-3": "product rating (MAE, RMSE)",
+   "LaMP-4": "news headline generation (ROUGE-1, ROUGE-L)",
+   "LaMP-5": "scholarly title generation (ROUGE-1, ROUGE-L)"
+  },
+  "pitfalls": [
+   "Papers use different splits (user-based vs time-based) and subsets; PRIME's query counts (Table A1) do not name the split.",
+   "MAE and RMSE are lower-is-better and not on a 0-100 scale."
+  ]
+ },
+ {
+  "id": "bfcl-v3",
+  "name": "BFCL-V3",
+  "title": "The Berkeley Function Calling Leaderboard (BFCL): From Tool Use to Agentic Evaluation of Large Language Models",
+  "arxiv": null,
+  "url": "https://gorilla.cs.berkeley.edu/leaderboard.html",
+  "code": "https://github.com/ShishirPatil/gorilla/tree/main/berkeley-function-call-leaderboard",
+  "what": "Function-calling benchmark; the multi-turn categories have an agent carry out multi-step API calls over several user turns, checked by AST matching and by executing the calls.",
+  "versions": {
+   "base-multi-turn": "the base multi-turn category; ReMe samples 50 tasks to build memory and evaluates on the remaining 150",
+   "multi-turn-other": "missing-parameter, missing-function and long-context multi-turn categories (200 tasks each in ReMe's Table 8)"
+  },
+  "pitfalls": [
+   "There is no official train split; papers that build memory from BFCL carve their own split, so task subsets differ.",
+   "Scores depend on thinking mode and on how many trials are averaged (Avg@k vs Pass@k)."
+  ]
+ },
+ {
+  "id": "personabench",
+  "name": "PersonaBench",
+  "title": "PersonaBench: Evaluating AI Models on Understanding Personal Information through Accessing (Synthetic) Private User Data",
+  "arxiv": null,
+  "url": "https://aclanthology.org/2025.findings-acl.49/",
+  "code": "https://github.com/SalesforceAIResearch/personabench",
+  "what": "Synthetic private user documents (conversations with friends, user-AI chats, purchase histories) with questions about each user's basic information, social ties and preferences; RF-Mem uses it to score retrieval of the relevant documents.",
+  "versions": {
+   "original": "As used by RF-Mem: 6 users, 263 queries, 527 corpus items, session-level memory (RF-Mem App. A Table 9)."
+  },
+  "pitfalls": [
+   "RF-Mem reports only Recall@5/10 of relevant memories, not answer accuracy.",
+   "Categories: Basic Info, Social Info, Preference Easy, Preference Hard.",
+   "Findings of ACL 2025 (Tan et al., pp. 878-893, per RF-Mem's reference list); arXiv id not given there."
+  ]
+ },
+ {
+  "id": "webqsp",
+  "name": "WebQSP",
+  "title": "The Value of Semantic Parse Labeling for Knowledge Base Question Answering",
+  "arxiv": null,
+  "url": "https://aclanthology.org/P16-2033",
+  "code": null,
+  "what": "4,737 natural-language questions over Freebase, annotated with semantic parses; mostly one- or two-hop.",
+  "versions": {
+   "original": "Standard train/test split used by RoG and UniKGQA."
+  },
+  "pitfalls": [
+   "Hits@1 and F1 are both reported; methods that return one answer and methods that return answer sets are not comparable on F1.",
+   "Results depend on the Freebase subgraph used per question."
+  ]
+ },
+ {
+  "id": "cwq",
+  "name": "ComplexWebQuestions",
+  "title": "The Web as a Knowledge-base for Answering Complex Questions",
+  "arxiv": "1803.06643",
+  "url": "https://arxiv.org/abs/1803.06643",
+  "code": null,
+  "what": "34,699 complex questions built from WebQSP by composition, conjunction, comparatives and superlatives; multi-hop over Freebase.",
+  "versions": {
+   "original": "Standard train/dev/test split used by RoG and UniKGQA."
+  },
+  "pitfalls": [
+   "Hits@1 and F1 are both reported; compare like with like."
+  ]
+ },
+ {
+  "id": "metaqa",
+  "name": "MetaQA",
+  "title": "Variational Reasoning for Question Answering with Knowledge Graph",
+  "arxiv": "1709.04071",
+  "url": "https://arxiv.org/abs/1709.04071",
+  "code": null,
+  "what": "Movie-domain questions over the WikiMovies KG in 1-, 2- and 3-hop subsets.",
+  "versions": {
+   "original": "Vanilla questions; papers usually report the 1-hop, 2-hop and 3-hop subsets separately."
+  },
+  "pitfalls": [
+   "Always record which hop subset (MetaQA-1/2/3) a score is for."
+  ]
+ },
+ {
+  "id": "textarena-mastermind",
+  "name": "TextArena Mastermind",
+  "title": "TextArena",
+  "arxiv": "2504.11442",
+  "url": "https://arxiv.org/abs/2504.11442",
+  "code": "https://github.com/LeonGuertler/TextArena",
+  "what": "Single-player code-guessing game from the TextArena suite: the agent guesses a hidden digit code and gets black/white peg feedback, for up to 20 turns (as described in Skill-Pro §5.1, App. D.1). Scored by average episode return.",
+  "versions": {
+   "v0": "Mastermind-v0: 4 digits from 1-6, no duplicates (Skill-Pro App. D.1, code run.py).",
+   "v0-hard": "Mastermind-v0-hard: 4 digits from 1-8 (Skill-Pro code prompt).",
+   "v0-extreme": "Mastermind-v0-extreme: 6 digits from 1-12 (Skill-Pro code prompt)."
+  },
+  "pitfalls": [
+   "Return is a partial-credit score in [0, 1], not a win rate.",
+   "Not a memory benchmark by design: what is stored depends on each paper's learning phase."
+  ]
+ },
+ {
+  "id": "bfcl",
+  "name": "BFCL",
+  "title": "The Berkeley Function Calling Leaderboard (BFCL): From Tool Use to Agentic Evaluation of Large Language Models",
+  "arxiv": null,
+  "url": "https://gorilla.cs.berkeley.edu/leaderboard.html",
+  "code": "https://github.com/ShishirPatil/gorilla",
+  "what": "Function-calling benchmark covering single- and multi-turn calls, parallel calls and detecting irrelevant or uncallable requests (as described in Skill-Pro App. C.2; ICML 2025).",
+  "versions": {
+   "v4": "BFCL v4, as used by Skill-Pro; the subset is not stated."
+  },
+  "pitfalls": [
+   "Overall accuracy depends on which categories are included; Skill-Pro does not say."
+  ]
+ },
+ {
+  "id": "miniwob",
+  "name": "MiniWoB++",
+  "title": "Reinforcement Learning on Web Interfaces Using Workflow-Guided Exploration (MiniWoB++); World of Bits (MiniWoB)",
+  "arxiv": "1802.08802",
+  "url": "https://arxiv.org/abs/1802.08802",
+  "code": "https://github.com/Farama-Foundation/miniwob-plusplus",
+  "what": "Over 100 small synthetic web tasks (click, type, fill forms, book a flight) given as HTML; scored by per-task success rate.",
+  "versions": {
+   "legacy": "the legacy branch used by RCI and Synapse"
+  },
+  "pitfalls": [
+   "Papers average over different task subsets (e.g. 54, 64 or 104 tasks), so mean success rates are not comparable across papers.",
+   "Some methods use self-correction or many retries; check the number of attempts."
+  ]
+ },
+ {
+  "id": "mind2web",
+  "name": "Mind2Web",
+  "title": "Mind2Web: Towards a Generalist Agent for the Web",
+  "arxiv": "2306.06070",
+  "url": "https://arxiv.org/abs/2306.06070",
+  "code": "https://github.com/OSU-NLP-Group/Mind2Web",
+  "what": "Static dataset of 2,000+ human demonstrations on 137 real websites in 31 domains; agents predict the next action given gold history; metrics element accuracy, step success rate and task success rate on cross-task (252), cross-website (177) and cross-domain (912) test splits.",
+  "versions": {
+   "original": "offline evaluation with the released element-ranker candidates"
+  },
+  "pitfalls": [
+   "Offline: history is gold, so step success is teacher-forced.",
+   "Results depend on how many ranked elements (k) are shown; a target missing from the top-k counts as a failure."
+  ]
+ },
+ {
+  "id": "conversation-chronicles",
+  "name": "Conversation Chronicles (CC)",
+  "title": "Conversation Chronicles: Towards Diverse Temporal and Relational Dynamics in Multi-Session Conversations",
+  "arxiv": null,
+  "url": "https://aclanthology.org/2023.emnlp-main.838/",
+  "code": null,
+  "what": "Multi-session (5-session) English dialogues in which the two speakers have a defined relationship (e.g. employee and boss); used for next-response generation (as described in THEANINE §3.1).",
+  "versions": {
+   "original": "As released; THEANINE samples 50 test episodes and scores sessions 3-5."
+  },
+  "pitfalls": [
+   "Papers sample different subsets of the 20,000+ test episodes; record the sample in 'subset'.",
+   "Response-generation metrics (BLEU, ROUGE, MAUVE, BERTScore) compare to one reference utterance and are not QA accuracy."
+  ]
+ },
+ {
+  "id": "teafarm",
+  "name": "TeaFarm (TeaBag)",
+  "title": "Towards Lifelong Dialogue Agents via Timeline-based Memory Management (TeaFarm evaluation)",
+  "arxiv": "2406.10996",
+  "url": "https://huggingface.co/datasets/LangAGI-Lab/teafarm",
+  "code": null,
+  "what": "Counterfactual memory test: after 5 sessions of MSC or CC, a GPT-4-synthesized session 6 leads to a question that assumes something false about the past; the agent passes if its answer is not misled (GPT-4 grades). TeaBag: 100 episodes, 200 questions.",
+  "versions": {
+   "TeaBag": "Released data: 50 MSC + 50 CC episodes, 2 counterfactual QAs and 2 synthesized session-6 dialogues each."
+  },
+  "pitfalls": [
+   "Questions target the newest state of each event, so memory update barely matters (THEANINE footnote 10).",
+   "Grading is by GPT-4 against a GPT-4-written answer."
+  ]
+ },
+ {
+  "id": "tremu-temporal",
+  "name": "TReMu temporal QA",
+  "title": "TReMu: Towards Neuro-Symbolic Temporal Reasoning for LLM-Agents with Memory in Multi-Session Dialogues (benchmark in §2)",
+  "arxiv": "2502.01630",
+  "url": "https://arxiv.org/abs/2502.01630",
+  "code": null,
+  "what": "600 multiple-choice temporal questions over LoCoMo dialogues (264 temporal anchoring, 102 precedence, 234 interval; 112 unanswerable), built with GPT-4o event extraction, linking and QA writing, then manual review.",
+  "versions": {
+   "original": "The 600-question set of Table 2 in the TReMu paper; release promised but no link given."
+  },
+  "pitfalls": [
+   "Multiple choice with 3 or 5 options including 'Unanswerable', so accuracy is not comparable with LoCoMo's free-form temporal category.",
+   "Built and evaluated by the same authors; questions were generated by GPT-4o, which is also one of the evaluated models."
+  ]
+ },
+ {
+  "id": "finer",
+  "name": "FiNER",
+  "title": "FiNER: Financial Numeric Entity Recognition for XBRL Tagging",
+  "arxiv": "2203.06482",
+  "url": "https://arxiv.org/abs/2203.06482",
+  "code": null,
+  "what": "Tag numeric tokens in financial filings with one of 139 fine-grained XBRL entity types (as described in ACE §4.1).",
+  "versions": {
+   "original": "the dataset's own split; ACE's released code evaluates a 441-question test subset"
+  },
+  "pitfalls": [
+   "Papers evaluate subsets of the test split; check the number of questions before comparing accuracies."
+  ]
+ },
+ {
+  "id": "formula",
+  "name": "Formula",
+  "title": "FinLoRA: Benchmarking LoRA Methods for Fine-Tuning LLMs on Financial Datasets",
+  "arxiv": "2505.19819",
+  "url": "https://arxiv.org/abs/2505.19819",
+  "code": null,
+  "what": "XBRL-based financial numerical reasoning: apply financial concepts and compute the answer to a query (as described in ACE §4.1); comes from the FinLoRA benchmark suite.",
+  "versions": {
+   "original": "FinLoRA split; ACE's released code uses a 200-question test file"
+  },
+  "pitfalls": [
+   "Accuracy is exact match of the final number, so answer formatting matters."
+  ]
+ },
+ {
+  "id": "lv-eval",
+  "name": "LV-Eval",
+  "title": "LV-Eval: A Balanced Long-Context Benchmark with 5 Length Levels Up to 256k",
+  "arxiv": "2402.05136",
+  "url": "https://arxiv.org/abs/2402.05136",
+  "code": null,
+  "what": "Long-context QA at five length levels up to 256k tokens, with keyword and phrase replacement to reduce knowledge leakage.",
+  "versions": {
+   "original": "As released; HippoRAG 2 uses the hotpotwikiqa-mixup 256k subset (124 questions) split into passages for RAG."
+  },
+  "pitfalls": [
+   "Papers use single subsets and length levels; check which one.",
+   "In RAG papers the long context is segmented into a passage corpus, which is not the benchmark's long-context setting."
+  ]
+ },
+ {
+  "id": "hypergraphrag-domains",
+  "name": "HyperGraphRAG domain QA",
+  "title": "HyperGraphRAG: Retrieval-Augmented Generation via Hypergraph-Structured Knowledge Representation (evaluation sets)",
+  "arxiv": "2503.21322",
+  "url": "https://arxiv.org/abs/2503.21322",
+  "code": "https://github.com/LHRLAB/HyperGraphRAG/tree/a8048274936b08e55d09a85f032681e679df8943/evaluation",
+  "what": "Knowledge-intensive QA over five domain corpora: Medicine (2024 ESC hypertension guideline) and Agriculture, CS, Legal and Mix contexts from UltraDomain. 512 GPT-generated, human-checked questions per domain from 1-3 hop knowledge samples, split into binary-source and n-ary-source halves. Scored with F1, retrieval similarity (R-S) and an LLM-judge generation score (G-E).",
+  "versions": {
+   "original": "As released with HyperGraphRAG (data on Terabox, linked from evaluation/README.md)."
+  },
+  "pitfalls": [
+   "Built by the HyperGraphRAG authors; the paper does not say which graph the multi-hop fact samples were drawn from.",
+   "G-E averages the judge score with F1, and R-S is 0 by construction for methods that retrieve nothing.",
+   "Different from the UltraDomain query-focused summarisation tasks used by LightRAG, even though the corpora are shared."
+  ]
+ },
+ {
+  "id": "swe-bench-verified",
+  "name": "SWE-Bench Verified",
+  "title": "SWE-bench: Can Language Models Resolve Real-World GitHub Issues?",
+  "arxiv": "2310.06770",
+  "url": "https://arxiv.org/abs/2310.06770",
+  "code": "https://github.com/SWE-bench/SWE-bench",
+  "what": "500 manually verified GitHub issues from Python repositories; the agent writes a patch and an issue counts as resolved when the repository's tests pass (as described in ReasoningBank App. B.2).",
+  "versions": {
+   "original": "the 500-instance Verified split"
+  },
+  "pitfalls": [
+   "Resolve rate depends heavily on the agent scaffold (e.g. bash-only mini-SWE-agent vs tool-rich agents); compare only within one scaffold."
+  ]
+ },
+ {
+  "id": "finmem-trading",
+  "name": "FinMem single-stock trading",
+  "title": "FinMem: A Performance-Enhanced LLM Trading Agent with Layered Memory and Character Design",
+  "arxiv": "2311.13743",
+  "url": "https://arxiv.org/abs/2311.13743",
+  "code": "https://github.com/pipiku915/FinMem-LLM-StockTrading",
+  "what": "Daily buy / sell / hold trading of one share of a single US stock, with Benzinga news (Alpaca News API), SEC 10-Q and 10-K filings and Yahoo Finance prices from 2021-08-15 to 2023-04-25. Main test window 2022-10-06 to 2023-04-10 on TSLA, NFLX, AMZN, MSFT and COIN; scored by cumulative (log) return, Sharpe ratio, daily and annualized volatility and max drawdown (FinMem §4).",
+  "versions": {
+   "TSLA": "Tesla",
+   "NFLX": "Netflix",
+   "AMZN": "Amazon",
+   "MSFT": "Microsoft",
+   "COIN": "Coinbase (no DRL baselines: listed April 2021)"
+  },
+  "pitfalls": [
+   "One test window of about six months; results are averages of 5 runs but from a single market period.",
+   "Cumulative return, volatility and drawdown are in percent; Sharpe ratio is a plain ratio; lower is better for volatility and drawdown.",
+   "Ablations in the same paper use a different TSLA window (2022-06-16 to 2022-12-28), so their numbers are not comparable with the main table.",
+   "Training periods differ by agent family (DRL agents trained from 2012)."
+  ]
+ },
+ {
+  "id": "graphplanner-routing",
+  "name": "GraphPlanner routing tasks",
+  "title": "GraphPlanner: Graph Memory-Augmented Agentic Routing for Multi-Agent LLMs (evaluation suite)",
+  "arxiv": "2604.23626",
+  "url": "https://arxiv.org/abs/2604.23626",
+  "code": "https://github.com/ulab-uiuc/GraphPlanner",
+  "what": "LLM-routing evaluation over 11 in-domain tasks in five domains (Math: GSM8K, MATH; Code: MBPP, HumanEval; Commonsense: CommonsenseQA, ARC, OpenBookQA; World knowledge: NQ, TriviaQA; Popular: MMLU, GPQA) plus 3 held-out tasks (LogicGrid, MGSM, CommonGen). Routers pick among a pool of open LLMs; accuracy and a token-price cost are reported per domain.",
+  "versions": {
+   "phase1-d1w3": "Router picks the LLM for each agent of a fixed workflow, 1 planner, up to 3 sub-queries.",
+   "phase1-d2w2": "Same with 2 planner levels, up to 2 sub-queries each.",
+   "phase2": "Router builds the workflow: chooses roles and LLMs per step.",
+   "phase2-unseen-tasks": "Phase-2 routers tested zero-shot on LogicGrid, MGSM and CommonGen."
+  },
+  "pitfalls": [
+   "Domain scores average tasks with different metrics (accuracy, pass@1, CEM, coverage).",
+   "Test sets are 44-50 questions per task, so one point on a domain is about one question.",
+   "The Average column is not the plain mean of the domain columns.",
+   "Accuracy must be read together with the cost column: routers differ several-fold in cost and LLM calls."
+  ]
+ },
+ {
+  "id": "aime",
+  "name": "AIME",
+  "title": "American Invitational Mathematics Examination",
+  "arxiv": null,
+  "url": "https://www.maa.org/math-competitions",
+  "code": null,
+  "what": "Competition math problems with integer answers, 15 per exam; papers pick different year ranges.",
+  "versions": {
+   "2016-2025": "Problems from 2016 to 2025 (GraphPlanner, Table 14)."
+  },
+  "pitfalls": [
+   "Year ranges differ across papers (e.g. AIME 2024 only vs 2016-2025); always record them."
+  ]
+ },
+ {
+  "id": "multitq",
+  "name": "MultiTQ",
+  "title": "Multi-granularity Temporal Question Answering over Knowledge Graphs",
+  "arxiv": null,
+  "url": "https://doi.org/10.18653/v1/2023.acl-long.637",
+  "code": null,
+  "what": "Temporal KGQA over ICEWS05-15 events: 500K+ generated questions (54,584 test) at day, month and year granularity; single-constraint (Equal, Before/After, First/Last) and multiple-constraint (Equal-Multi, After-First, Before-Last) questions.",
+  "versions": {
+   "original": "Test split as released with the ACL 2023 paper."
+  },
+  "pitfalls": [
+   "Scored as Hits@1 (exact match); papers differ in how leniently a predicted string is matched to the gold entity or time.",
+   "Many LLM-agent papers copy baseline numbers from earlier papers rather than rerunning them; backbones then differ across rows."
+  ]
+ },
+ {
+  "id": "timequestions",
+  "name": "TimeQuestions",
+  "title": "Complex Temporal Question Answering on Knowledge Graphs",
+  "arxiv": "2109.08935",
+  "url": "https://arxiv.org/abs/2109.08935",
+  "code": null,
+  "what": "About 16K manually curated temporal questions grounded in Wikidata (3,237 test) in four categories: explicit, implicit, temporal and ordinal; yearly granularity only.",
+  "versions": {
+   "original": "Train/dev/test split of the EXAQT paper (6,970 / 3,236 / 3,237 per MemoTime Table 8)."
+  },
+  "pitfalls": [
+   "Scored as Hits@1; answer-matching rules differ between papers.",
+   "Category scores are sometimes grouped as question type (explicit, implicit) and answer type (temporal, ordinal); the four are the dataset's own categories."
+  ]
+ },
+ {
+  "id": "complex-tr",
+  "name": "Complex-TR",
+  "title": "Towards Robust Temporal Reasoning of Large Language Models via a Multi-Hop QA Dataset and Pseudo-Instruction Tuning",
+  "arxiv": "2311.09821",
+  "url": "https://arxiv.org/abs/2311.09821",
+  "code": null,
+  "what": "Multi-answer, multi-hop temporal QA over Wikidata-derived facts; REMem splits it into time-to-event and event-to-event questions.",
+  "versions": {
+   "original": "As released; REMem samples 1,000 queries at random."
+  },
+  "pitfalls": [
+   "Papers evaluate random subsets; check the sample size.",
+   "Answers can be lists of entities, so partial answers affect F1 and judge scores differently."
+  ]
+ },
+ {
+  "id": "test-of-time",
+  "name": "Test of Time",
+  "title": "Test of Time: A Benchmark for Evaluating LLMs on Temporal Reasoning",
+  "arxiv": "2406.09170",
+  "url": "https://arxiv.org/abs/2406.09170",
+  "code": null,
+  "what": "Synthetic temporal reasoning over anonymised entity facts; the semantic part has eight question types (before-after, event at time, first-last, duration, timeline, ...), scored by exact match.",
+  "versions": {
+   "original": "As released; REMem uses the semantic part (2,800 questions, 350 per type)."
+  },
+  "pitfalls": [
+   "Semantic and arithmetic parts are different tasks; check which one is reported.",
+   "Entities are anonymous labels, so dense embeddings retrieve poorly and BM25 is a strong baseline."
+  ]
+ },
+ {
+  "id": "grailqa",
+  "name": "GrailQA",
+  "title": "Beyond I.I.D.: Three Levels of Generalization for Question Answering on Knowledge Bases",
+  "arxiv": "2011.07743",
+  "url": "https://arxiv.org/abs/2011.07743",
+  "code": null,
+  "what": "Freebase KBQA with test questions split by i.i.d., compositional and zero-shot generalization; answers are entities or numbers.",
+  "versions": {
+   "original": "Think-on-Graph uses 1,000 random questions of the test set (44,337 train)."
+  },
+  "pitfalls": [
+   "Subsampled test sets (e.g. 1,000 random questions) are not comparable with full-test leaderboard numbers.",
+   "Exact match in LLM papers is often substring matching of the generated answer."
+  ]
+ },
+ {
+  "id": "qald-10",
+  "name": "QALD-10",
+  "title": "QALD-10 (QALD challenge over Wikidata); cited via QALD-9-plus (Perevalov et al., ICSC 2022)",
+  "arxiv": null,
+  "url": "https://doi.ieeecomputersociety.org/10.1109/ICSC52841.2022.00045",
+  "code": null,
+  "what": "Question answering over Wikidata; the English test set has 333 questions with entity or number answers.",
+  "versions": {
+   "QALD-10 en": "English test questions over Wikidata, as used by Think-on-Graph (333)."
+  },
+  "pitfalls": [
+   "QALD-9, QALD-9-plus and QALD-10 are different sets over different KGs (DBpedia vs Wikidata)."
+  ]
+ },
+ {
+  "id": "simplequestions",
+  "name": "SimpleQuestions",
+  "title": "Large-scale Simple Question Answering with Memory Networks",
+  "arxiv": "1506.02075",
+  "url": "https://arxiv.org/abs/1506.02075",
+  "code": null,
+  "what": "Single-relation questions over Freebase: each is answered by one triple.",
+  "versions": {
+   "original": "Think-on-Graph uses 1,000 random test questions."
+  },
+  "pitfalls": [
+   "Subsampled test sets are not comparable with full-test results."
+  ]
+ },
+ {
+  "id": "webquestions",
+  "name": "WebQuestions",
+  "title": "Semantic Parsing on Freebase from Question-Answer Pairs",
+  "arxiv": null,
+  "url": "https://aclanthology.org/D13-1160/",
+  "code": null,
+  "what": "Questions from Google Suggest answered with Freebase entities; used as open-domain QA (2,032 test questions).",
+  "versions": {
+   "original": "Standard test split (2,032)."
+  },
+  "pitfalls": [
+   "Open-domain QA systems answer from Wikipedia while KBQA systems use Freebase; the evidence source changes the task."
+  ]
+ },
+ {
+  "id": "t-rex",
+  "name": "T-REx",
+  "title": "T-REx: A Large Scale Alignment of Natural Language with Knowledge Base Triples (LREC 2018)",
+  "arxiv": null,
+  "url": null,
+  "code": null,
+  "what": "Slot filling: given a subject entity and a relation, produce the object entity; used through the KILT benchmark.",
+  "versions": {
+   "KILT slot filling": "KILT version as used by Think-on-Graph (5,000 test instances, 2,284,168 train)."
+  },
+  "pitfalls": [
+   "KILT leaderboard numbers and self-evaluated subsets are not directly comparable."
+  ]
+ },
+ {
+  "id": "creak",
+  "name": "CREAK",
+  "title": "CREAK: A Dataset for Commonsense Reasoning over Entity Knowledge",
+  "arxiv": "2109.01653",
+  "url": "https://arxiv.org/abs/2109.01653",
+  "code": null,
+  "what": "True/false claims about entities that combine entity facts with commonsense; 1,371 test claims.",
+  "versions": {
+   "original": "Standard split (10,176 train, 1,371 test)."
+  },
+  "pitfalls": [
+   "Binary labels: 50% is chance, so accuracies near 90% leave little room between methods."
+  ]
+ },
+ {
+  "id": "long-time-video",
+  "name": "Long-time Video",
+  "title": "Video Object Segmentation with Adaptive Feature Bank and Uncertain-Region Refinement (AFB-URR)",
+  "arxiv": "2010.07958",
+  "url": "https://arxiv.org/abs/2010.07958",
+  "code": null,
+  "what": "Three long videos with more than 7,000 frames in total, for semi-supervised video object segmentation over long durations; scored by J&F.",
+  "versions": {
+   "1x": "original videos",
+   "3x": "each video played back and forth to three times its length (XMem §4.1)"
+  },
+  "pitfalls": [
+   "Only three videos: results swing with memory-insertion offsets, so XMem reports mean ± sd over 5 offsets.",
+   "The n× variants repeat content, so they test memory growth, not new appearance changes."
+  ]
+ },
+ {
+  "id": "youtube-vos",
+  "name": "YouTube-VOS",
+  "title": "YouTube-VOS: A Large-Scale Video Object Segmentation Benchmark",
+  "arxiv": "1809.03327",
+  "url": "https://arxiv.org/abs/1809.03327",
+  "code": null,
+  "what": "Large video object segmentation benchmark with seen and unseen object classes in validation; score G averages J and F over both.",
+  "versions": {
+   "2018 val": "2018 validation set (server-scored)",
+   "2019 val": "2019 validation set"
+  },
+  "pitfalls": [
+   "2018 and 2019 validation sets differ; do not mix.",
+   "Some methods skip frames at test time; AOT had to be re-run with all frames for a fair comparison (XMem Table 2)."
+  ]
+ },
+ {
+  "id": "davis-2017",
+  "name": "DAVIS 2017",
+  "title": "The 2017 DAVIS Challenge on Video Object Segmentation",
+  "arxiv": "1704.00675",
+  "url": "https://arxiv.org/abs/1704.00675",
+  "code": null,
+  "what": "Multi-object semi-supervised video object segmentation on short videos; scored by region similarity J, contour accuracy F and their mean J&F.",
+  "versions": {
+   "val": "validation set",
+   "test-dev": "test-dev set"
+  },
+  "pitfalls": [
+   "Results at 600p or with multi-scale testing are not comparable with 480p single-scale results.",
+   "BL30K or other extra pretraining data changes results; XMem marks it with *."
+  ]
+ },
+ {
+  "id": "davis-2016",
+  "name": "DAVIS 2016",
+  "title": "A Benchmark Dataset and Evaluation Methodology for Video Object Segmentation (CVPR 2016)",
+  "arxiv": null,
+  "url": null,
+  "code": null,
+  "what": "Single-object video object segmentation on short videos; scored by J, F and J&F.",
+  "versions": {
+   "val": "validation set"
+  },
+  "pitfalls": [
+   "Nearly saturated (above 90 J&F for recent methods), so differences are small."
+  ]
+ },
+ {
+  "id": "pathquestions",
+  "name": "PathQuestions (PQ)",
+  "title": "An Interpretable Reasoning Network for Multi-Relation Question Answering",
+  "arxiv": "1801.04726",
+  "url": "https://arxiv.org/abs/1801.04726",
+  "code": null,
+  "what": "Path questions over a small Freebase-derived KG (2,215 entities, 14 relations): 1,908 2-hop and 5,198 3-hop queries with the topic entity written in the question.",
+  "versions": {
+   "original": "2-hop and 3-hop subsets, all queries (as used by SimGRAG)."
+  },
+  "pitfalls": [
+   "Report the hop subset; 2-hop and 3-hop scores differ widely."
+  ]
+ },
+ {
+  "id": "wc2014",
+  "name": "WorldCup2014 (WC2014)",
+  "title": "Gaussian Attention Model and its Application to Knowledge Base Embedding and Question Answering",
+  "arxiv": "1611.02266",
+  "url": "https://arxiv.org/abs/1611.02266",
+  "code": null,
+  "what": "Questions over a KG of football players at the 2014 FIFA World Cup (1,127 entities, 6 relations): 10,162 queries, mixing 6,482 single-relation, 1,472 two-hop path and 2,208 conjunctive questions.",
+  "versions": {
+   "original": "all 10,162 queries (as used by SimGRAG)."
+  },
+  "pitfalls": [
+   "Papers may score only one question type; check whether conjunctive questions are included."
+  ]
+ },
+ {
+  "id": "factkg",
+  "name": "FactKG",
+  "title": "FactKG: Fact Verification via Reasoning on Knowledge Graphs",
+  "arxiv": null,
+  "url": null,
+  "code": null,
+  "what": "Claims in colloquial and written style to verify as Supported or Refuted against DBpedia; five reasoning types (one-hop, conjunction, existence, multi-hop, negation); test set of 9,041 statements.",
+  "versions": {
+   "original": "full test set with the 2015 DBpedia KG released with the dataset."
+  },
+  "pitfalls": [
+   "Binary labels: accuracy near 70% is reachable without evidence (LLM-only rows in SimGRAG score about 68)."
+  ]
  }
 ]

@@ -18432,6 +18432,24 @@
    ],
    "facets": {},
    "venue": null
+  },
+  {
+   "id": "2601.02845",
+   "title": "TiMem: Temporal-Hierarchical Memory Consolidation for Long-Horizon Conversational Agents",
+   "url": "https://arxiv.org/abs/2601.02845",
+   "arxiv": "2601.02845",
+   "code": "https://github.com/TiMEM-AI/timem",
+   "date": "2026-01",
+   "kind": "method",
+   "description": null,
+   "sources": [
+    {
+     "list": "manual",
+     "section": "Added by request (arXiv 2601.02845)"
+    }
+   ],
+   "facets": {},
+   "venue": null
   }
  ]
 }

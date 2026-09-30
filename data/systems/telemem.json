@@ -1,0 +1,599 @@
+{
+  "id": "telemem",
+  "name": "TeleMem",
+  "paper": {
+    "title": "TeleMem: Building Long-Term and Multimodal Memory for Agentic AI",
+    "arxiv": "2601.06037",
+    "url": "https://arxiv.org/abs/2601.06037",
+    "venue": "arXiv",
+    "venue_short": "arXiv",
+    "track": "preprint",
+    "year": 2026,
+    "code": "https://github.com/TeleAI-UAGI/TeleMem"
+  },
+  "design": {
+    "construction": {
+      "unit": "event summary per dialogue round + one sentence per character per round",
+      "kept_as": "LLM summaries (20-100 characters per round) and per-character extractions; raw turns kept alongside but not read",
+      "processing": "per round (a turn and its reply, with the 3 earlier rounds as context) the LLM writes an event summary and one sentence for each of the two characters; event summaries are batched, matched to near-duplicates, clustered and deduplicated by the LLM",
+      "trigger": "buffer-full",
+      "writer": "Qwen3-8B (no-think)"
+    },
+    "organization": {
+      "structure": "event store linked into a DAG (edges between similar events, oriented by time) + two per-character stores",
+      "stores": "per conversation: FAISS indexes for events, character A and character B; a graph JSON over events",
+      "index": "dense (Qwen3-8B embedding, FAISS inner product on normalised vectors)"
+    },
+    "management": {
+      "operations": "paper: add / update / delete / no-op per cluster, Insert and ReInsert of edges, tombstone deletes; code: the LLM keeps or drops new event summaries per cluster and the kept ones are appended",
+      "conflicts": "LLM consolidation over clusters of summaries with cosine ≥ 0.95",
+      "forgetting": null,
+      "timing": "both"
+    },
+    "retrieval": {
+      "query": "question as is",
+      "candidates": "top-10 events by embedding (seeds) and top-10 from each character store",
+      "selection": "closure: every earlier event linked to a seed (up to 100 steps), sorted by timestamp and deduplicated; no reranker",
+      "budget": "10 seeds + all their ancestors (no count cap) + 10 + 10 character sentences"
+    },
+    "use": {
+      "context": "event summaries in time order, then character sentences, pasted as one 'material' block before the question",
+      "reasoning": "single answer call for text; a ReAct loop (retrieval, rag, clip QA) for video"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "prompted-llm",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "graph",
+    "index": "vector",
+    "management": "consolidate",
+    "candidates": "graph walk",
+    "decides": "top-k rule",
+    "note": "Dense top-10 seeds, then every earlier event linked to them is added; nothing reranks or filters the closure. Character sentences come from a separate dense top-10."
+  },
+  "tags": {
+    "fidelity": "compressed",
+    "structure": [
+      "graph",
+      "profile"
+    ],
+    "write_time": [
+      "summarize",
+      "extract",
+      "consolidate",
+      "link"
+    ],
+    "selection": [
+      "dense",
+      "graph-expansion"
+    ],
+    "memory_type": [
+      "episodic",
+      "profile"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "conversation",
+      "multimodal"
+    ]
+  },
+  "stages": {
+    "ingestion": "The dialogue is split into rounds (a turn and the reply); each round is processed with the three earlier rounds as context, 16 rounds in parallel.",
+    "construction": "Per round the LLM writes an event summary of 20-100 characters and one sentence about each of the two characters (relations, events, traits, objects); each is embedded.",
+    "organization": "Events go to a per-conversation FAISS index and are later linked into a graph: an edge joins events with cosine ≥ 0.9 (at most 5 per node), directed from later to earlier, and a shortcut a→c is dropped when a→b→c exists. Character sentences go to two separate FAISS stores.",
+    "update": "Each new event pulls stored events with cosine ≥ 0.95 (top 10); after 64 buffered events the pool is clustered (≥ 0.95) and an LLM keeps or drops the new summaries per cluster. The paper's online ReInsert and tombstone deletion are not in the code.",
+    "retrieval": "The question's top-10 events are seeds; every earlier event reachable through graph edges (≤ 100 steps) joins, sorted by timestamp and deduplicated; top-10 sentences from each character store are appended.",
+    "answer": "Qwen3-8B (no-think, temperature 0) reads the joined text as material and outputs one option letter on ZH-4O.",
+    "learning": ""
+  },
+  "summary": "Per-round event summaries and per-character notes are batch-deduplicated by an LLM, linked into a time-ordered graph of similar events, and read by taking the question's best-matching events together with every earlier event they link to.",
+  "verified": false,
+  "notes": "AXES-CHECK: candidates = graph walk (dense seeds, then backward closure over similarity edges); management = consolidate in the paper, but the code only keeps or drops new summaries and never updates or removes a stored entry. Venue: arXiv preprint (v4, 22 Jan 2026); no venue stated. Code pinned at cdc2cb32 (2026-01-16), the last commit before v4; it adds the ZH-4O evaluation (baselines/telemem).\nDESIGN: §3.1-3.3, §4, App. A; code telemem/main.py, telemem/utils.py, baselines/telemem/EvalModel.py and config.yaml. The multimodal module (video to event/object memories, ReAct QA) is described in §3.3.2 but has no reported experiment.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2601.06037v4 (PDF read 2026-09-30)",
+      "code": "https://github.com/TeleAI-UAGI/TeleMem/tree/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/",
+      "code_note": "Official repo linked on the paper's first page. Pinned at cdc2cb32 (2026-01-16, 'eval_telemem'), the last commit before arXiv v4 (2026-01-22); it adds the ZH-4O evaluation script used here. Later commits (from 2026-05) remove the vendored mem0 and move this variant out of the package. No LoCoMo evaluation script for TeleMem is in the repo at this commit."
+    },
+    "headline": [
+      "The answer model reads short LLM summaries only: an event line per round plus character sentences, never the dialogue.",
+      "The 'causal' graph is built from embedding similarity (cos ≥ 0.9) and the processing time of each summary, not from dependencies stated in the dialogue.",
+      "Every earlier event linked to a seed joins the context, with no cap on the count."
+    ],
+    "units": [
+      {
+        "name": "Event node",
+        "role": "what happened in one dialogue round",
+        "made_by": "Qwen3-8B summary, then LLM deduplication",
+        "fields": [
+          {
+            "name": "summary",
+            "what": "20-100 character summary of the round, written with the 3 earlier rounds as context",
+            "kept_as": "summarized",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "code utils.py L31-L51",
+            "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/utils.py#L31-L51"
+          },
+          {
+            "name": "embedding",
+            "what": "Qwen3-8B embedding, normalised, in a FAISS inner-product index",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code main.py L305-L326",
+            "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L305-L326"
+          },
+          {
+            "name": "timestamp",
+            "what": "wall-clock time when the summary was written or consolidated (datetime.now); orders the graph and the answer context",
+            "kept_as": "derived",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "code main.py L406, L257",
+            "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L400-L408"
+          },
+          {
+            "name": "original_messages",
+            "what": "the raw turn and reply of the round",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "code main.py L320-L326; read by no retrieval or answer code",
+            "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L320-L326"
+          },
+          {
+            "name": "round_index",
+            "what": "position of the round in the dialogue",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "code main.py L323",
+            "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L320-L326"
+          }
+        ]
+      },
+      {
+        "name": "Graph edge",
+        "role": "link between two similar events",
+        "made_by": "rule, built offline once per conversation",
+        "fields": [
+          {
+            "name": "edge",
+            "what": "pair with cosine ≥ 0.9, among each node's 5 most similar; walked from the later to the earlier node",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code main.py L794-L807, L987-L994; EvalModel.py L373-L379",
+            "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L794-L807"
+          }
+        ]
+      },
+      {
+        "name": "Character note",
+        "role": "what one round says about character A or B",
+        "made_by": "Qwen3-8B, one call per character per round",
+        "fields": [
+          {
+            "name": "summary",
+            "what": "one sentence on the character's relations, events, traits, objects and places",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "code utils.py L53-L85",
+            "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/utils.py#L53-L85"
+          },
+          {
+            "name": "original_messages",
+            "what": "the raw turn and reply",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "code main.py L587-L594",
+            "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L577-L614"
+          }
+        ]
+      },
+      {
+        "name": "Video memory",
+        "role": "clip captions and tracked objects for video QA",
+        "made_by": "VLM captions over 10-second clips (config: qwen3-omni)",
+        "fields": [
+          {
+            "name": "caption / object entry",
+            "what": "event caption per clip; object name, appearance, identity, first-seen time",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper §3.3.2, App. A Figs. 5-6; code config.yaml L30, L36",
+            "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/baselines/telemem/config.yaml#L28-L37"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Split",
+        "how": "merge consecutive same-role messages and pair each user turn with the next reply",
+        "out": "ZH-4O: 28 dialogues of 1,000-1,880 messages (about 600 rounds each, §4)",
+        "src": "code main.py L511-L522",
+        "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L511-L522"
+      },
+      {
+        "step": "Summarise",
+        "how": "three Qwen3-8B calls per round with the 3 earlier rounds as context: event summary (20-100 characters), character A, character B",
+        "params": {
+          "context": "3 rounds",
+          "workers": "16 rounds in parallel"
+        },
+        "src": "code main.py L335-L371, L531; utils.py L31-L85",
+        "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L335-L371"
+      },
+      {
+        "step": "Match",
+        "how": "each new event summary looks up stored events with cosine ≥ 0.95 among its 10 nearest",
+        "params": {
+          "threshold": "0.95",
+          "top": "10"
+        },
+        "src": "code main.py L115-L166, L410-L412",
+        "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L115-L166"
+      },
+      {
+        "step": "Buffer and cluster",
+        "how": "after 64 buffered events, new and matched summaries are pooled and clustered greedily (join a cluster if cosine ≥ 0.95 to any member)",
+        "params": {
+          "buffer": "64",
+          "threshold": "0.95"
+        },
+        "src": "code main.py L168-L194, L269-L293, L558-L560; config.yaml L25-L26",
+        "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L269-L293"
+      },
+      {
+        "step": "Consolidate",
+        "how": "per multi-item cluster the LLM gets the stored and new summaries and returns the ones to keep (new ones unchanged if new, dropped if duplicate); kept items are re-embedded and appended",
+        "src": "code main.py L197-L267, L305-L329",
+        "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L197-L267"
+      },
+      {
+        "step": "Store characters",
+        "how": "character sentences are appended to two FAISS stores without matching or consolidation",
+        "src": "code main.py L577-L614",
+        "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L577-L614"
+      },
+      {
+        "step": "Link (offline)",
+        "how": "sort events by timestamp; connect each to up to 5 others with cosine ≥ 0.9; drop a→c when a→b→c exists with a<b<c",
+        "params": {
+          "cos": "≥ 0.9",
+          "per node": "5"
+        },
+        "src": "code main.py L765-L840; EvalModel.py L373-L379",
+        "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L765-L840"
+      }
+    ],
+    "read": [
+      {
+        "step": "Seeds",
+        "round": 1,
+        "input": "question",
+        "scores": "event summaries",
+        "how": "dense top-10 events (the seed threshold argument is not applied)",
+        "params": {
+          "seeds": "10"
+        },
+        "src": "code main.py L974-L983, L868-L914; EvalModel.py L134-L136",
+        "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L974-L983"
+      },
+      {
+        "step": "Closure",
+        "round": 1,
+        "how": "from each seed, follow edges to earlier nodes, depth ≤ 100; union of all nodes reached",
+        "params": {
+          "max depth": "100"
+        },
+        "src": "code main.py L987-L1015",
+        "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L987-L1015"
+      },
+      {
+        "step": "Linearise",
+        "round": 1,
+        "how": "sort by timestamp, drop repeated summaries, join with spaces",
+        "src": "code main.py L1019-L1038",
+        "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L1019-L1038"
+      },
+      {
+        "step": "Characters",
+        "round": 1,
+        "input": "question",
+        "scores": "character sentences",
+        "how": "dense top-10 from each character store, appended after the events",
+        "params": {
+          "per character": "10"
+        },
+        "src": "code main.py L617-L699, L1040-L1042",
+        "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L1040-L1042"
+      }
+    ],
+    "answer_context": {
+      "sees": "event summaries of the seeds and their graph ancestors in time order, then 10 + 10 character sentences",
+      "format": "one prompt: read the material and answer; 材料 (material): {memories}; 问题 (question): {question}; output only one letter after <eoe>",
+      "excludes": [
+        "original turns",
+        "timestamps and round numbers",
+        "graph edges"
+      ],
+      "includes": [
+        "event summaries (closure of 10 seeds)",
+        "top-10 sentences per character"
+      ],
+      "src": "code EvalModel.py L216-L232; main.py L1040-L1042",
+      "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/baselines/telemem/EvalModel.py#L216-L232"
+    },
+    "compression": [
+      {
+        "what": "stored event summary vs one dialogue round",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported; the prompt asks for 20-100 characters per round.",
+        "src": "code utils.py L34",
+        "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/utils.py#L34"
+      },
+      {
+        "what": "answer context vs one conversation",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported; the abstract claims 43% fewer tokens than Mem0 without a table or setup.",
+        "src": "paper abstract",
+        "url": "https://arxiv.org/pdf/2601.06037"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Edge construction",
+        "paper": "parents are Top-K similar earlier nodes; keep a parent only if no other path reaches the node",
+        "code": "undirected pairs with cosine ≥ 0.9 (top 5 per node), directed by timestamp order; only two-step shortcuts are removed",
+        "src": "main.py L788-L840",
+        "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L788-L840"
+      },
+      {
+        "topic": "Timestamps",
+        "paper": "effective timestamp reflecting semantic validity, not wall-clock time",
+        "code": "datetime.now() when the summary is written or consolidated; rounds run on 16 threads, so order follows processing",
+        "src": "main.py L406, L257, L531",
+        "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L400-L408"
+      },
+      {
+        "topic": "Consolidation actions",
+        "paper": "add, delete, update or no-op per item",
+        "code": "the prompt keeps or drops new items; stored entries are never updated or removed",
+        "src": "main.py L197-L267",
+        "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L197-L267"
+      },
+      {
+        "topic": "Online updates",
+        "paper": "Insert, ReInsert of children, tombstone deletes",
+        "code": "not implemented; the graph is rebuilt offline from all events",
+        "src": "main.py L701-L864",
+        "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L701-L864"
+      },
+      {
+        "topic": "What is read",
+        "paper": "closure over the memory graph",
+        "code": "closure over events, plus a plain dense top-10 from each character store",
+        "src": "main.py L1040-L1042",
+        "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L1040-L1042"
+      }
+    ],
+    "open_questions": [
+      "How much of 86.33 comes from the graph closure? No run removes the graph or the character stores.",
+      "How large is the closure? Every earlier linked event joins; the paper reports no context size."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 256",
+        "body": "<text class=\"fig-t\" x=\"54\" y=\"14\" text-anchor=\"middle\">Dialogue rounds</text><rect class=\"gi-ev\" x=\"10\" y=\"24\" width=\"88\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"18\" y1=\"33\" x2=\"76\" y2=\"33\"/><rect class=\"gi-ev\" x=\"10\" y=\"46\" width=\"88\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"18\" y1=\"55\" x2=\"76\" y2=\"55\"/><rect class=\"gi-ev\" x=\"10\" y=\"68\" width=\"88\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"18\" y1=\"77\" x2=\"76\" y2=\"77\"/><rect class=\"gi-ev\" x=\"10\" y=\"90\" width=\"88\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"18\" y1=\"99\" x2=\"76\" y2=\"99\"/><rect class=\"gi-hi\" x=\"10\" y=\"116\" width=\"88\" height=\"22\" rx=\"5\"/><text class=\"fig-s\" x=\"54\" y=\"131\" text-anchor=\"middle\">this round</text><line class=\"gi-e d\" x1=\"4\" y1=\"24\" x2=\"4\" y2=\"108\"/><text class=\"fig-s\" x=\"54\" y=\"156\" text-anchor=\"middle\">turn + reply;</text><text class=\"fig-s\" x=\"54\" y=\"168\" text-anchor=\"middle\">3 earlier rounds</text><text class=\"fig-s\" x=\"54\" y=\"180\" text-anchor=\"middle\">as context</text><path class=\"gi-a\" d=\"M98 127 L111 127\"/><polygon class=\"gi-ah\" points=\"118,127 111,123 111,131\"/><text class=\"fig-s\" x=\"166\" y=\"88\" text-anchor=\"middle\">3 calls per round</text><rect class=\"gi-llm\" x=\"118\" y=\"96\" width=\"96\" height=\"84\" rx=\"8\"/><text class=\"fig-t\" x=\"166\" y=\"113\" text-anchor=\"middle\">Qwen3-8B</text><text class=\"fig-s\" x=\"166\" y=\"130\" text-anchor=\"middle\">event summary</text><text class=\"fig-s\" x=\"166\" y=\"142\" text-anchor=\"middle\">(20-100 chars)</text><text class=\"fig-s\" x=\"166\" y=\"158\" text-anchor=\"middle\">1 sentence per</text><text class=\"fig-s\" x=\"166\" y=\"170\" text-anchor=\"middle\">character</text><path class=\"gi-a\" d=\"M214 112 L226 112 L226 52 L231 52\"/><polygon class=\"gi-ah\" points=\"238,52 231,48 231,56\"/><rect class=\"gi-v fig-soft\" x=\"238\" y=\"30\" width=\"98\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"287.0\" y=\"50.0\" text-anchor=\"middle\">Match store</text><text class=\"fig-s\" x=\"287.0\" y=\"63.0\" text-anchor=\"middle\">cos ≥ 0.95, top-10</text><path class=\"gi-a\" d=\"M336 52 L339 52\"/><polygon class=\"gi-ah\" points=\"346,52 339,48 339,56\"/><rect class=\"gi-f\" x=\"346\" y=\"30\" width=\"58\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"375.0\" y=\"50.0\" text-anchor=\"middle\">Buffer</text><text class=\"fig-s\" x=\"375.0\" y=\"63.0\" text-anchor=\"middle\">64 events</text><path class=\"gi-a\" d=\"M404 52 L407 52\"/><polygon class=\"gi-ah\" points=\"414,52 407,48 407,56\"/><rect class=\"gi-llm\" x=\"414\" y=\"30\" width=\"78\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"453.0\" y=\"50.0\" text-anchor=\"middle\">Cluster</text><text class=\"fig-s\" x=\"453.0\" y=\"63.0\" text-anchor=\"middle\">LLM keep/drop</text><path class=\"gi-a\" d=\"M492 52 L495 52\"/><polygon class=\"gi-ah\" points=\"502,52 495,48 495,56\"/><rect class=\"gi-f\" x=\"502\" y=\"30\" width=\"54\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"529.0\" y=\"50.0\" text-anchor=\"middle\">Events</text><text class=\"fig-s\" x=\"529.0\" y=\"63.0\" text-anchor=\"middle\">FAISS</text><path class=\"gi-a\" d=\"M529 74 L529 89\"/><polygon class=\"gi-ah\" points=\"529,96 533,89 525,89\"/><rect class=\"gi-f\" x=\"300\" y=\"96\" width=\"256\" height=\"80\" rx=\"8\"/><text class=\"fig-t\" x=\"310\" y=\"112\" text-anchor=\"start\">Event graph, built offline</text><line class=\"gi-e\" x1=\"322\" y1=\"150\" x2=\"360\" y2=\"132\"/><line class=\"gi-e\" x1=\"360\" y1=\"132\" x2=\"398\" y2=\"156\"/><line class=\"gi-e\" x1=\"398\" y1=\"156\" x2=\"438\" y2=\"134\"/><line class=\"gi-e\" x1=\"438\" y1=\"134\" x2=\"478\" y2=\"154\"/><line class=\"gi-e\" x1=\"478\" y1=\"154\" x2=\"518\" y2=\"136\"/><line class=\"gi-e\" x1=\"360\" y1=\"132\" x2=\"438\" y2=\"134\"/><line class=\"gi-e d\" x1=\"322\" y1=\"150\" x2=\"398\" y2=\"156\"/><path class=\"gi-bad\" d=\"M355 149 L365 159 M365 149 L355 159\"/><circle class=\"gi-n\" cx=\"322\" cy=\"150\" r=\"6\"/><circle class=\"gi-n\" cx=\"360\" cy=\"132\" r=\"6\"/><circle class=\"gi-n\" cx=\"398\" cy=\"156\" r=\"6\"/><circle class=\"gi-n\" cx=\"438\" cy=\"134\" r=\"6\"/><circle class=\"gi-n\" cx=\"478\" cy=\"154\" r=\"6\"/><circle class=\"gi-n\" cx=\"518\" cy=\"136\" r=\"6\"/><text class=\"fig-s\" x=\"428\" y=\"192\" text-anchor=\"middle\">edge if cos ≥ 0.9 (≤ 5 per node), drawn</text><text class=\"fig-s\" x=\"428\" y=\"204\" text-anchor=\"middle\">from later to earlier; a→c dropped if a→b→c</text><path class=\"gi-a\" d=\"M214 164 L226 164 L226 226 L231 226\"/><polygon class=\"gi-ah\" points=\"238,226 231,222 231,230\"/><rect class=\"gi-f\" x=\"238\" y=\"204\" width=\"132\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"304.0\" y=\"224.0\" text-anchor=\"middle\">Character stores</text><text class=\"fig-s\" x=\"304.0\" y=\"237.0\" text-anchor=\"middle\">A and B, FAISS</text><text class=\"fig-s\" x=\"380\" y=\"222\" text-anchor=\"start\">appended as written:</text><text class=\"fig-s\" x=\"380\" y=\"234\" text-anchor=\"start\">no merge, no graph</text>",
+        "text": [
+          "Each round, read with the three before it, is summarised into one event line and one sentence per character.",
+          "Event lines are matched to near-duplicates, buffered, clustered and deduplicated by the LLM, then linked offline into a graph of similar events."
+        ],
+        "src": "code main.py L115-L614, L765-L840; utils.py L31-L85; paper §3.1-3.2",
+        "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L335-L455"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 222",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"30\" width=\"60\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"34.0\" y=\"56.0\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M64 52 L69 52\"/><polygon class=\"gi-ah\" points=\"76,52 69,48 69,56\"/><rect class=\"gi-v fig-soft\" x=\"76\" y=\"30\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"124.0\" y=\"50.0\" text-anchor=\"middle\">Top-10 events</text><text class=\"fig-s\" x=\"124.0\" y=\"63.0\" text-anchor=\"middle\">dense seeds</text><path class=\"gi-a\" d=\"M172 52 L177 52\"/><polygon class=\"gi-ah\" points=\"184,52 177,48 177,56\"/><rect class=\"gi-f\" x=\"184\" y=\"30\" width=\"104\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"236.0\" y=\"50.0\" text-anchor=\"middle\">Walk back</text><text class=\"fig-s\" x=\"236.0\" y=\"63.0\" text-anchor=\"middle\">all earlier linked</text><path class=\"gi-a\" d=\"M288 52 L293 52\"/><polygon class=\"gi-ah\" points=\"300,52 293,48 293,56\"/><rect class=\"gi-f\" x=\"300\" y=\"30\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"348.0\" y=\"50.0\" text-anchor=\"middle\">Sort by time</text><text class=\"fig-s\" x=\"348.0\" y=\"63.0\" text-anchor=\"middle\">drop duplicates</text><path class=\"gi-a\" d=\"M396 52 L401 52\"/><polygon class=\"gi-ah\" points=\"408,52 401,48 401,56\"/><rect class=\"gi-ev\" x=\"408\" y=\"30\" width=\"70\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"443.0\" y=\"50.0\" text-anchor=\"middle\">Join</text><text class=\"fig-s\" x=\"443.0\" y=\"63.0\" text-anchor=\"middle\">one string</text><path class=\"gi-a\" d=\"M478 52 L483 52\"/><polygon class=\"gi-ah\" points=\"490,52 483,48 483,56\"/><rect class=\"gi-hi\" x=\"490\" y=\"30\" width=\"66\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"523.0\" y=\"50.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"523.0\" y=\"63.0\" text-anchor=\"middle\">Qwen3-8B</text><line class=\"gi-e\" x1=\"196\" y1=\"110\" x2=\"226\" y2=\"96\"/><line class=\"gi-e\" x1=\"226\" y1=\"96\" x2=\"256\" y2=\"116\"/><line class=\"gi-e\" x1=\"256\" y1=\"116\" x2=\"286\" y2=\"98\"/><line class=\"gi-e\" x1=\"286\" y1=\"98\" x2=\"316\" y2=\"114\"/><line class=\"gi-e\" x1=\"226\" y1=\"96\" x2=\"286\" y2=\"98\"/><line class=\"gi-e\" x1=\"316\" y1=\"114\" x2=\"346\" y2=\"96\"/><line class=\"gi-e\" x1=\"346\" y1=\"96\" x2=\"376\" y2=\"112\"/><circle class=\"gi-n\" cx=\"196\" cy=\"110\" r=\"6\"/><circle class=\"gi-n\" cx=\"226\" cy=\"96\" r=\"6\"/><circle class=\"gi-n\" cx=\"256\" cy=\"116\" r=\"6\"/><circle class=\"gi-n\" cx=\"286\" cy=\"98\" r=\"6\"/><circle class=\"gi-hi\" cx=\"316\" cy=\"114\" r=\"7\"/><circle class=\"gi-r\" cx=\"346\" cy=\"96\" r=\"6\"/><circle class=\"gi-r\" cx=\"376\" cy=\"112\" r=\"6\"/><text class=\"fig-s\" x=\"316\" y=\"134\" text-anchor=\"middle\">seed</text><text class=\"fig-s\" x=\"226\" y=\"134\" text-anchor=\"middle\">ancestors join</text><text class=\"fig-s\" x=\"361\" y=\"134\" text-anchor=\"middle\">later: not</text><path class=\"gi-a\" d=\"M34 74 L34 168 L69 168\"/><polygon class=\"gi-ah\" points=\"76,168 69,164 69,172\"/><rect class=\"gi-v fig-soft\" x=\"76\" y=\"146\" width=\"124\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"138.0\" y=\"166.0\" text-anchor=\"middle\">Top-10 per character</text><text class=\"fig-s\" x=\"138.0\" y=\"179.0\" text-anchor=\"middle\">dense, 2 stores</text><path class=\"gi-a\" d=\"M200 168 L443 168 L443 81\"/><polygon class=\"gi-ah\" points=\"443,74 447,81 439,81\"/><text class=\"fig-s\" x=\"320\" y=\"162\" text-anchor=\"middle\">appended after the events</text><text class=\"fig-s\" x=\"280\" y=\"212\" text-anchor=\"middle\">≤ 100 steps per path; no cap on how many events join the context</text>",
+        "text": [
+          "The question's 10 closest events are seeds; every earlier event linked to them joins, sorted by time.",
+          "The 10 closest sentences about each character are appended, and Qwen3-8B answers from the joined text."
+        ],
+        "src": "code main.py L916-L1042; EvalModel.py L125-L146, L216-L232; paper §3.3.1",
+        "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L916-L1042"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "LLM calls per round",
+        "value": "3 (event + 2 characters), 3 earlier rounds as context",
+        "src": "code main.py L338-L371",
+        "section": "construction"
+      },
+      {
+        "label": "Event summary length",
+        "value": "20-100 characters",
+        "src": "code utils.py L34",
+        "section": "construction"
+      },
+      {
+        "label": "Near-duplicate match",
+        "value": "cosine ≥ 0.95 among the 10 nearest",
+        "src": "code config.yaml L26; main.py L115",
+        "section": "construction"
+      },
+      {
+        "label": "Buffer before consolidation",
+        "value": "64 events",
+        "src": "code config.yaml L25",
+        "section": "construction"
+      },
+      {
+        "label": "Graph edges",
+        "value": "cosine ≥ 0.9, ≤ 5 per node, 2-step shortcuts removed",
+        "src": "code EvalModel.py L373-L379; main.py L794-L840",
+        "section": "construction"
+      },
+      {
+        "label": "Seeds",
+        "value": "top-10 events",
+        "src": "code EvalModel.py L19, L134-L136",
+        "section": "method"
+      },
+      {
+        "label": "Closure depth",
+        "value": "≤ 100 steps, no cap on node count",
+        "src": "code main.py L923, L999-L1011",
+        "section": "method"
+      },
+      {
+        "label": "Character sentences added",
+        "value": "10 per character",
+        "src": "code main.py L1040",
+        "section": "method"
+      },
+      {
+        "label": "Models",
+        "value": "Qwen3-8B (no-think) writes and answers; Qwen3-8B embedding",
+        "src": "paper §4",
+        "section": "method"
+      },
+      {
+        "label": "Efficiency vs Mem0 (claimed)",
+        "value": "43% fewer tokens, 2.1× faster",
+        "src": "paper abstract (no table or setup)",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Summarises rounds and characters",
+        "model": "Qwen3-8B (no-think)",
+        "kind": "llm",
+        "src": "paper §4; code config.yaml L5",
+        "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/baselines/telemem/config.yaml#L1-L14"
+      },
+      {
+        "role": "Embeds summaries and questions",
+        "model": "Qwen3-8B embedding, FAISS IndexFlatIP",
+        "kind": "retriever",
+        "src": "paper §4; code main.py L68-L84",
+        "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L68-L84"
+      },
+      {
+        "role": "Keeps or drops new summaries per cluster",
+        "model": "Qwen3-8B",
+        "kind": "llm",
+        "src": "code main.py L197-L237",
+        "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L197-L237"
+      },
+      {
+        "role": "Links events",
+        "model": "cosine ≥ 0.9, top-5, shortcut pruning",
+        "kind": "rule",
+        "src": "code main.py L788-L840",
+        "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L788-L840"
+      },
+      {
+        "role": "Closure over the graph",
+        "model": "backward DFS from 10 seeds",
+        "kind": "rule",
+        "src": "code main.py L987-L1015",
+        "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/telemem/main.py#L987-L1015"
+      },
+      {
+        "role": "Answer",
+        "model": "Qwen3-8B, temperature 0, no-think",
+        "kind": "llm",
+        "src": "code EvalModel.py L224-L232",
+        "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/baselines/telemem/EvalModel.py#L224-L232"
+      },
+      {
+        "role": "LoCoMo judge",
+        "model": "GPT-4o",
+        "kind": "llm",
+        "src": "paper §4"
+      },
+      {
+        "role": "Video captions (multimodal module)",
+        "model": "qwen3-omni (config)",
+        "kind": "llm",
+        "src": "code config.yaml L28-L36",
+        "url": "https://github.com/TeleAI-UAGI/TeleMem/blob/cdc2cb32ef9118054a2f162ceb1f805a1caf0da5/baselines/telemem/config.yaml#L28-L36"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Summarise every round into short event and character notes, deduplicate them in batches, and at question time add every earlier event linked to the best matches. It is best on the Chinese role-play benchmark ZH-4O but trails full context on LoCoMo.",
+      "claims": [
+        {
+          "claim": "TeleMem is the most accurate method on ZH-4O.",
+          "evidence": "86.33 vs 84.92 (long context), 76.78 (Memobase), 73.78 (A-Mem), 72.60 (MOOM), 70.20 (Mem0), 62.45 (RAG). Table 1, §4.1"
+        },
+        {
+          "claim": "It beats Mem0 by 19% in accuracy with 43% fewer tokens and a 2.1× speedup.",
+          "evidence": "Abstract. The accuracy gap is 16.13 points (86.33 vs 70.20); no table or setup is given for tokens or speed."
+        },
+        {
+          "claim": "Both the write and the read model matter, and they should be scaled together.",
+          "evidence": "Accuracy 52.72 with 0.6B writer and reader, 86.33 with 8B/8B, best 87.55 with 14B/14B. Table 2"
+        },
+        {
+          "claim": "On LoCoMo it is strong on single-hop and temporal questions but weak on multi-hop.",
+          "evidence": "Single-hop 64.53, temporal 78.47, multi-hop 20.56; overall 61.49 vs 70.71 for long context and 57.59 for Memobase. Table 3, §4.2"
+        }
+      ],
+      "limits": [
+        "Weaker on multi-hop questions over stored memories (LoCoMo).",
+        "The closure can grow large; the paper suggests bounding depth or budgeted expansion."
+      ],
+      "limits_src": "paper §3.3.1, §4.2 (no Limitations section)",
+      "reading": [
+        "There is no ablation: no run removes the graph closure or the character stores, so what the DAG adds to 86.33 is untested.",
+        "The graph comes from embedding similarity (cos ≥ 0.9) and processing order, not from causal links in the dialogue; edges point from later to earlier by timestamp.",
+        "Timestamps are the wall-clock time a summary was written or consolidated, and rounds are summarised on 16 threads, so 'chronological' order in the answer context follows processing rather than the dialogue.",
+        "The code never updates or deletes a stored entry: consolidation only keeps or drops new summaries, and the online Insert / ReInsert / tombstone steps of §3.2.3 are absent.",
+        "The answer context mixes the graph closure with a plain dense top-10 from each character store; the ZH-4O score cannot separate the two.",
+        "The LoCoMo run has no code in the repo, the extraction prompts are Chinese, and TeleMem's multi-hop score (20.56) is below RAG (32.39); the LoCoMo setup (judge prompt, answer prompt) is not given.",
+        "The '19%' matches (86.33 − 70.20) / 86.33, i.e. relative to TeleMem's own score; relative to Mem0 the gain is 23%.",
+        "Table 2 is not monotonic in the reader as the text says: a 32B reader scores below 8B and 14B readers for 8B, 14B and 32B writers.",
+        "ZH-4O is multiple choice, so chance level is above zero; LoCoMo drops the adversarial category (1,540 questions)."
+      ]
+    },
+    "abstract": {
+      "text": "TeleMem builds long-term memory for agents as threads of events rather than isolated snippets. Dialogue rounds are summarised into event notes and per-character notes; new notes are batched, matched to similar stored ones, clustered and consolidated by an LLM before storage. Events are linked into a time-ordered graph, and a question retrieves its closest events together with the earlier events they depend on. A multimodal module turns video into event and object memories read by a ReAct-style agent. The authors report higher accuracy than Mem0 on the ZH-4O role-play benchmark with fewer tokens and faster processing.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2601.06037"
+    },
+    "sections": {
+      "Memory architecture": "§3.1-3.2",
+      "Results": "§4.1-4.2",
+      "Ablation": "none (Table 2 varies model sizes only)",
+      "Discussion": "§4.2, §6 (no Limitations section)",
+      "Details": "§3.3, §4, App. A"
+    }
+  }
+}

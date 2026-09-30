@@ -1,0 +1,553 @@
+{
+  "id": "em-llm",
+  "name": "EM-LLM",
+  "paper": {
+    "title": "Human-inspired Episodic Memory for Infinite Context LLMs",
+    "arxiv": "2407.09450",
+    "url": "https://arxiv.org/abs/2407.09450",
+    "venue": "ICLR 2025",
+    "venue_short": "ICLR",
+    "track": "main",
+    "year": 2025,
+    "code": "https://github.com/em-llm/EM-LLM-model"
+  },
+  "design": {
+    "construction": {
+      "unit": "event: the per-layer KV cache of 8-128 consecutive tokens plus one representative key",
+      "kept_as": "the model's own key-value pairs for the tokens; nothing is rewritten",
+      "processing": "a token whose surprise (-log p) exceeds mean + γ·std of the preceding 4,096 tokens opens a new event; optional refinement moves each boundary to maximise modularity (or minimise conductance) of the key-similarity graph",
+      "trigger": "other",
+      "writer": "fixed rule over the base LLM's own token probabilities and attention keys (no extra model)"
+    },
+    "organization": {
+      "structure": "flat, time-ordered list of events, one store per layer",
+      "stores": "128 initial tokens and a 4,096-token local window stay in context; events live in a KV store offloaded to CPU memory or disk, with representative keys kept for search",
+      "index": "one representative key per event and layer: mean of the keys of the 4 tokens with the highest accumulated attention"
+    },
+    "management": {
+      "operations": "append only; least-recently-used events are offloaded between GPU, CPU and disk",
+      "conflicts": null,
+      "forgetting": null,
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "mean attention query of the current 512-token chunk, per layer",
+      "candidates": "every event, ranked by dot product between the query and its representative key",
+      "selection": "take events in rank order until the token budget is filled (similarity buffer); +C variants reserve 30% for the ±1 neighbours of retrieved events, kept in a queue (contiguity buffer)",
+      "budget": "n_mem retrieved tokens: 2K (Mistral), 4K (LLaMA-3/3.1), 3K (Phi-3/3.5)"
+    },
+    "use": {
+      "context": "each layer attends to 128 initial tokens + its retrieved events (original order, one fixed position) + the local window",
+      "reasoning": "ordinary decoding; retrieval is repeated for every 512-token chunk and every layer"
+    },
+    "control": {
+      "construction": "fixed-rule",
+      "management": "fixed-rule",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "flat",
+    "index": "vector",
+    "management": "append-only",
+    "candidates": "dense",
+    "decides": "top-k rule",
+    "note": "Events are a flat, time-ordered list; the contiguity buffer only adds temporal neighbours of what similarity already picked."
+  },
+  "tags": {
+    "fidelity": "verbatim",
+    "structure": [
+      "flat"
+    ],
+    "write_time": [
+      "segment"
+    ],
+    "selection": [
+      "dense"
+    ],
+    "memory_type": [
+      "episodic",
+      "working"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "long-document"
+    ]
+  },
+  "stages": {
+    "ingestion": "The input is fed in 512-token chunks; the first 128 tokens and the latest 4,096 tokens (1,024 for Phi) always stay in context, and older tokens become memory.",
+    "construction": "Tokens whose surprise exceeds a moving threshold (mean + γ·std over the preceding window) start a new event; events are clipped to 8-128 tokens, and an optional refinement shifts each boundary to improve modularity or conductance of the key-similarity graph.",
+    "organization": "Each layer keeps the events' key-value cache plus one representative key per event (mean of the 4 most-attended keys); boundaries are shared by all layers.",
+    "update": "Events are only appended; the KV cache is moved between GPU, CPU and disk by least-recent use.",
+    "retrieval": "For each chunk and layer, the mean query is compared by dot product with every representative key, and top events fill the token budget; +C variants also enqueue the neighbouring event on each side of retrieved ones (contiguity buffer, 30% of the budget).",
+    "answer": "The layer's softmax attention runs over initial tokens, retrieved events in original order at one fixed position, and the local window.",
+    "learning": ""
+  },
+  "summary": "Training-free KV-cache memory that cuts the token stream into events at points of high LLM surprise (optionally refined by graph modularity) and retrieves whole events per layer by similarity plus their temporal neighbours.",
+  "verified": false,
+  "notes": "Long-context architecture, not an agent memory: memory is the base LLM's own KV cache grouped into events; evaluated on LongBench, ∞-Bench and extended passkey retrieval, extending InfLLM (fixed-size blocks) with surprise-based event boundaries.\nVENUE: ICLR 2025 main conference (poster; OpenReview BI2int5SAC, listed in the ICLR 2025 proceedings); the arXiv v3 PDF carries the ICLR 2025 header.\nDESIGN: §3.1-3.4, App. C, D.1, E.2-E.3; code em_llm/attention at commit edb2e4a.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2407.09450v3 (PDF read 2026-09-30)",
+      "code": "https://github.com/em-llm/EM-LLM-model/tree/edb2e4a6988c0c2a15637d380e81f04f1a1a531a/",
+      "code_note": "Latest commit (2025-03-06); code files unchanged since the 2024-10-11 initial release, which the README calls 'a version of the code' for the ICLR 2025 paper. The shipped configs enable neither refinement nor the contiguity buffer (the S variant), and give γ = 1 for every model."
+    },
+    "sections": {
+      "Memory architecture": "§3 (3.1 architecture, 3.2 surprise, 3.3 refinement, 3.4 retrieval)",
+      "Results": "§4.1, Table 1, Fig. 1, App. A.1-A.2 (Tables 3-9)",
+      "Ablation": "§4.3-4.4, App. A.1 (S / SM / S+C / SM+C), App. D",
+      "Discussion": "§5, App. E.1 (current limitations)",
+      "Details": "App. C (complexity, hardware, Tables 10-11), D.1 (γ, buffer ratio)"
+    },
+    "abstract": {
+      "text": "EM-LLM gives a pretrained LLM an episodic memory without any fine-tuning. It splits the past token stream into events where the model is most surprised by the next token, can refine those boundaries with graph-clustering scores on attention keys, and at every step retrieves whole events per layer by similarity together with their temporal neighbours. On LongBench and ∞-Bench it improves on InfLLM across five base models, beats RAG and, on most tasks, full-context attention, and retrieves a passkey from 10M tokens. Its event boundaries also align with those that people report in podcast transcripts.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2407.09450"
+    },
+    "headline": [
+      "Memory is the model's own KV cache: nothing is summarised or rewritten, only grouped into events and fetched back.",
+      "Event boundaries come from the LLM's surprise; retrieval is per layer and per 512-token chunk, not once per question.",
+      "The released configs run the surprise-only variant; refinement and the contiguity buffer are flags."
+    ],
+    "units": [
+      {
+        "name": "Event",
+        "role": "a run of 8-128 consecutive past tokens",
+        "made_by": "surprise threshold (+ optional graph refinement) over the base LLM's outputs",
+        "fields": [
+          {
+            "name": "key-value cache",
+            "what": "every token's keys and values in this layer, as computed by the model",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.2; code context_manager.py L749-L782",
+            "url": "https://github.com/em-llm/EM-LLM-model/blob/edb2e4a6988c0c2a15637d380e81f04f1a1a531a/em_llm/attention/context_manager.py#L749-L782"
+          },
+          {
+            "name": "representative key",
+            "what": "mean of the keys of the 4 tokens with the highest accumulated attention score, all heads concatenated",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §3.4; code context_manager.py L738-L782",
+            "url": "https://github.com/em-llm/EM-LLM-model/blob/edb2e4a6988c0c2a15637d380e81f04f1a1a531a/em_llm/attention/context_manager.py#L738-L782"
+          },
+          {
+            "name": "position in sequence",
+            "what": "event index; neighbours ±1 feed the contiguity buffer",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §3.4, App. D.1; code context_manager.py L541-L601",
+            "url": "https://github.com/em-llm/EM-LLM-model/blob/edb2e4a6988c0c2a15637d380e81f04f1a1a531a/em_llm/attention/context_manager.py#L541-L601"
+          }
+        ]
+      },
+      {
+        "name": "Fixed context",
+        "role": "tokens never evicted to memory",
+        "made_by": "rule",
+        "fields": [
+          {
+            "name": "initial tokens",
+            "what": "first 128 tokens (attention sinks)",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.1",
+            "url": "https://arxiv.org/pdf/2407.09450"
+          },
+          {
+            "name": "local window",
+            "what": "most recent 4,096 tokens (1,024 for Phi-3/3.5)",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper Table 1; code config/*.yaml",
+            "url": "https://github.com/em-llm/EM-LLM-model/blob/edb2e4a6988c0c2a15637d380e81f04f1a1a531a/config/llama31.yaml"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Surprise",
+        "how": "-log p of each actual token given the previous ones, from the base LLM's own logits",
+        "src": "paper Eq. 1; code em_llm.py L197-L205",
+        "url": "https://github.com/em-llm/EM-LLM-model/blob/edb2e4a6988c0c2a15637d380e81f04f1a1a531a/em_llm/attention/em_llm.py#L197-L205"
+      },
+      {
+        "step": "Threshold",
+        "how": "boundary where surprise > mean + γ·std of surprise over the preceding window",
+        "params": {
+          "γ": "1 (2 for LLaMA-3 in the paper)",
+          "window": "previous 4,096 tokens (n_local) in code"
+        },
+        "src": "paper §3.2, App. D.1; code context_manager.py L917-L923",
+        "url": "https://github.com/em-llm/EM-LLM-model/blob/edb2e4a6988c0c2a15637d380e81f04f1a1a531a/em_llm/attention/context_manager.py#L917-L923"
+      },
+      {
+        "step": "Refine (SM variants)",
+        "how": "move each boundary within its span to maximise modularity (or minimise conductance) of the key dot-product graph",
+        "params": {
+          "graph": "code: summed over heads of layers ≥ 20"
+        },
+        "src": "paper §3.3, Alg. 1; code em_llm.py L212-L265, segmentation.py L4-L50",
+        "url": "https://github.com/em-llm/EM-LLM-model/blob/edb2e4a6988c0c2a15637d380e81f04f1a1a531a/em_llm/attention/em_llm.py#L212-L265"
+      },
+      {
+        "step": "Store",
+        "how": "cut into events of 8-128 tokens, save their KV per layer and a representative key",
+        "params": {
+          "repr. tokens": "4"
+        },
+        "out": "events shared by all layers",
+        "src": "paper §3.4; code context_manager.py L950-L995",
+        "url": "https://github.com/em-llm/EM-LLM-model/blob/edb2e4a6988c0c2a15637d380e81f04f1a1a531a/em_llm/attention/context_manager.py#L950-L995"
+      }
+    ],
+    "read": [
+      {
+        "step": "Query",
+        "round": 1,
+        "input": "current 512-token chunk",
+        "how": "mean of the chunk's queries, heads concatenated, per layer",
+        "src": "code context_manager.py L486-L500",
+        "url": "https://github.com/em-llm/EM-LLM-model/blob/edb2e4a6988c0c2a15637d380e81f04f1a1a531a/em_llm/attention/context_manager.py#L486-L500"
+      },
+      {
+        "step": "Similarity buffer",
+        "round": 1,
+        "scores": "representative key of every event",
+        "how": "dot product; add events in rank order until the token budget is reached",
+        "params": {
+          "budget": "2K-4K tokens"
+        },
+        "src": "paper §3.4; code context_manager.py L486-L539",
+        "url": "https://github.com/em-llm/EM-LLM-model/blob/edb2e4a6988c0c2a15637d380e81f04f1a1a531a/em_llm/attention/context_manager.py#L486-L539"
+      },
+      {
+        "step": "Contiguity buffer (+C variants)",
+        "round": 1,
+        "how": "enqueue the ±1 neighbours of retrieved events; older ones drop out as new ones arrive",
+        "params": {
+          "share": "30% of budget",
+          "n": "1"
+        },
+        "src": "paper §3.4, App. D.1; code context_manager.py L541-L601",
+        "url": "https://github.com/em-llm/EM-LLM-model/blob/edb2e4a6988c0c2a15637d380e81f04f1a1a531a/em_llm/attention/context_manager.py#L541-L601"
+      },
+      {
+        "step": "Attend",
+        "round": 1,
+        "how": "softmax attention over initial tokens, retrieved events (sorted by position) and local window",
+        "src": "paper §3.1; code context_manager.py L658-L725",
+        "url": "https://github.com/em-llm/EM-LLM-model/blob/edb2e4a6988c0c2a15637d380e81f04f1a1a531a/em_llm/attention/context_manager.py#L658-L725"
+      }
+    ],
+    "answer_context": {
+      "sees": "per layer: 128 initial tokens + up to n_mem retrieved tokens (2K-4K) + the 4,096-token local window + the current chunk",
+      "format": "key-value pairs in attention; retrieved events in original order, all at one fixed relative position",
+      "excludes": [
+        "events outside the budget",
+        "representative keys"
+      ],
+      "includes": [
+        "initial tokens",
+        "retrieved events",
+        "local window"
+      ],
+      "note": "Each layer retrieves its own events, so different layers can see different parts of the past (App. A.2, Fig. 5).",
+      "src": "paper §3.1, §3.4; code context_manager.py L603-L656",
+      "url": "https://github.com/em-llm/EM-LLM-model/blob/edb2e4a6988c0c2a15637d380e81f04f1a1a531a/em_llm/attention/context_manager.py#L603-L656"
+    },
+    "compression": [
+      {
+        "what": "retrieved tokens vs an ∞-Bench example",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported as a ratio. Budgets are 2K-4K retrieved tokens (Table 1); App. D.3 gives > 100K tokens per ∞-Bench example and 12K ± 10K per LongBench example.",
+        "src": "paper Table 1, App. D.3",
+        "url": "https://arxiv.org/pdf/2407.09450"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "LongBench avg, LLaMA-3.1-8B: EM-LLM S / full context / RAG (NV-Embed-v2)",
+        "value": "51.58 / 39.30 / 36.44",
+        "src": "paper Table 9"
+      },
+      {
+        "label": "∞-Bench avg, same three",
+        "value": "66.66 / 66.33 / 58.97",
+        "src": "paper Table 9"
+      },
+      {
+        "label": "Passkey retrieval",
+        "value": "100% up to 10.2M tokens",
+        "src": "paper §4.1, Fig. 1"
+      },
+      {
+        "label": "Time per 512-token chunk, Mistral 4K+2K",
+        "value": "InfLLM 1.40 s; S 1.57 s; SM 2.27 s",
+        "src": "paper Table 10"
+      },
+      {
+        "label": "KV cache at 1M tokens (32 layers × 32 KV heads, fp16)",
+        "value": "488.3 GB (+30.5 GB representative tokens, max)",
+        "src": "paper Table 11"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Refinement graph",
+        "paper": "similarity of keys within one attention head (Eq. 2)",
+        "code": "one matrix: key dot products summed over all heads of layers ≥ 20; the resulting boundaries are used by every layer",
+        "src": "em_llm.py L240-L246",
+        "url": "https://github.com/em-llm/EM-LLM-model/blob/edb2e4a6988c0c2a15637d380e81f04f1a1a531a/em_llm/attention/em_llm.py#L240-L246"
+      },
+      {
+        "topic": "k-NN search",
+        "paper": "approximate k-NN (Faiss) for large memory stores",
+        "code": "exact dot product against every representative key, fully sorted; no Faiss in the repo",
+        "src": "context_manager.py L240-L252",
+        "url": "https://github.com/em-llm/EM-LLM-model/blob/edb2e4a6988c0c2a15637d380e81f04f1a1a531a/em_llm/attention/context_manager.py#L240-L252"
+      },
+      {
+        "topic": "Number of events retrieved",
+        "paper": "k = k_s + k_c events",
+        "code": "a token budget: events are added until n_mem tokens are filled",
+        "src": "context_manager.py L486-L539",
+        "url": "https://github.com/em-llm/EM-LLM-model/blob/edb2e4a6988c0c2a15637d380e81f04f1a1a531a/em_llm/attention/context_manager.py#L486-L539"
+      },
+      {
+        "topic": "γ for LLaMA-3",
+        "paper": "γ = 2 chosen for LLaMA-3 (App. D.1)",
+        "code": "config/llama3.yaml sets surprisal_threshold_gamma 1.0",
+        "src": "config/llama3.yaml L26",
+        "url": "https://github.com/em-llm/EM-LLM-model/blob/edb2e4a6988c0c2a15637d380e81f04f1a1a531a/config/llama3.yaml#L26"
+      },
+      {
+        "topic": "Default variant",
+        "paper": "best variant differs by model (SM+C for Mistral, S for LLaMA-3, SM for LLaMA-3.1)",
+        "code": "all shipped configs set similarity_refinement and use_contiguity_buffer to false",
+        "src": "config/mistral.yaml L32-L40",
+        "url": "https://github.com/em-llm/EM-LLM-model/blob/edb2e4a6988c0c2a15637d380e81f04f1a1a531a/config/mistral.yaml#L32-L40"
+      }
+    ],
+    "open_questions": [
+      "Table 1 reports, per base model, whichever variant scored best overall, so the headline gain over InfLLM includes a choice among four variants.",
+      "The comparison with RAG uses LLaMA-3.1-8B with a 4K+4K window while RAG gets 5 chunks of 300 words; token budgets are not matched."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 234",
+        "body": "<text class=\"fig-t\" x=\"160\" y=\"14\" text-anchor=\"middle\">Surprise per token: −log p(token)</text><rect class=\"gi-v\" x=\"16\" y=\"90\" width=\"10\" height=\"14\" rx=\"1\"/><rect class=\"gi-v\" x=\"30\" y=\"84\" width=\"10\" height=\"20\" rx=\"1\"/><rect class=\"gi-v\" x=\"44\" y=\"92\" width=\"10\" height=\"12\" rx=\"1\"/><rect class=\"gi-hi\" x=\"58\" y=\"60\" width=\"10\" height=\"44\" rx=\"1\"/><rect class=\"gi-v\" x=\"72\" y=\"88\" width=\"10\" height=\"16\" rx=\"1\"/><rect class=\"gi-v\" x=\"86\" y=\"94\" width=\"10\" height=\"10\" rx=\"1\"/><rect class=\"gi-v\" x=\"100\" y=\"86\" width=\"10\" height=\"18\" rx=\"1\"/><rect class=\"gi-v\" x=\"114\" y=\"82\" width=\"10\" height=\"22\" rx=\"1\"/><rect class=\"gi-v\" x=\"128\" y=\"92\" width=\"10\" height=\"12\" rx=\"1\"/><rect class=\"gi-hi\" x=\"142\" y=\"56\" width=\"10\" height=\"48\" rx=\"1\"/><rect class=\"gi-v\" x=\"156\" y=\"90\" width=\"10\" height=\"14\" rx=\"1\"/><rect class=\"gi-v\" x=\"170\" y=\"84\" width=\"10\" height=\"20\" rx=\"1\"/><rect class=\"gi-v\" x=\"184\" y=\"88\" width=\"10\" height=\"16\" rx=\"1\"/><rect class=\"gi-v\" x=\"198\" y=\"94\" width=\"10\" height=\"10\" rx=\"1\"/><rect class=\"gi-hi\" x=\"212\" y=\"64\" width=\"10\" height=\"40\" rx=\"1\"/><rect class=\"gi-v\" x=\"226\" y=\"86\" width=\"10\" height=\"18\" rx=\"1\"/><rect class=\"gi-v\" x=\"240\" y=\"92\" width=\"10\" height=\"12\" rx=\"1\"/><rect class=\"gi-v\" x=\"254\" y=\"82\" width=\"10\" height=\"22\" rx=\"1\"/><rect class=\"gi-v\" x=\"268\" y=\"90\" width=\"10\" height=\"14\" rx=\"1\"/><rect class=\"gi-v\" x=\"282\" y=\"88\" width=\"10\" height=\"16\" rx=\"1\"/><line class=\"gi-e d\" x1=\"10\" y1=\"70\" x2=\"300\" y2=\"70\"/><text class=\"fig-s\" x=\"300\" y=\"64\" text-anchor=\"end\">μ + γσ</text><line class=\"gi-e\" x1=\"10\" y1=\"104\" x2=\"300\" y2=\"104\"/><rect class=\"gi-ev\" x=\"10\" y=\"112\" width=\"290\" height=\"18\" rx=\"4\"/><line class=\"gi-e d\" x1=\"58\" y1=\"108\" x2=\"58\" y2=\"134\"/><line class=\"gi-e d\" x1=\"142\" y1=\"108\" x2=\"142\" y2=\"134\"/><line class=\"gi-e d\" x1=\"212\" y1=\"108\" x2=\"212\" y2=\"134\"/><line class=\"gi-a\" x1=\"72\" y1=\"112\" x2=\"72\" y2=\"130\"/><line class=\"gi-a\" x1=\"142\" y1=\"112\" x2=\"142\" y2=\"130\"/><line class=\"gi-a\" x1=\"198\" y1=\"112\" x2=\"198\" y2=\"130\"/><text class=\"fig-s\" x=\"16\" y=\"148\" text-anchor=\"start\">dashed: surprise boundary; solid: after refinement</text><text class=\"fig-s\" x=\"16\" y=\"162\" text-anchor=\"start\">(moves each boundary to raise modularity of key similarity)</text><rect class=\"gi-h\" x=\"10\" y=\"172\" width=\"60\" height=\"22\" rx=\"6\"/><rect class=\"gi-h\" x=\"74\" y=\"172\" width=\"66\" height=\"22\" rx=\"6\"/><rect class=\"gi-h\" x=\"144\" y=\"172\" width=\"52\" height=\"22\" rx=\"6\"/><rect class=\"gi-h\" x=\"200\" y=\"172\" width=\"100\" height=\"22\" rx=\"6\"/><text class=\"fig-s\" x=\"40\" y=\"187\" text-anchor=\"middle\">event</text><text class=\"fig-s\" x=\"107\" y=\"187\" text-anchor=\"middle\">event</text><text class=\"fig-s\" x=\"170\" y=\"187\" text-anchor=\"middle\">event</text><text class=\"fig-s\" x=\"250\" y=\"187\" text-anchor=\"middle\">event</text><text class=\"fig-s\" x=\"155\" y=\"212\" text-anchor=\"middle\">each event 8-128 tokens; γ = 1 (2 for LLaMA-3)</text><text class=\"fig-s\" x=\"155\" y=\"225\" text-anchor=\"middle\">threshold from the last 4,096 tokens</text><path class=\"gi-a\" d=\"M304.0 183.0 L327.0 183.0\"/><polygon class=\"gi-ah\" points=\"334.0,183.0 327.0,187.0 327.0,179.0\"/><text class=\"fig-t\" x=\"446\" y=\"14\" text-anchor=\"middle\">Event store, per layer</text><rect class=\"gi-ev\" x=\"336\" y=\"24\" width=\"218\" height=\"176\" rx=\"10\"/><text class=\"fig-t\" x=\"346\" y=\"42\" text-anchor=\"start\">KV cache of its tokens</text><rect class=\"gi-w\" x=\"346\" y=\"50\" width=\"14\" height=\"14\" rx=\"2\"/><rect class=\"gi-w\" x=\"364\" y=\"50\" width=\"14\" height=\"14\" rx=\"2\"/><rect class=\"gi-w\" x=\"382\" y=\"50\" width=\"14\" height=\"14\" rx=\"2\"/><rect class=\"gi-w\" x=\"400\" y=\"50\" width=\"14\" height=\"14\" rx=\"2\"/><rect class=\"gi-w\" x=\"418\" y=\"50\" width=\"14\" height=\"14\" rx=\"2\"/><rect class=\"gi-w\" x=\"436\" y=\"50\" width=\"14\" height=\"14\" rx=\"2\"/><rect class=\"gi-w\" x=\"454\" y=\"50\" width=\"14\" height=\"14\" rx=\"2\"/><rect class=\"gi-w\" x=\"472\" y=\"50\" width=\"14\" height=\"14\" rx=\"2\"/><rect class=\"gi-w\" x=\"490\" y=\"50\" width=\"14\" height=\"14\" rx=\"2\"/><rect class=\"gi-w\" x=\"508\" y=\"50\" width=\"14\" height=\"14\" rx=\"2\"/><text class=\"fig-s\" x=\"346\" y=\"80\" text-anchor=\"start\">(kept as computed; offloaded to CPU)</text><rect class=\"gi-hi\" x=\"346\" y=\"90\" width=\"198\" height=\"44\" rx=\"6\"/><text class=\"fig-t\" x=\"354\" y=\"106\" text-anchor=\"start\">representative key</text><text class=\"fig-s\" x=\"354\" y=\"120\" text-anchor=\"start\">mean of the 4 most-attended keys</text><rect class=\"gi-v\" x=\"500\" y=\"100\" width=\"8\" height=\"8\" rx=\"1\"/><rect class=\"gi-v\" x=\"510\" y=\"100\" width=\"8\" height=\"8\" rx=\"1\"/><rect class=\"gi-v\" x=\"520\" y=\"100\" width=\"8\" height=\"8\" rx=\"1\"/><rect class=\"gi-v\" x=\"530\" y=\"100\" width=\"8\" height=\"8\" rx=\"1\"/><text class=\"fig-s\" x=\"346\" y=\"152\" text-anchor=\"start\">always in context, not stored here:</text><text class=\"fig-s\" x=\"346\" y=\"166\" text-anchor=\"start\">128 initial tokens + 4,096 local tokens</text><text class=\"fig-s\" x=\"346\" y=\"188\" text-anchor=\"start\">boundaries are shared by all layers</text>",
+        "text": [
+          "The LLM's own surprise marks where one event ends: tokens above a moving threshold start a new event, and refinement can shift the cut to make events more internally similar.",
+          "Each event keeps its tokens' key-value cache and one representative key; the first 128 and the latest 4,096 tokens always stay in context."
+        ],
+        "src": "paper §3.1-3.4, App. D.1; code em_llm.py L197-L265, context_manager.py L738-L782, L917-L995",
+        "url": "https://github.com/em-llm/EM-LLM-model/blob/edb2e4a6988c0c2a15637d380e81f04f1a1a531a/em_llm/attention/context_manager.py#L917-L995"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 256",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"30\" width=\"84\" height=\"50\" rx=\"8\"/><text class=\"fig-t\" x=\"46.0\" y=\"53.0\" text-anchor=\"middle\">Next chunk</text><text class=\"fig-s\" x=\"46.0\" y=\"66.0\" text-anchor=\"middle\">512 tokens</text><path class=\"gi-a\" d=\"M88.0 55.0 L93.0 55.0\"/><polygon class=\"gi-ah\" points=\"100.0,55.0 93.0,59.0 93.0,51.0\"/><rect class=\"gi-v fig-soft\" x=\"100\" y=\"30\" width=\"100\" height=\"50\" rx=\"8\"/><text class=\"fig-t\" x=\"150.0\" y=\"53.0\" text-anchor=\"middle\">Mean query</text><text class=\"fig-s\" x=\"150.0\" y=\"66.0\" text-anchor=\"middle\">one per layer</text><path class=\"gi-a\" d=\"M200.0 55.0 L205.0 55.0\"/><polygon class=\"gi-ah\" points=\"212.0,55.0 205.0,59.0 205.0,51.0\"/><rect class=\"gi-v fig-soft\" x=\"212\" y=\"30\" width=\"118\" height=\"50\" rx=\"8\"/><text class=\"fig-t\" x=\"271.0\" y=\"47.0\" text-anchor=\"middle\">Rank events</text><text class=\"fig-s\" x=\"271.0\" y=\"60.0\" text-anchor=\"middle\">dot product with</text><text class=\"fig-s\" x=\"271.0\" y=\"72.0\" text-anchor=\"middle\">representative key</text><path class=\"gi-a\" d=\"M330.0 55.0 L335.0 55.0\"/><polygon class=\"gi-ah\" points=\"342.0,55.0 335.0,59.0 335.0,51.0\"/><rect class=\"gi-f\" x=\"342\" y=\"30\" width=\"100\" height=\"50\" rx=\"8\"/><text class=\"fig-t\" x=\"392.0\" y=\"47.0\" text-anchor=\"middle\">Similarity</text><text class=\"fig-s\" x=\"392.0\" y=\"60.0\" text-anchor=\"middle\">best events fill</text><text class=\"fig-s\" x=\"392.0\" y=\"72.0\" text-anchor=\"middle\">the budget</text><path class=\"gi-a\" d=\"M442.0 55.0 L447.0 55.0\"/><polygon class=\"gi-ah\" points=\"454.0,55.0 447.0,59.0 447.0,51.0\"/><rect class=\"gi-f\" x=\"454\" y=\"30\" width=\"100\" height=\"50\" rx=\"8\"/><text class=\"fig-t\" x=\"504.0\" y=\"47.0\" text-anchor=\"middle\">Contiguity</text><text class=\"fig-s\" x=\"504.0\" y=\"60.0\" text-anchor=\"middle\">±1 neighbours,</text><text class=\"fig-s\" x=\"504.0\" y=\"72.0\" text-anchor=\"middle\">30% (+C runs)</text><text class=\"fig-s\" x=\"10\" y=\"100\" text-anchor=\"start\">budget n_mem = 2K (Mistral) or 4K tokens (LLaMA)</text><path class=\"gi-a\" d=\"M392 80 L392 106 L300 106\"/><path class=\"gi-a\" d=\"M300.0 106.0 L300.0 131.0\"/><polygon class=\"gi-ah\" points=\"300.0,138.0 296.0,131.0 304.0,131.0\"/><path class=\"gi-a\" d=\"M504 80 L504 118 L346 118\"/><path class=\"gi-a\" d=\"M346.0 118.0 L346.0 131.0\"/><polygon class=\"gi-ah\" points=\"346.0,138.0 342.0,131.0 350.0,131.0\"/><text class=\"fig-t\" x=\"10\" y=\"128\" text-anchor=\"start\">Context window of this layer</text><rect class=\"gi-l\" x=\"10\" y=\"140\" width=\"60\" height=\"34\" rx=\"4\"/><text class=\"fig-s\" x=\"40\" y=\"161\" text-anchor=\"middle\">init 128</text><rect class=\"gi-f\" x=\"72\" y=\"140\" width=\"284\" height=\"34\" rx=\"4\"/><rect class=\"gi-v\" x=\"78\" y=\"146\" width=\"30\" height=\"12\" rx=\"2\"/><rect class=\"gi-h\" x=\"112\" y=\"146\" width=\"18\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"134\" y=\"146\" width=\"40\" height=\"12\" rx=\"2\"/><rect class=\"gi-h\" x=\"178\" y=\"146\" width=\"22\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"204\" y=\"146\" width=\"26\" height=\"12\" rx=\"2\"/><rect class=\"gi-h\" x=\"234\" y=\"146\" width=\"20\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"258\" y=\"146\" width=\"34\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"296\" y=\"146\" width=\"20\" height=\"12\" rx=\"2\"/><rect class=\"gi-h\" x=\"320\" y=\"146\" width=\"30\" height=\"12\" rx=\"2\"/><text class=\"fig-s\" x=\"214\" y=\"170\" text-anchor=\"middle\">retrieved events, original order</text><rect class=\"gi-hi\" x=\"358\" y=\"140\" width=\"196\" height=\"34\" rx=\"4\"/><text class=\"fig-s\" x=\"456\" y=\"161\" text-anchor=\"middle\">local 4,096 + chunk</text><text class=\"fig-s\" x=\"10\" y=\"192\" text-anchor=\"start\">retrieved tokens get one fixed position; blocks keep their original order</text><path class=\"gi-a\" d=\"M282.0 200.0 L282.0 211.0\"/><polygon class=\"gi-ah\" points=\"282.0,218.0 278.0,211.0 286.0,211.0\"/><rect class=\"gi-llm\" x=\"170\" y=\"218\" width=\"224\" height=\"30\" rx=\"8\"/><text class=\"fig-t\" x=\"282\" y=\"237\" text-anchor=\"middle\">Softmax attention, then next chunk</text>",
+        "text": [
+          "For every 512-token chunk, each layer compares its mean query with all representative keys and takes the best events until its token budget is full; +C variants also add each retrieved event's neighbours.",
+          "Attention then runs over the initial tokens, the retrieved events in their original order and the local window."
+        ],
+        "src": "paper §3.4, Fig. 3C, App. D.1; code context_manager.py L486-L725",
+        "url": "https://github.com/em-llm/EM-LLM-model/blob/edb2e4a6988c0c2a15637d380e81f04f1a1a531a/em_llm/attention/context_manager.py#L486-L725"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Event size",
+        "value": "8-128 tokens (8-64 for Phi-3.5)",
+        "src": "code config/*.yaml min_block_size, max_block_size",
+        "section": "construction"
+      },
+      {
+        "label": "Boundary threshold",
+        "value": "mean + γ·std of surprise, γ = 1 (2 for LLaMA-3)",
+        "src": "paper Eq. 1, App. D.1",
+        "section": "construction"
+      },
+      {
+        "label": "Representative key",
+        "value": "mean of the 4 most-attended keys",
+        "src": "code config repr_topk: 4",
+        "section": "construction"
+      },
+      {
+        "label": "Always in context",
+        "value": "128 initial + 4,096 local tokens (1,024 for Phi)",
+        "src": "paper §3.1, Table 1",
+        "section": "method"
+      },
+      {
+        "label": "Retrieved per layer",
+        "value": "2K tokens (Mistral), 4K (LLaMA), 3K (Phi)",
+        "src": "paper Table 1",
+        "section": "method"
+      },
+      {
+        "label": "Contiguity share",
+        "value": "30% of the budget, ±1 neighbour (+C only)",
+        "src": "paper App. D.1",
+        "section": "method"
+      },
+      {
+        "label": "Retrieval happens",
+        "value": "every 512-token chunk, in every layer",
+        "src": "code config chunk_size / exc_block_size 512",
+        "section": "method"
+      },
+      {
+        "label": "Time per chunk",
+        "value": "1.12× InfLLM (S), 1.62× (SM)",
+        "src": "paper Table 10",
+        "section": "results"
+      },
+      {
+        "label": "Longest passkey test",
+        "value": "10.2M tokens, 100%",
+        "src": "paper §4.1",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Marks event boundaries",
+        "model": "the base LLM's own next-token probabilities (surprise)",
+        "kind": "rule",
+        "src": "paper §3.2; code em_llm.py L197-L225",
+        "url": "https://github.com/em-llm/EM-LLM-model/blob/edb2e4a6988c0c2a15637d380e81f04f1a1a531a/em_llm/attention/em_llm.py#L197-L225"
+      },
+      {
+        "role": "Refines boundaries",
+        "model": "modularity or conductance over key dot products",
+        "kind": "rule",
+        "src": "paper §3.3; code segmentation.py L4-L50",
+        "url": "https://github.com/em-llm/EM-LLM-model/blob/edb2e4a6988c0c2a15637d380e81f04f1a1a531a/em_llm/attention/similarity_refinement/segmentation.py#L4-L50"
+      },
+      {
+        "role": "Finds events",
+        "model": "dot product of mean chunk query with representative keys, per layer",
+        "kind": "retriever",
+        "src": "paper §3.4; code context_manager.py L486-L539",
+        "url": "https://github.com/em-llm/EM-LLM-model/blob/edb2e4a6988c0c2a15637d380e81f04f1a1a531a/em_llm/attention/context_manager.py#L486-L539"
+      },
+      {
+        "role": "Reads memory and answers",
+        "model": "Mistral-7B-Instruct-v0.2, LLaMA-3-8B, LLaMA-3.1-8B, Phi-3-mini, Phi-3.5-mini (frozen)",
+        "kind": "llm",
+        "src": "paper Table 1"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "Mistral-7B",
+        "LLaMA-3-8B",
+        "LLaMA-3.1-8B",
+        "Phi-3-mini",
+        "Phi-3.5-mini"
+      ],
+      "rows": [
+        [
+          "InfLLM (fixed-size blocks)",
+          "41.90",
+          "46.95",
+          "51.05",
+          "34.46",
+          "34.22"
+        ],
+        [
+          "S: surprise only",
+          "43.35",
+          "47.19",
+          "51.58",
+          "35.40",
+          "34.86"
+        ],
+        [
+          "SM: + modularity refinement",
+          "43.22",
+          "47.24",
+          "51.28",
+          "35.43",
+          "34.69"
+        ],
+        [
+          "S+C: + contiguity buffer",
+          "43.47",
+          "47.06",
+          "51.30",
+          "35.46",
+          "34.60"
+        ],
+        [
+          "SM+C: both",
+          "43.71",
+          "47.06",
+          "51.28",
+          "35.22",
+          "34.67"
+        ]
+      ],
+      "src": "paper App. A.1, Tables 3-7 (LongBench average; 4K+2K, 4K+4K, 4K+4K, 1K+3K, 1K+3K)"
+    },
+    "discussion": {
+      "takeaway": "Grouping a frozen LLM's KV cache into surprise-defined events and fetching whole events per layer is a cheap, training-free way to extend context. It beats fixed-size blocks (InfLLM) on most tasks and, with LLaMA-3.1-8B, beats both RAG and full-context attention on LongBench.",
+      "claims": [
+        {
+          "claim": "EM-LLM improves on InfLLM across base models.",
+          "evidence": "LongBench avg 43.7 vs 41.9 (Mistral), 51.3 vs 51.1 (LLaMA-3.1), 35.4 vs 34.5 (Phi-3); significant at benchmark level except Phi-3.5 (p = 0.23). Table 1, App. A.1"
+        },
+        {
+          "claim": "It beats RAG and full context.",
+          "evidence": "LLaMA-3.1-8B LongBench 51.58 vs 39.30 full context and 36.44 RAG (NV-Embed-v2); ∞-Bench 66.66 vs 66.33 and 58.97. Table 9, Fig. 1"
+        },
+        {
+          "claim": "It scales to 10M tokens.",
+          "evidence": "100% on extended Passkey.Retrieval up to 10.2M tokens. §4.1, Fig. 1"
+        },
+        {
+          "claim": "Surprise-based events match human event boundaries and group similar keys.",
+          "evidence": "Surprise methods are closest to human podcast annotations (Fig. 4B) and score higher modularity and intra/inter similarity than fixed blocks on PG-19 (Table 2)."
+        },
+        {
+          "claim": "Refinement and contiguity each help.",
+          "evidence": "Refinement is best in 60% of tasks, the contiguity buffer in 44%. §4.4, Tables 3-7"
+        }
+      ],
+      "limits": [
+        "Memory is non-parametric storage of key-value pairs, unlike synaptic change in the brain.",
+        "No nested, hierarchical event structure.",
+        "Text only in the current implementation; no multi-modal episodes.",
+        "No consolidation of memories over time.",
+        "The authors claim an episodic-memory-inspired method, not evidence that the model uses it like human episodic memory."
+      ],
+      "limits_src": "paper App. E.1 (3. Current Limitations)",
+      "reading": [
+        "Gains over InfLLM are small on LongBench for LLaMA-3 and LLaMA-3.1 (+0.2 each in Table 1), and for LLaMA-3 the ∞-Bench average is lower than InfLLM's (48.81-49.00 vs 50.31 across variants, Table 4).",
+        "Table 1 shows a different best variant per model, and no variant wins everywhere (Tables 3-7), so which component helps depends on model and task.",
+        "Full context scores 100 on PassageRetrieval and leads on several QA tasks, but gets 4.5 on TREC, 8.68 on SAMSum, 19.30 on LCC and 18.33 on RepoBench-P (Table 9); the 12-point LongBench average gap comes mostly from these few tasks.",
+        "In the released code the refinement graph is one matrix summed over layers ≥ 20 and all heads, and the same boundaries serve every layer, while the paper describes per-head key similarity.",
+        "Retrieval is per layer and per 512-token chunk, so it is not comparable to question-time retrieval in agent memory systems."
+      ]
+    }
+  }
+}

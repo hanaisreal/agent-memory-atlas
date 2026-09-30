@@ -1,0 +1,535 @@
+{
+  "id": "rmm",
+  "name": "RMM",
+  "paper": {
+    "title": "In Prospect and Retrospect: Reflective Memory Management for Long-term Personalized Dialogue Agents",
+    "arxiv": "2503.08026",
+    "url": "https://arxiv.org/abs/2503.08026",
+    "venue": "ACL 2025",
+    "venue_short": "ACL",
+    "track": "main",
+    "year": 2025,
+    "code": null
+  },
+  "design": {
+    "construction": {
+      "unit": "memory entry: (topic summary, raw dialogue turns it came from)",
+      "kept_as": "LLM topic summary as search key + verbatim turns",
+      "processing": "at session end an LLM splits the session into topics, writing one personal summary per topic with its turn ids, for each speaker",
+      "trigger": "session-end",
+      "writer": "prompted LLM (model not named for this step; the generator is Gemini-1.5-Flash)"
+    },
+    "organization": {
+      "structure": "flat memory bank of topic entries",
+      "stores": "one memory bank per user/conversation",
+      "index": "dense embeddings of topic summaries (Contriever default; Stella, GTE tested)"
+    },
+    "management": {
+      "operations": "each new topic memory is compared with its Top-K most similar entries; LLM chooses Add() or Merge(index, merged_summary)",
+      "conflicts": "handled by merge: the LLM rewrites the old summary with the new information",
+      "forgetting": null,
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "current user query",
+      "candidates": "dense retriever Top-K=20 over topic summaries",
+      "selection": "learned reranker (residual linear adapters on query and memory embeddings, dot product) with Gumbel-softmax sampling keeps Top-M=5; reranker trained online by REINFORCE from the LLM's citations",
+      "budget": "Top-M = 5 entries (10 with Top-K = 50 in Table 5)"
+    },
+    "use": {
+      "context": "the 5 memories, each as personal summary plus its original turns, with the current session",
+      "reasoning": "one LLM call writes the response and cites the memories it used"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "prompted-llm",
+      "retrieval": "learned-rl"
+    }
+  },
+  "classify": {
+    "structure": "flat",
+    "index": "vector",
+    "management": "consolidate",
+    "candidates": "dense",
+    "decides": "reranker",
+    "note": "The reranker is a small learned model on embeddings, not a cross-encoder; it is updated online by REINFORCE from the answer LLM's citations."
+  },
+  "tags": {
+    "fidelity": "verbatim+derived",
+    "structure": [
+      "flat"
+    ],
+    "write_time": [
+      "segment",
+      "summarize",
+      "consolidate"
+    ],
+    "selection": [
+      "dense",
+      "rerank"
+    ],
+    "memory_type": [
+      "episodic",
+      "semantic"
+    ],
+    "learning": "rl",
+    "domain": [
+      "conversation"
+    ]
+  },
+  "stages": {
+    "ingestion": "Memory is written once per finished session; the session's turns are passed whole to the extraction prompt.",
+    "construction": "Prospective Reflection: an LLM decomposes the session into topics and writes a concise personal summary for each, with references to the turn ids it came from; this is done separately for each speaker.",
+    "organization": "A flat memory bank of (topic summary, raw dialogue) entries; the summary is the retrieval key.",
+    "update": "Each new topic memory is compared with the Top-K most similar existing entries, and an LLM either adds it or merges it into one of them with a rewritten summary.",
+    "retrieval": "A frozen dense retriever returns Top-K=20 entries; a lightweight reranker (residual linear maps on query and memory embeddings, dot-product scores) samples Top-M=5 with the Gumbel trick at τ = 0.5.",
+    "answer": "The LLM sees the current session and the 5 memories (summary plus original turns), writes the reply and cites the memories it used in the same call.",
+    "learning": "Retrospective Reflection: each retrieved memory gets +1 if cited and −1 if not, and REINFORCE (baseline 0.5, lr 1e-3, batch 4) updates only the reranker, online during the conversation."
+  },
+  "summary": "Topic-level memories (LLM summary as key, original turns as content) are written and merged at session end, and a small reranker over retriever embeddings is trained online with REINFORCE using the answer LLM's own citations as reward.",
+  "verified": false,
+  "notes": "arXiv v2 (2025-07-28) read from the PDF; arXiv comment and ACL Anthology (2025.acl-long.413, pp. 8416-8439) give ACL 2025 main. No official code was found (paper gives no link; only an unofficial third-party plugin exists on GitHub). Baselines MemoryBank and LD-Agent were re-implemented with the LongMemEval codebase (App. A.4). The LLM for memory extraction/merge is not named; Gemini-1.5-Flash is the generator. LongMemEval variant (S/M/oracle) is not stated.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2503.08026v2 (PDF read 2026-09-30)",
+      "code": null,
+      "code_note": "No official code: the paper and the ACL Anthology page link none, and a GitHub search found only an unofficial re-implementation, which is not used here. Everything follows the paper, Algorithm 1, Figures 2-3 and the prompts in App. D."
+    },
+    "headline": [
+      "A memory entry pairs an LLM topic summary (the search key) with the original turns, and the answer model reads both.",
+      "The only learned part is a small reranker on top of a frozen retriever; its reward is whether the answer LLM cited each memory (+1) or not (−1).",
+      "The reranker is updated after every response, so it learns during the conversation itself; the paper does not separate this from the evaluation questions."
+    ],
+    "units": [
+      {
+        "name": "Memory entry",
+        "role": "one topic from one or more turns of a past session",
+        "made_by": "LLM extraction at session end, then LLM Add/Merge against similar entries",
+        "fields": [
+          {
+            "name": "topic summary",
+            "what": "concise personal summary of one speaker's experiences, preferences or background for one topic; rewritten on merge",
+            "kept_as": "summarized",
+            "used_for": [
+              "index",
+              "rerank",
+              "answer"
+            ],
+            "src": "paper §5, App. D.1.1-D.1.2",
+            "url": "https://arxiv.org/pdf/2503.08026"
+          },
+          {
+            "name": "raw dialogue",
+            "what": "the original turns the summary references (turn ids)",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §4, App. D.2",
+            "url": "https://arxiv.org/pdf/2503.08026"
+          },
+          {
+            "name": "embedding",
+            "what": "retriever embedding of the entry, adapted by the reranker's W_m",
+            "kept_as": "derived",
+            "used_for": [
+              "index",
+              "rerank"
+            ],
+            "src": "paper §6.1, Eq. 1",
+            "url": "https://arxiv.org/pdf/2503.08026"
+          }
+        ]
+      },
+      {
+        "name": "Reranker",
+        "role": "learned scoring layer between retriever and LLM",
+        "made_by": "REINFORCE from citation rewards",
+        "fields": [
+          {
+            "name": "W_q, W_m",
+            "what": "linear maps added residually to query and memory embeddings (q′ = q + W_q q, m′ = m + W_m m)",
+            "kept_as": "derived",
+            "used_for": [
+              "rerank"
+            ],
+            "src": "paper Eq. 1, App. A.1",
+            "url": "https://arxiv.org/pdf/2503.08026"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Extract",
+        "how": "at session end an LLM returns JSON {summary, reference: [turn ids]} per topic, run once for each speaker; NO_TRAIT if nothing personal",
+        "src": "paper §5, App. D.1.1",
+        "url": "https://arxiv.org/pdf/2503.08026"
+      },
+      {
+        "step": "Find similar",
+        "how": "retrieve the Top-K most similar existing entries for each new topic memory",
+        "params": {
+          "K": "not stated for this step"
+        },
+        "src": "paper §5",
+        "url": "https://arxiv.org/pdf/2503.08026"
+      },
+      {
+        "step": "Add or merge",
+        "how": "LLM outputs Add() or Merge(index, merged_summary), possibly several actions",
+        "src": "paper §5, App. D.1.2",
+        "url": "https://arxiv.org/pdf/2503.08026"
+      }
+    ],
+    "read": [
+      {
+        "step": "Retrieve",
+        "round": 1,
+        "input": "user query",
+        "scores": "query vs topic summary embeddings",
+        "how": "frozen dense retriever (Contriever by default)",
+        "params": {
+          "Top-K": "20 (5 when no reranker is used)"
+        },
+        "src": "paper §7.1, App. A.1",
+        "url": "https://arxiv.org/pdf/2503.08026"
+      },
+      {
+        "step": "Rerank",
+        "round": 1,
+        "input": "query and memory embeddings",
+        "scores": "dot product of adapted embeddings q′·m′ plus Gumbel noise, softmax at τ",
+        "how": "sample Top-M from the perturbed distribution",
+        "params": {
+          "Top-M": "5",
+          "τ": "0.5"
+        },
+        "src": "paper §6.1, Eq. 2, App. A.1",
+        "url": "https://arxiv.org/pdf/2503.08026"
+      },
+      {
+        "step": "Generate and cite",
+        "round": 1,
+        "how": "one LLM call writes the response and lists the indices of useful memories, or [NO_CITE]",
+        "src": "paper §6.2, App. D.2",
+        "url": "https://arxiv.org/pdf/2503.08026"
+      },
+      {
+        "step": "RL update",
+        "round": 1,
+        "how": "reward +1 for cited, −1 for not cited; REINFORCE Δφ = η(R − b)∇ log P(M_M | q, M_K)",
+        "params": {
+          "b": "0.5",
+          "η": "1e-3",
+          "batch": "4"
+        },
+        "src": "paper Eq. 3, App. A.1",
+        "url": "https://arxiv.org/pdf/2503.08026"
+      }
+    ],
+    "answer_context": {
+      "sees": "5 memories, each a personal summary followed by its original turns, plus the current session",
+      "format": "\"Memory [i]: summary\" followed by its turns, with instructions to cite indices [i] (App. D.2)",
+      "excludes": [
+        "memories outside the sampled Top-5"
+      ],
+      "src": "paper Algorithm 1, App. D.2",
+      "url": "https://arxiv.org/pdf/2503.08026",
+      "includes": [
+        "topic summaries",
+        "raw turns referenced by each summary"
+      ]
+    },
+    "compression": [
+      {
+        "what": "answer context vs full history",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported: the paper gives no token counts for memory or context.",
+        "src": "paper §7-8",
+        "url": "https://arxiv.org/pdf/2503.08026"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "LongMemEval Acc, RMM (GTE)",
+        "value": "70.4",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "LongMemEval Acc, RAG (GTE)",
+        "value": "63.6",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "MSC METEOR, RMM (GTE)",
+        "value": "33.4",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "Citation-reward F1 vs Gemini-1.5-Pro judge",
+        "value": "86.7",
+        "src": "paper Table 3"
+      }
+    ],
+    "open_questions": [
+      "Is the reranker trained on the same questions it is scored on? Algorithm 1 updates it after every response, and the paper describes no separate training stream except for the offline pretraining study in §8.6.",
+      "How is Recall@5 computed when retrieved items are merged topic entries rather than the annotated turns?",
+      "Which LongMemEval split (S, M or oracle) is used is not stated, so the numbers cannot be placed next to other papers' LongMemEval results."
+    ],
+    "glance": [
+      {
+        "q": "What is one memory item?",
+        "a": "A topic: an LLM-written personal summary (the search key) plus the original turns it refers to.",
+        "src": "paper §4-5",
+        "url": "https://arxiv.org/pdf/2503.08026"
+      },
+      {
+        "q": "When is memory written?",
+        "a": "Once per session, when it ends; new topics are added or merged into similar old ones by an LLM.",
+        "src": "paper Algorithm 1, §5",
+        "url": "https://arxiv.org/pdf/2503.08026"
+      },
+      {
+        "q": "Is there reranking?",
+        "a": "Yes: a small learned reranker on the retriever's embeddings keeps 5 of 20 by Gumbel sampling.",
+        "src": "paper §6.1, App. A.1",
+        "url": "https://arxiv.org/pdf/2503.08026"
+      },
+      {
+        "q": "What is learned, and from what?",
+        "a": "Only the reranker, by REINFORCE: +1 when the answer LLM cites a memory, −1 when it does not.",
+        "src": "paper §6.2-6.3",
+        "url": "https://arxiv.org/pdf/2503.08026"
+      },
+      {
+        "q": "What does the answer model read?",
+        "a": "The current session and 5 memories, each with its summary and original turns.",
+        "src": "paper App. D.2",
+        "url": "https://arxiv.org/pdf/2503.08026"
+      }
+    ],
+    "funnel": [
+      {
+        "round": 1,
+        "steps": [
+          {
+            "n": "20",
+            "what": "entries from the dense retriever"
+          },
+          {
+            "n": "5",
+            "what": "sampled by the reranker"
+          },
+          {
+            "n": "cited ones",
+            "what": "rewarded +1; the rest −1"
+          }
+        ],
+        "src": "paper §7.1, App. A.1",
+        "url": "https://arxiv.org/pdf/2503.08026"
+      }
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 242",
+        "body": "<text class=\"fig-t\" x=\"60\" y=\"16\" text-anchor=\"middle\">Finished session</text><rect class=\"gi-ev\" x=\"14\" y=\"26\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"22\" y1=\"35\" x2=\"70\" y2=\"35\"/><rect class=\"gi-ev\" x=\"34\" y=\"54\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"42\" y1=\"63\" x2=\"90\" y2=\"63\"/><rect class=\"gi-ev\" x=\"14\" y=\"82\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"22\" y1=\"91\" x2=\"70\" y2=\"91\"/><rect class=\"gi-ev\" x=\"34\" y=\"110\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"42\" y1=\"119\" x2=\"90\" y2=\"119\"/><rect class=\"gi-ev\" x=\"14\" y=\"138\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"22\" y1=\"147\" x2=\"70\" y2=\"147\"/><rect class=\"gi-ev\" x=\"34\" y=\"166\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"42\" y1=\"175\" x2=\"90\" y2=\"175\"/><text class=\"fig-s\" x=\"60\" y=\"206\" text-anchor=\"middle\">turns 0-5</text><path class=\"gi-a\" d=\"M112 106 L143 106\"/><polygon class=\"gi-ah\" points=\"150,106 143,102 143,110\"/><rect class=\"gi-llm\" x=\"115\" y=\"88\" width=\"32\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"131\" y=\"98\" text-anchor=\"middle\">LLM</text><text class=\"fig-s\" x=\"131\" y=\"124\" text-anchor=\"middle\">per</text><text class=\"fig-s\" x=\"131\" y=\"136\" text-anchor=\"middle\">speaker</text><text class=\"fig-t\" x=\"216\" y=\"16\" text-anchor=\"middle\">Topic memories</text><rect class=\"gi-ev\" x=\"152\" y=\"30\" width=\"128\" height=\"42\" rx=\"6\"/><text class=\"fig-t\" x=\"160\" y=\"47\" text-anchor=\"start\">topic summary</text><text class=\"fig-s\" x=\"160\" y=\"62\" text-anchor=\"start\">turns [0, 2]</text><rect class=\"gi-ev\" x=\"152\" y=\"82\" width=\"128\" height=\"42\" rx=\"6\"/><text class=\"fig-t\" x=\"160\" y=\"99\" text-anchor=\"start\">topic summary</text><text class=\"fig-s\" x=\"160\" y=\"114\" text-anchor=\"start\">turns [3]</text><rect class=\"gi-ev\" x=\"152\" y=\"134\" width=\"128\" height=\"42\" rx=\"6\"/><text class=\"fig-t\" x=\"160\" y=\"151\" text-anchor=\"start\">topic summary</text><text class=\"fig-s\" x=\"160\" y=\"166\" text-anchor=\"start\">turns [4, 5]</text><text class=\"fig-s\" x=\"216\" y=\"206\" text-anchor=\"middle\">none found: NO_TRAIT</text><path class=\"gi-a\" d=\"M280 106 L289 106\"/><polygon class=\"gi-ah\" points=\"296,106 289,102 289,110\"/><rect class=\"gi-v fig-soft\" x=\"296\" y=\"84\" width=\"72\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"332.0\" y=\"104.0\" text-anchor=\"middle\">Top-K</text><text class=\"fig-s\" x=\"332.0\" y=\"117.0\" text-anchor=\"middle\">similar in bank</text><path class=\"gi-a\" d=\"M368 106 L375 106\"/><polygon class=\"gi-ah\" points=\"382,106 375,102 375,110\"/><polygon class=\"gi-llm\" points=\"418,76 454,106 418,136 382,106\"/><text class=\"fig-t\" x=\"418\" y=\"104\" text-anchor=\"middle\">Add or</text><text class=\"fig-t\" x=\"418\" y=\"117\" text-anchor=\"middle\">merge?</text><path class=\"gi-a\" d=\"M418 76 L418 64 L459 64\"/><polygon class=\"gi-ah\" points=\"466,64 459,60 459,68\"/><text class=\"fig-no\" x=\"424\" y=\"58\" text-anchor=\"start\">Merge</text><path class=\"gi-a\" d=\"M418 136 L418 192 L459 192\"/><polygon class=\"gi-ah\" points=\"466,192 459,188 459,196\"/><text class=\"fig-yes\" x=\"424\" y=\"170\" text-anchor=\"start\">Add</text><rect class=\"gi-f\" x=\"466\" y=\"20\" width=\"90\" height=\"190\" rx=\"10\"/><text class=\"fig-t\" x=\"511\" y=\"36\" text-anchor=\"middle\">Memory bank</text><text class=\"fig-s\" x=\"474\" y=\"50\" text-anchor=\"start\">summary</text><text class=\"fig-s\" x=\"548\" y=\"50\" text-anchor=\"end\">turns</text><rect class=\"gi-hi\" x=\"472\" y=\"54\" width=\"78\" height=\"20\" rx=\"4\"/><line class=\"gi-t\" x1=\"478\" y1=\"64\" x2=\"516\" y2=\"64\"/><rect class=\"gi-r\" x=\"526\" y=\"59\" width=\"18\" height=\"10\" rx=\"2\"/><rect class=\"gi-ev\" x=\"472\" y=\"80\" width=\"78\" height=\"20\" rx=\"4\"/><line class=\"gi-t\" x1=\"478\" y1=\"90\" x2=\"516\" y2=\"90\"/><rect class=\"gi-r\" x=\"526\" y=\"85\" width=\"18\" height=\"10\" rx=\"2\"/><rect class=\"gi-ev\" x=\"472\" y=\"106\" width=\"78\" height=\"20\" rx=\"4\"/><line class=\"gi-t\" x1=\"478\" y1=\"116\" x2=\"516\" y2=\"116\"/><rect class=\"gi-r\" x=\"526\" y=\"111\" width=\"18\" height=\"10\" rx=\"2\"/><rect class=\"gi-ev\" x=\"472\" y=\"132\" width=\"78\" height=\"20\" rx=\"4\"/><line class=\"gi-t\" x1=\"478\" y1=\"142\" x2=\"516\" y2=\"142\"/><rect class=\"gi-r\" x=\"526\" y=\"137\" width=\"18\" height=\"10\" rx=\"2\"/><rect class=\"gi-ev\" x=\"472\" y=\"158\" width=\"78\" height=\"20\" rx=\"4\"/><line class=\"gi-t\" x1=\"478\" y1=\"168\" x2=\"516\" y2=\"168\"/><rect class=\"gi-r\" x=\"526\" y=\"163\" width=\"18\" height=\"10\" rx=\"2\"/><rect class=\"gi-ev d\" x=\"472\" y=\"182\" width=\"78\" height=\"20\" rx=\"4\"/><line class=\"gi-t\" x1=\"478\" y1=\"192\" x2=\"516\" y2=\"192\"/><rect class=\"gi-r\" x=\"526\" y=\"187\" width=\"18\" height=\"10\" rx=\"2\"/><text class=\"fig-s\" x=\"280\" y=\"232\" text-anchor=\"middle\">runs once, when a session ends; the LLM rewrites the merged summary</text>",
+        "text": [
+          "When a session ends, an LLM splits it into topics and writes one personal summary per topic with the turn ids it came from, for each speaker.",
+          "Each new topic is checked against the most similar entries in the bank, and the LLM either adds it or merges it into one of them."
+        ],
+        "src": "paper §5, Figure 2, App. D.1",
+        "url": "https://arxiv.org/pdf/2503.08026"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 222",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"30\" width=\"56\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"32.0\" y=\"56.0\" text-anchor=\"middle\">Query</text><path class=\"gi-a\" d=\"M60 52 L65 52\"/><polygon class=\"gi-ah\" points=\"72,52 65,48 65,56\"/><rect class=\"gi-v fig-soft\" x=\"72\" y=\"30\" width=\"90\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"117.0\" y=\"50.0\" text-anchor=\"middle\">Retrieve 20</text><text class=\"fig-s\" x=\"117.0\" y=\"63.0\" text-anchor=\"middle\">Contriever, frozen</text><text class=\"fig-s\" x=\"117\" y=\"88\" text-anchor=\"middle\">matches summaries</text><path class=\"gi-a\" d=\"M162 52 L169 52\"/><polygon class=\"gi-ah\" points=\"176,52 169,48 169,56\"/><rect class=\"gi-w\" x=\"176\" y=\"30\" width=\"104\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"228.0\" y=\"50.0\" text-anchor=\"middle\">Reranker</text><text class=\"fig-s\" x=\"228.0\" y=\"63.0\" text-anchor=\"middle\">residual linear, q′·m′</text><path class=\"gi-a\" d=\"M280 52 L287 52\"/><polygon class=\"gi-ah\" points=\"294,52 287,48 287,56\"/><rect class=\"gi-f\" x=\"294\" y=\"30\" width=\"78\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"333.0\" y=\"50.0\" text-anchor=\"middle\">Top-5</text><text class=\"fig-s\" x=\"333.0\" y=\"63.0\" text-anchor=\"middle\">Gumbel, τ 0.5</text><path class=\"gi-a\" d=\"M372 52 L379 52\"/><polygon class=\"gi-ah\" points=\"386,52 379,48 379,56\"/><rect class=\"gi-llm\" x=\"386\" y=\"30\" width=\"86\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"429.0\" y=\"50.0\" text-anchor=\"middle\">LLM</text><text class=\"fig-s\" x=\"429.0\" y=\"63.0\" text-anchor=\"middle\">answer + cites</text><path class=\"gi-a\" d=\"M472 52 L479 52\"/><polygon class=\"gi-ah\" points=\"486,52 479,48 479,56\"/><rect class=\"gi-hi\" x=\"486\" y=\"30\" width=\"70\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"521.0\" y=\"56.0\" text-anchor=\"middle\">Response</text><text class=\"fig-s\" x=\"429\" y=\"90\" text-anchor=\"middle\">5 × (summary + raw turns)</text><path class=\"gi-a\" d=\"M429 96 L429 117\"/><polygon class=\"gi-ah\" points=\"429,124 425,117 433,117\"/><rect class=\"gi-ev\" x=\"376\" y=\"124\" width=\"106\" height=\"56\" rx=\"8\"/><text class=\"fig-t\" x=\"429\" y=\"140\" text-anchor=\"middle\">Citation reward</text><path class=\"gi-ok\" d=\"M386 152 L390 156 L398 147\"/><text class=\"fig-s\" x=\"404\" y=\"156\" text-anchor=\"start\">cited: +1</text><path class=\"gi-bad\" d=\"M387 164 L395 172 M395 164 L387 172\"/><text class=\"fig-s\" x=\"404\" y=\"172\" text-anchor=\"start\">not cited: −1</text><path class=\"gi-a\" d=\"M376 152 L305 152\"/><polygon class=\"gi-ah\" points=\"298,152 305,148 305,156\"/><rect class=\"gi-w\" x=\"176\" y=\"128\" width=\"122\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"237.0\" y=\"150.0\" text-anchor=\"middle\">REINFORCE</text><text class=\"fig-s\" x=\"237.0\" y=\"163.0\" text-anchor=\"middle\">b 0.5, lr 1e-3, batch 4</text><path class=\"gi-a d\" d=\"M228 128 L228 81\"/><polygon class=\"gi-ah\" points=\"228,74 224,81 232,81\"/><text class=\"fig-s\" x=\"234\" y=\"104\" text-anchor=\"start\">update W_q, W_m</text><text class=\"fig-s\" x=\"237\" y=\"198\" text-anchor=\"middle\">the reranker learns online from each response;</text><text class=\"fig-s\" x=\"237\" y=\"211\" text-anchor=\"middle\">retriever and LLM stay frozen</text>",
+        "text": [
+          "A frozen retriever returns 20 entries by summary similarity, and a small learned reranker samples 5 of them for the LLM.",
+          "The LLM answers and cites the memories it used; cited ones earn +1, the rest −1, and REINFORCE updates only the reranker."
+        ],
+        "src": "paper §6, Algorithm 1, Figure 3, App. A.1",
+        "url": "https://arxiv.org/pdf/2503.08026"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Memory written",
+        "value": "once per session, at its end",
+        "src": "paper Algorithm 1",
+        "section": "construction"
+      },
+      {
+        "label": "Retriever → reranker",
+        "value": "Top-K 20 → Top-M 5",
+        "src": "paper §7.1, App. A.1",
+        "section": "method"
+      },
+      {
+        "label": "Gumbel temperature",
+        "value": "τ = 0.5",
+        "src": "paper App. A.1",
+        "section": "method"
+      },
+      {
+        "label": "Reward",
+        "value": "+1 cited, −1 not cited; baseline 0.5",
+        "src": "paper §6.2, App. A.1",
+        "section": "method"
+      },
+      {
+        "label": "REINFORCE",
+        "value": "lr 1e-3, batch 4",
+        "src": "paper App. A.1",
+        "section": "method"
+      },
+      {
+        "label": "Generator",
+        "value": "Gemini-1.5-Flash, temperature 0, 128k context",
+        "src": "paper §7.1, App. A.1",
+        "section": "method"
+      },
+      {
+        "label": "Share of cited memories",
+        "value": "about 0.2 → 0.4 over 1,000 RL steps",
+        "src": "paper Fig. 6, App. A.5",
+        "section": "results"
+      },
+      {
+        "label": "Citation reward agreement",
+        "value": "F1 86.7 against a Gemini-1.5-Pro judge",
+        "src": "paper Table 3",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "MSC METEOR",
+        "MSC BERT",
+        "LME Recall@5",
+        "LME Acc."
+      ],
+      "rows": [
+        [
+          "RAG (turn level)",
+          "24.8",
+          "50.8",
+          "54.3",
+          "58.8"
+        ],
+        [
+          "+ Prospective Reflection",
+          "28.6",
+          "53.3",
+          "57.4",
+          "59.6"
+        ],
+        [
+          "+ RR, retriever fine-tuned (no reranker)",
+          "20.3",
+          "31.8",
+          "34.2",
+          "31.0"
+        ],
+        [
+          "+ RR with reranker",
+          "27.5",
+          "52.2",
+          "58.8",
+          "60.2"
+        ],
+        [
+          "RMM (PR + RR + reranker)",
+          "30.8",
+          "55.4",
+          "60.4",
+          "61.2"
+        ]
+      ],
+      "src": "paper Table 2 (Contriever, Gemini-1.5-Flash)"
+    },
+    "components": [
+      {
+        "role": "Topic extraction and Add/Merge",
+        "model": "prompted LLM (model not named for this step)",
+        "kind": "llm",
+        "src": "paper §5, App. D.1"
+      },
+      {
+        "role": "Dense retrieval over topic summaries",
+        "model": "Contriever (default); Stella-1.5B-v5, GTE-Qwen2-7B-instruct also tested",
+        "kind": "retriever",
+        "src": "paper §7.1"
+      },
+      {
+        "role": "Rerank (learned, Gumbel sampling)",
+        "model": "learned residual linear adapters + dot product on the retriever embeddings (not a cross-encoder)",
+        "kind": "retriever",
+        "src": "paper §6.1, App. A.1"
+      },
+      {
+        "role": "Answer + citations",
+        "model": "Gemini-1.5-Flash (Gemini-1.5-Pro in §8.4)",
+        "kind": "llm",
+        "src": "paper §7.1"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Organise memory by topic rather than by turn or session, and let the answer model's own citations train a small reranker online. On LongMemEval with GTE this lifts accuracy from 63.6 (turn-level RAG) to 70.4.",
+      "claims": [
+        {
+          "claim": "RMM beats all baselines on MSC and LongMemEval.",
+          "evidence": "GTE: MSC METEOR 33.4 vs 27.5, BERT 57.1 vs 52.1; LongMemEval Recall@5 69.8 vs 62.4, Acc 70.4 vs 63.6 over RAG. Table 1, §8.1"
+        },
+        {
+          "claim": "Both reflections help, and the reranker is needed for the RL signal.",
+          "evidence": "Contriever: RAG 58.8 → +PR 59.6, +RR 60.2, both 61.2 Acc; fine-tuning the retriever instead drops to 31.0. Table 2, §8.2"
+        },
+        {
+          "claim": "Citations are a reliable reward.",
+          "evidence": "Overall precision 87.6, recall 85.8, F1 86.7 against a Gemini-1.5-Pro judge. Table 3, §8.3"
+        },
+        {
+          "claim": "Topic granularity approaches the best per-instance fixed granularity.",
+          "evidence": "On 100 LongMemEval samples (GTE): Recall@5 78 (PR) vs 47 turn, 69 session, 86 best; Acc 49 vs 29, 34, 58. Fig. 4, §8.5"
+        },
+        {
+          "claim": "More retrieved and kept memories help.",
+          "evidence": "GTE: Acc 70.4 at K=20/M=5, 73.8 at K=50/M=10. Table 5, §8.7"
+        }
+      ],
+      "limits": [
+        "RL reranking can be computationally expensive for large-scale or real-time use.",
+        "Text-only; multimodal dialogue is not handled.",
+        "The memory update mechanism may need further work for dynamically evolving long-term interactions."
+      ],
+      "limits_src": "paper, Limitations",
+      "reading": [
+        "The reranker is updated after every response (Algorithm 1), and no separate training stream is described for the main tables, so the reported scores include learning on the evaluation conversations themselves.",
+        "The gain from the full system over plain RAG with Contriever is small on LongMemEval accuracy (58.8 → 61.2) and larger on MSC METEOR (24.8 → 30.8); the headline 70.4 needs the GTE-7B retriever.",
+        "MemoryBank and LD-Agent are listed with 'specific' retrievers in Table 1, but App. A.4 says they were re-implemented in the LongMemEval codebase with Contriever as default retriever.",
+        "The answer model reads the original turns as well as the summaries, so the Prospective Reflection gain mixes a better search key with different context boundaries; no run separates the two.",
+        "The granularity study (Fig. 4) uses 100 samples and reports PR at 49 accuracy, well below the 70.4 of Table 1 with the same retriever and generator; the paper does not explain the gap.",
+        "No token, latency or LLM-call costs are reported, although extraction and merging add LLM calls at every session end."
+      ]
+    },
+    "abstract": {
+      "text": "RMM is a memory design for personalized dialogue agents that addresses two problems: memory cut at fixed turn or session boundaries, and retrievers that never adapt. Looking forward, it summarises each finished session into topic-level memories (a summary plus the turns it came from) and merges them with related existing ones. Looking back, it trains a small reranker on top of a frozen retriever with online reinforcement learning, rewarding memories the answer model cites. With Gemini-1.5-Flash it beats RAG, MemoryBank and LD-Agent baselines on MSC and LongMemEval, reaching 70.4% LongMemEval accuracy with the GTE retriever.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2503.08026"
+    },
+    "sections": {
+      "Memory architecture": "§4-6",
+      "Results": "§8.1, §8.4, §8.7-8.8",
+      "Ablation": "§8.2, §8.5",
+      "Discussion": "§9, Limitations",
+      "Details": "§7, App. A, D"
+    }
+  }
+}

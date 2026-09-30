@@ -1,0 +1,466 @@
+{
+ "id": "memorybank",
+ "name": "MemoryBank",
+ "paper": {
+  "title": "MemoryBank: Enhancing Large Language Models with Long-Term Memory",
+  "arxiv": "2305.10250",
+  "url": "https://arxiv.org/abs/2305.10250",
+  "venue": "AAAI 2024",
+  "venue_short": "AAAI",
+  "track": "main",
+  "year": 2024,
+  "code": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend"
+ },
+ "design": {
+  "construction": {
+   "unit": "one dialogue exchange (user query + AI response) with its date; per-day event summary and personality analysis; global event summary and global user portrait",
+   "kept_as": "exchanges verbatim; summaries and portraits written by an LLM",
+   "processing": "every exchange appended to today's log; on request at login, an LLM summarises each day's events and the user's personality, then summarises all days into a global summary and portrait",
+   "trigger": "every-exchange",
+   "writer": "gpt-3.5-turbo for all summaries in the code (summarize_memory.py), for every SiliconFriend variant"
+  },
+  "organization": {
+   "structure": "per-day log -> daily summaries -> global summary; daily personality -> global portrait",
+   "stores": "one JSON memory file per deployment (history, summary, personality, overall_history, overall_personality per user); FAISS index per user",
+   "index": "dense embeddings of each exchange and each daily event summary (MiniLM for English, Text2vec for Chinese)"
+  },
+  "management": {
+   "operations": "summaries regenerated on request; forgetting drops exchanges at random by an Ebbinghaus-style retention",
+   "conflicts": null,
+   "forgetting": "paper: retention R = e^(-t/S), S starts at 1 and +1 on each recall with t reset; code: optional path, off by default, formula e^(-t·S/5), forgotten exchanges deleted from the file",
+   "timing": "online"
+  },
+  "retrieval": {
+   "query": "the current user message",
+   "candidates": "FAISS dense search over exchanges and daily summaries",
+   "selection": "top-k by similarity (k = 2 by default in the ChatGLM/BELLE demo), adjacent same-day pieces merged up to 200 characters",
+   "budget": "2 hits + global portrait + last 7 exchanges"
+  },
+  "use": {
+   "context": "retrieved memories with their dates, global user portrait and reply strategy, recent session turns (paper also lists the global event summary; the code never inserts it)",
+   "reasoning": "single reply call"
+  },
+  "control": {
+   "construction": "prompted-llm",
+   "management": "fixed-rule",
+   "retrieval": "fixed-rule"
+  }
+ },
+ "classify": {
+  "structure": "hierarchy",
+  "index": "vector",
+  "management": "evict",
+  "candidates": "dense",
+  "decides": "top-k rule",
+  "note": "The forgetting curve is the paper's management contribution, so management is 'evict', but the released code runs it only on an opt-in path whose module is missing. The hierarchy (day -> global summaries) matters little for retrieval, which is flat over exchanges and daily summaries."
+ },
+ "tags": {
+  "fidelity": "verbatim+derived",
+  "structure": [
+   "tree",
+   "profile"
+  ],
+  "write_time": [
+   "summarize"
+  ],
+  "selection": [
+   "dense"
+  ],
+  "memory_type": [
+   "episodic",
+   "profile"
+  ],
+  "learning": "training-free",
+  "domain": [
+   "conversation"
+  ]
+ },
+ "stages": {
+  "ingestion": "Every user-AI exchange is appended verbatim to the user's log under today's date.",
+  "construction": "On request (at login in the demos) an LLM writes a daily event summary and a daily personality/emotion analysis for each unsummarised day, then a global event summary and a global personality portrait with a reply strategy.",
+  "organization": "Exchanges and daily summaries are embedded (MiniLM for English, Text2vec for Chinese) into a FAISS index, rebuilt whenever the user logs in.",
+  "update": "Paper: each memory has strength S (1 at first mention); recall adds 1 and resets elapsed time; memories fade by R = e^(-t/S). Code: when the optional path is enabled, each exchange is kept with probability e^(-t·S/5) at login and deleted otherwise.",
+  "retrieval": "The current user message is embedded and the top 2 pieces are retrieved (ChatGLM/BELLE demo default), grouped by date. The ChatGPT variant queries a LlamaIndex vector index over whole-day documents and gets an LLM-written answer back.",
+  "answer": "The meta prompt holds the retrieved memories and their dates, the global user portrait with the reply strategy, and the last 7 exchanges of the session.",
+  "learning": "No memory learning. Separately, the open-source SiliconFriend backbones (ChatGLM, BELLE) are LoRA-tuned on 38k psychological dialogues for empathy."
+ },
+ "summary": "Early long-term memory for LLM chat companions: a dated log of exchanges with LLM-written daily and global summaries and a user portrait, dense retrieval of past exchanges, and an Ebbinghaus-style forgetting rule where recalled memories get stronger.",
+ "verified": false,
+ "notes": "Venue verified via Crossref: Proceedings of the AAAI Conference on Artificial Intelligence 38(17):19724-19731, DOI 10.1609/aaai.v38i17.29946 (AAAI-24); the AAAI article page itself could not be fetched. Text read from arXiv v3 PDF (2023-05-21), which is 10 pages and has no appendix. The id matches the existing baseline entry in data/extra_systems.json.\nDESIGN: paper §2-§4; code at commit cf61c41 (ChatGLM/BELLE demo path unless stated). Forgetting is described in the paper but only reachable in code via --enable_forget_mechanism, which imports memory_retrieval.forget_memory_new, a module not in the repo; forget_memory.py holds the implementation.",
+ "mechanism": {
+  "sources": {
+   "paper": "arXiv 2305.10250v3 (PDF read 2026-09-30)",
+   "code": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/tree/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/",
+   "code_note": "Last commit on main (2023-05-24), three days after arXiv v3. It holds the SiliconFriend demos (ChatGLM/BELLE CLI and web app, ChatGPT CLI), the memory code and the evaluation memories and probing questions, but no script that produces Table 2 (scores were given by human annotators)."
+  },
+  "headline": [
+   "Memory is the verbatim log of exchanges plus LLM summaries; the reply model sees only 2 retrieved pieces, the user portrait and recent turns.",
+   "The global event summary is built but never enters the prompt in the released code: the templates have no slot for it.",
+   "The Ebbinghaus forgetting rule is off by default in the code, and where implemented a stronger memory decays faster (e^(-t·S/5)), the opposite of the paper."
+  ],
+  "units": [
+   {
+    "name": "Exchange",
+    "role": "one user message and the AI reply, stored under its date",
+    "made_by": "appended after every reply",
+    "fields": [
+     {
+      "name": "query + response",
+      "what": "raw turn pair, prefixed 'Conversation content on {date}:'",
+      "kept_as": "verbatim",
+      "used_for": [
+       "index",
+       "answer"
+      ],
+      "src": "code local_doc_qa.py L37-L46; memory_utils.py L72-L87",
+      "url": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/memory_bank/memory_retrieval/local_doc_qa.py#L37-L46"
+     },
+     {
+      "name": "memory_strength, last_recall_date",
+      "what": "forgetting state; +1 and date reset when recalled (forgetting path only)",
+      "kept_as": "derived",
+      "used_for": [],
+      "src": "code forget_memory.py L63-L71, L104-L123",
+      "url": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/memory_bank/memory_retrieval/forget_memory.py#L63-L71"
+     }
+    ]
+   },
+   {
+    "name": "Daily summary",
+    "role": "one day's events and the user's personality that day",
+    "made_by": "gpt-3.5-turbo",
+    "fields": [
+     {
+      "name": "event summary",
+      "what": "concise summary of the day's dialogue, split into points if several events",
+      "kept_as": "summarized",
+      "used_for": [
+       "index",
+       "answer"
+      ],
+      "src": "code summarize_memory.py L67-L77, L126-L137",
+      "url": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/memory_bank/summarize_memory.py#L67-L77"
+     },
+     {
+      "name": "personality",
+      "what": "user's traits, emotions and a reply strategy for that day",
+      "kept_as": "summarized",
+      "used_for": [
+       "profile"
+      ],
+      "src": "code summarize_memory.py L94-L105",
+      "url": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/memory_bank/summarize_memory.py#L94-L105"
+     }
+    ]
+   },
+   {
+    "name": "Global memory",
+    "role": "whole-history summaries",
+    "made_by": "gpt-3.5-turbo, from the daily summaries",
+    "fields": [
+     {
+      "name": "overall_history",
+      "what": "summary of all daily event summaries",
+      "kept_as": "summarized",
+      "used_for": [],
+      "src": "code summarize_memory.py L79-L85, L139-L141; not in any meta prompt (prompt_utils.py L13-L60)",
+      "url": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/utils/prompt_utils.py#L116-L133"
+     },
+     {
+      "name": "overall_personality",
+      "what": "global user portrait plus the best reply strategy",
+      "kept_as": "summarized",
+      "used_for": [
+       "answer",
+       "profile"
+      ],
+      "src": "code summarize_memory.py L87-L92, L140-L142; prompt_utils.py L123",
+      "url": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/memory_bank/summarize_memory.py#L87-L92"
+     }
+    ]
+   }
+  ],
+  "write": [
+   {
+    "step": "Log",
+    "how": "append each exchange to today's list in the user's JSON memory",
+    "src": "code memory_utils.py L72-L87",
+    "url": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/utils/memory_utils.py#L72-L87"
+   },
+   {
+    "step": "Summarise days",
+    "how": "for each day without one, an LLM writes an event summary and a personality analysis",
+    "params": {
+     "model": "gpt-3.5-turbo, temperature 0.7, max 400 tokens"
+    },
+    "src": "paper §2.1; code summarize_memory.py L56-L63, L109-L137",
+    "url": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/memory_bank/summarize_memory.py#L109-L137"
+   },
+   {
+    "step": "Summarise all",
+    "how": "an LLM condenses all daily summaries into a global summary, and all daily personalities into a global portrait with a reply strategy",
+    "src": "paper §2.1; code summarize_memory.py L139-L142",
+    "url": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/memory_bank/summarize_memory.py#L139-L142"
+   },
+   {
+    "step": "Index",
+    "how": "embed each exchange and each daily event summary; build FAISS at login",
+    "params": {
+     "embedding": "all-MiniLM-L6-v2 (en), text2vec-large-chinese (cn)"
+    },
+    "src": "paper §3; code local_doc_qa.py L17-L61; model_config.py L5-L21; memory_utils.py L13-L36",
+    "url": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/memory_bank/memory_retrieval/local_doc_qa.py#L17-L61"
+   },
+   {
+    "step": "Forget",
+    "how": "paper: S = 1 at first mention, recall -> S + 1 and t = 0, retention e^(-t/S); code (optional path): each exchange is kept with probability e^(-t·S/5) at load and otherwise deleted from the file; daily summaries are not decayed",
+    "note": "off by default; the switch imports a missing module",
+    "src": "paper §2.3; code forget_memory.py L20-L36, L83-L148; cli_demo.py L52-L55",
+    "url": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/memory_bank/memory_retrieval/forget_memory.py#L20-L36"
+   }
+  ],
+  "read": [
+   {
+    "step": "Search",
+    "round": 1,
+    "input": "the user message",
+    "scores": "each exchange and each daily event summary",
+    "how": "embedding similarity in FAISS",
+    "params": {
+     "k": "2 (memory_search_top_k default)"
+    },
+    "src": "paper §2.2; code local_doc_qa.py L263-L288; sys_args.py L5",
+    "url": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/memory_bank/memory_retrieval/local_doc_qa.py#L263-L288"
+   },
+   {
+    "step": "Expand and group",
+    "round": 1,
+    "how": "add neighbouring pieces of the same day while the total stays <= 200 characters; group hits by date and list the dates",
+    "params": {
+     "chunk": "200 characters"
+    },
+    "src": "code local_doc_qa.py L135-L178; model_config.py L51",
+    "url": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/memory_bank/memory_retrieval/local_doc_qa.py#L135-L178"
+   },
+   {
+    "step": "Prompt",
+    "round": 1,
+    "how": "fill the meta prompt with the memories, their dates, the global portrait and the last 7 exchanges; if the portrait, summary or memories are missing, a new-user prompt without memory is used",
+    "src": "code prompt_utils.py L101-L137",
+    "url": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/utils/prompt_utils.py#L101-L137"
+   }
+  ],
+  "answer_context": {
+   "sees": "2 retrieved memory pieces with dates, the global user portrait, the last 7 exchanges",
+   "format": "companion meta prompt: role and duties, 'the most relevant [memory] is: {related_memory_content} The date of this [memory] is {memo_dates}', 'refer to user {user_name}'s personality and the AI's response strategy: {personality}', then [|User|]/[|AI|] turns",
+   "excludes": [
+    "global event summary",
+    "daily personalities",
+    "other days' summaries"
+   ],
+   "includes": [
+    "retrieved exchanges verbatim or a daily event summary",
+    "global portrait written by gpt-3.5-turbo"
+   ],
+   "note": "ChatGPT variant: the system prompt holds an answer that LlamaIndex's LLM wrote from the retrieved whole-day documents, not the documents themselves.",
+   "src": "code prompt_utils.py L13-L24, L101-L137, L206-L242",
+   "url": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/utils/prompt_utils.py#L101-L137"
+  },
+  "compression": [
+   {
+    "what": "answer context vs the stored history",
+    "kept": null,
+    "of": null,
+    "unit": null,
+    "basis": "Not reported. The paper gives no token counts; the evaluation store has 10 days and 49 exchanges per user in the repo files.",
+    "src": "paper §4.2; eval_data/en/memory_bank_en.json",
+    "url": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/eval_data/en/memory_bank_en.json#L1"
+   }
+  ],
+  "paper_vs_code": [
+   {
+    "topic": "Forgetting",
+    "paper": "R = e^(-t/S); S grows with recall so recalled memories last longer",
+    "code": "math.exp(-t / 5*S) = e^(-t·S/5): larger S forgets faster; path is opt-in and its import target forget_memory_new is missing",
+    "src": "forget_memory.py L36; cli_demo.py L52-L55",
+    "url": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/memory_bank/memory_retrieval/forget_memory.py#L36"
+   },
+   {
+    "topic": "Prompt content",
+    "paper": "relevant memory, global user portrait and global event summary",
+    "code": "history_summary is computed but no template has a {history_summary} slot",
+    "src": "prompt_utils.py L116-L133",
+    "url": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/utils/prompt_utils.py#L116-L133"
+   },
+   {
+    "topic": "LoRA rank",
+    "paper": "r = 16, 3 epochs",
+    "code": "ChatGLM finetune.sh --lora_rank 8, max_steps 52000; BELLE lora_r 8",
+    "src": "train/ChatGLM/finetune.sh L3",
+    "url": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/SiliconFriend-ChatGLM-BELLE/train/ChatGLM/finetune.sh#L3"
+   },
+   {
+    "topic": "Probing questions",
+    "paper": "194 (97 English, 97 Chinese)",
+    "code": "100 English and 100 Chinese questions in eval_data",
+    "src": "eval_data/en/probing_questions_en.jsonl",
+    "url": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/eval_data/en/probing_questions_en.jsonl#L1"
+   }
+  ],
+  "open_questions": [
+   "No no-memory or plain-retrieval baseline is reported, so Table 2 cannot show what MemoryBank adds over the backbone alone or over simple RAG.",
+   "The ChatGPT variant retrieves with LlamaIndex over whole days while ChatGLM/BELLE use FAISS over single exchanges, so retrieval accuracy differences mix retriever and backbone."
+  ],
+  "figures": [
+   {
+    "id": "build",
+    "title": "Memory construction",
+    "viewBox": "0 0 560 250",
+    "body": "<text class=\"fig-t\" x=\"52\" y=\"16\" text-anchor=\"middle\">Chat log by day</text><text class=\"gi-lbl\" x=\"10\" y=\"32\" text-anchor=\"start\">04-28</text><rect class=\"gi-ev\" x=\"10\" y=\"38\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"18\" y1=\"47.0\" x2=\"68\" y2=\"47.0\"/><rect class=\"gi-ev\" x=\"26\" y=\"60\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"34\" y1=\"69.0\" x2=\"84\" y2=\"69.0\"/><rect class=\"gi-ev\" x=\"10\" y=\"82\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"18\" y1=\"91.0\" x2=\"68\" y2=\"91.0\"/><text class=\"gi-lbl\" x=\"10\" y=\"118\" text-anchor=\"start\">04-29</text><rect class=\"gi-ev\" x=\"10\" y=\"124\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"18\" y1=\"133.0\" x2=\"68\" y2=\"133.0\"/><rect class=\"gi-ev\" x=\"26\" y=\"146\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"34\" y1=\"155.0\" x2=\"84\" y2=\"155.0\"/><text class=\"fig-s\" x=\"52\" y=\"182\" text-anchor=\"middle\">every exchange saved</text><text class=\"fig-s\" x=\"52\" y=\"194\" text-anchor=\"middle\">verbatim, under its date</text><path class=\"gi-a\" d=\"M102.0 96.0 L133.0 96.0\"/><polygon class=\"gi-ah\" points=\"140.0,96.0 133.0,100.0 133.0,92.0\"/><rect class=\"gi-llm\" x=\"105\" y=\"74\" width=\"32\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"121\" y=\"84\" text-anchor=\"middle\">LLM</text><text class=\"fig-s\" x=\"121\" y=\"112\" text-anchor=\"middle\">per day</text><text class=\"fig-t\" x=\"200\" y=\"16\" text-anchor=\"middle\">Per day</text><rect class=\"gi-ev\" x=\"142\" y=\"30\" width=\"118\" height=\"40\" rx=\"6\"/><text class=\"fig-t\" x=\"150\" y=\"46\" text-anchor=\"start\">event summary</text><text class=\"fig-s\" x=\"150\" y=\"60\" text-anchor=\"start\">embedded, retrievable</text><rect class=\"gi-ev\" x=\"142\" y=\"80\" width=\"118\" height=\"40\" rx=\"6\"/><text class=\"fig-t\" x=\"150\" y=\"96\" text-anchor=\"start\">personality</text><text class=\"fig-s\" x=\"150\" y=\"110\" text-anchor=\"start\">traits, mood, strategy</text><rect class=\"gi-ev\" x=\"142\" y=\"130\" width=\"118\" height=\"40\" rx=\"6\"/><text class=\"fig-s\" x=\"150\" y=\"146\" text-anchor=\"start\">(next day) …</text><text class=\"fig-s\" x=\"150\" y=\"160\" text-anchor=\"start\">summary + personality</text><path class=\"gi-a\" d=\"M262.0 96.0 L293.0 96.0\"/><polygon class=\"gi-ah\" points=\"300.0,96.0 293.0,100.0 293.0,92.0\"/><rect class=\"gi-llm\" x=\"265\" y=\"74\" width=\"32\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"281\" y=\"84\" text-anchor=\"middle\">LLM</text><text class=\"fig-s\" x=\"281\" y=\"112\" text-anchor=\"middle\">all days</text><text class=\"fig-t\" x=\"364\" y=\"16\" text-anchor=\"middle\">Global</text><rect class=\"gi-ev d\" x=\"302\" y=\"30\" width=\"124\" height=\"40\" rx=\"6\"/><text class=\"fig-t\" x=\"310\" y=\"46\" text-anchor=\"start\">event summary</text><text class=\"fig-s\" x=\"310\" y=\"60\" text-anchor=\"start\">built, never in prompt</text><rect class=\"gi-hi\" x=\"302\" y=\"80\" width=\"124\" height=\"40\" rx=\"6\"/><text class=\"fig-t\" x=\"310\" y=\"96\" text-anchor=\"start\">user portrait</text><text class=\"fig-s\" x=\"310\" y=\"110\" text-anchor=\"start\">→ every prompt</text><text class=\"fig-s\" x=\"364\" y=\"140\" text-anchor=\"middle\">summaries run when the</text><text class=\"fig-s\" x=\"364\" y=\"152\" text-anchor=\"middle\">user asks, at login</text><text class=\"fig-t\" x=\"496\" y=\"16\" text-anchor=\"middle\">Vector index</text><rect class=\"gi-v\" x=\"462\" y=\"30\" width=\"68\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"462\" y=\"46\" width=\"68\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"462\" y=\"62\" width=\"68\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"462\" y=\"78\" width=\"68\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"462\" y=\"94\" width=\"68\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"462\" y=\"110\" width=\"68\" height=\"10\" rx=\"2\"/><text class=\"fig-s\" x=\"496\" y=\"138\" text-anchor=\"middle\">turns + daily summaries</text><text class=\"fig-s\" x=\"496\" y=\"150\" text-anchor=\"middle\">rebuilt at every login</text><rect class=\"gi-ev d\" x=\"8\" y=\"206\" width=\"548\" height=\"40\" rx=\"8\"/><text class=\"fig-s\" x=\"16\" y=\"222\" text-anchor=\"start\">Forgetting (paper): strength S = 1 when stored; keep with probability e^(−t/S); a recall sets S+1, t = 0</text><text class=\"fig-s\" x=\"16\" y=\"237\" text-anchor=\"start\">Code: off by default (its switch imports a file not in the repo); the formula there is e^(−t·S/5)</text>",
+    "text": [
+     "Every exchange is saved verbatim under its date; an LLM writes daily event and personality summaries, then a global summary and user portrait.",
+     "Exchanges and daily summaries are indexed for search; the forgetting curve exists in the paper but is off by default in the code."
+    ],
+    "src": "paper §2.1, §2.3; code summarize_memory.py L109-L147, forget_memory.py L20-L148",
+    "url": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/memory_bank/summarize_memory.py#L109-L147"
+   },
+   {
+    "id": "read",
+    "title": "Memory retrieval",
+    "viewBox": "0 0 560 228",
+    "body": "<rect class=\"gi-f\" x=\"4\" y=\"40\" width=\"62\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"35\" y=\"59\" text-anchor=\"middle\">User</text><text class=\"fig-s\" x=\"35\" y=\"72\" text-anchor=\"middle\">message</text><path class=\"gi-a\" d=\"M66.0 62.0 L71.0 62.0\"/><polygon class=\"gi-ah\" points=\"78.0,62.0 71.0,66.0 71.0,58.0\"/><rect class=\"gi-v fig-soft\" x=\"78\" y=\"40\" width=\"84\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"120\" y=\"59\" text-anchor=\"middle\">Embed</text><text class=\"fig-s\" x=\"120\" y=\"72\" text-anchor=\"middle\">MiniLM · Text2vec</text><path class=\"gi-a\" d=\"M162.0 62.0 L165.0 62.0\"/><polygon class=\"gi-ah\" points=\"172.0,62.0 165.0,66.0 165.0,58.0\"/><rect class=\"gi-f\" x=\"172\" y=\"40\" width=\"92\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"218\" y=\"59\" text-anchor=\"middle\">FAISS search</text><text class=\"fig-s\" x=\"218\" y=\"72\" text-anchor=\"middle\">turns + summaries</text><path class=\"gi-a\" d=\"M264.0 62.0 L267.0 62.0\"/><polygon class=\"gi-ah\" points=\"274.0,62.0 267.0,66.0 267.0,58.0\"/><rect class=\"gi-f\" x=\"274\" y=\"40\" width=\"62\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"305\" y=\"59\" text-anchor=\"middle\">top 2</text><text class=\"fig-s\" x=\"305\" y=\"72\" text-anchor=\"middle\">by date</text><text class=\"fig-s\" x=\"304\" y=\"100\" text-anchor=\"middle\">+ same-day</text><text class=\"fig-s\" x=\"304\" y=\"112\" text-anchor=\"middle\">neighbours</text><text class=\"fig-s\" x=\"304\" y=\"124\" text-anchor=\"middle\">≤ 200 chars</text><path class=\"gi-a\" d=\"M336.0 62.0 L341.0 62.0\"/><polygon class=\"gi-ah\" points=\"348.0,62.0 341.0,66.0 341.0,58.0\"/><rect class=\"gi-ev\" x=\"348\" y=\"12\" width=\"124\" height=\"170\" rx=\"8\"/><text class=\"fig-t\" x=\"410\" y=\"28\" text-anchor=\"middle\">Prompt</text><rect class=\"gi-hi\" x=\"356\" y=\"36\" width=\"108\" height=\"30\" rx=\"5\"/><text class=\"fig-s\" x=\"362\" y=\"49\" text-anchor=\"start\">[memory] 2 hits</text><text class=\"fig-s\" x=\"362\" y=\"60\" text-anchor=\"start\">+ their dates</text><rect class=\"gi-hi\" x=\"356\" y=\"72\" width=\"108\" height=\"30\" rx=\"5\"/><text class=\"fig-s\" x=\"362\" y=\"85\" text-anchor=\"start\">user portrait</text><text class=\"fig-s\" x=\"362\" y=\"96\" text-anchor=\"start\">+ reply strategy</text><rect class=\"gi-f\" x=\"356\" y=\"108\" width=\"108\" height=\"30\" rx=\"5\"/><text class=\"fig-s\" x=\"362\" y=\"121\" text-anchor=\"start\">last 7 exchanges</text><text class=\"fig-s\" x=\"362\" y=\"132\" text-anchor=\"start\">of this session</text><rect class=\"gi-ev d\" x=\"356\" y=\"144\" width=\"108\" height=\"30\" rx=\"5\"/><text class=\"fig-s\" x=\"362\" y=\"157\" text-anchor=\"start\">global events:</text><text class=\"fig-s\" x=\"362\" y=\"168\" text-anchor=\"start\">not inserted</text><path class=\"gi-a\" d=\"M472.0 62.0 L477.0 62.0\"/><polygon class=\"gi-ah\" points=\"484.0,62.0 477.0,66.0 477.0,58.0\"/><rect class=\"gi-llm\" x=\"484\" y=\"40\" width=\"72\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"520\" y=\"59\" text-anchor=\"middle\">Reply</text><text class=\"fig-s\" x=\"520\" y=\"72\" text-anchor=\"middle\">LoRA LLM</text><text class=\"fig-s\" x=\"4\" y=\"206\" text-anchor=\"start\">ChatGLM / BELLE path shown. The ChatGPT variant uses LlamaIndex over whole-day documents</text><text class=\"fig-s\" x=\"4\" y=\"219\" text-anchor=\"start\">and inserts an LLM-written answer to the question instead of the retrieved text.</text>",
+    "text": [
+     "The user's message is embedded and the 2 closest exchanges or daily summaries are fetched from FAISS and grouped by date.",
+     "The prompt adds the user portrait and recent turns; the global event summary is not inserted."
+    ],
+    "src": "code local_doc_qa.py L135-L288; prompt_utils.py L101-L137; sys_args.py L5-L9",
+    "url": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/utils/prompt_utils.py#L101-L137"
+   }
+  ],
+  "key_numbers": [
+   {
+    "label": "Evaluation memory",
+    "value": "15 simulated users, 10 days each",
+    "src": "paper §4.2",
+    "section": "construction"
+   },
+   {
+    "label": "Exchanges per user (repo files)",
+    "value": "49",
+    "src": "code eval_data/en/memory_bank_en.json",
+    "section": "construction"
+   },
+   {
+    "label": "Memories retrieved",
+    "value": "2 (demo default)",
+    "src": "code utils/sys_args.py L5",
+    "section": "method"
+   },
+   {
+    "label": "Expansion limit",
+    "value": "200 characters",
+    "src": "code model_config.py L51",
+    "section": "method"
+   },
+   {
+    "label": "Recent turns in prompt",
+    "value": "7",
+    "src": "code utils/sys_args.py L9",
+    "section": "method"
+   },
+   {
+    "label": "Initial strength S",
+    "value": "1, +1 per recall",
+    "src": "paper §2.3",
+    "section": "method"
+   },
+   {
+    "label": "Psychology tuning data",
+    "value": "38k dialogues, LoRA",
+    "src": "paper §3",
+    "section": "construction"
+   }
+  ],
+  "components": [
+   {
+    "role": "Summaries and portrait",
+    "model": "gpt-3.5-turbo",
+    "kind": "llm",
+    "src": "code summarize_memory.py L56-L63",
+    "url": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/memory_bank/summarize_memory.py#L56-L63"
+   },
+   {
+    "role": "Dense search (English)",
+    "model": "all-MiniLM-L6-v2 + FAISS",
+    "kind": "retriever",
+    "src": "paper §3; code model_config.py L12, L21",
+    "url": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/memory_bank/memory_retrieval/configs/model_config.py#L5-L21"
+   },
+   {
+    "role": "Dense search (Chinese)",
+    "model": "text2vec-large-chinese + FAISS",
+    "kind": "retriever",
+    "src": "paper §3; code model_config.py L9, L20",
+    "url": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/memory_bank/memory_retrieval/configs/model_config.py#L5-L21"
+   },
+   {
+    "role": "Retrieval (ChatGPT variant)",
+    "model": "LlamaIndex GPTSimpleVectorIndex with gpt-3.5-turbo answer synthesis",
+    "kind": "llm",
+    "src": "code build_memory_index.py L53-L67; prompt_utils.py L206-L242",
+    "url": "https://github.com/zhongwanjun/MemoryBank-SiliconFriend/blob/cf61c4196e4cfdb0f2b7a0316249fa40312dc3a9/memory_bank/build_memory_index.py#L53-L67"
+   },
+   {
+    "role": "Reply",
+    "model": "ChatGLM-6B or BELLE-7B (LoRA on psychology data), or ChatGPT",
+    "kind": "llm",
+    "src": "paper §3"
+   }
+  ],
+  "discussion": {
+   "takeaway": "An early, simple recipe for companion memory: keep the dated chat log, summarise days and the user's personality with an LLM, retrieve a few past exchanges by embedding, and decay unused memories. Its evaluation is a small human-scored probe of three SiliconFriend variants without baselines.",
+   "claims": [
+    {
+     "claim": "MemoryBank lets LLMs recall past interactions and adapt to the user's personality.",
+     "evidence": "Qualitative examples, Figs. 2-4, §4.1"
+    },
+    {
+     "claim": "It works with both open- and closed-source LLMs.",
+     "evidence": "Retrieval accuracy 0.763-0.856 for ChatGLM, BELLE and ChatGPT variants in English and Chinese. Table 2"
+    },
+    {
+     "claim": "The ChatGPT variant gives the best responses overall.",
+     "evidence": "English correctness 0.716, coherence 0.912, ranking 0.818 vs 0.438-0.479 correctness for ChatGLM/BELLE. Table 2"
+    },
+    {
+     "claim": "Psychology tuning gives more empathetic replies.",
+     "evidence": "Comparison with base ChatGLM on a real conversation. Fig. 2"
+    }
+   ],
+   "limits": [
+    "The memory updating model is exploratory and highly simplified; real forgetting depends on the person and the kind of information."
+   ],
+   "limits_src": "paper §2.3",
+   "reading": [
+    "The quantitative test has no baseline without memory or with plain retrieval, and only compares three variants of the paper's own system with human labels; the number of annotators is not stated.",
+    "The paper does not say whether the forgetting mechanism was on for the Table 2 runs; in the code it is off by default and cannot be switched on without a missing module.",
+    "Where forgetting is implemented, e^(-t·S/5) makes frequently recalled memories decay faster, the reverse of the paper's rule; daily summaries are never decayed.",
+    "The global event summary is computed but not placed in any prompt template.",
+    "ChatGLM/BELLE retrieve single exchanges from FAISS, while the ChatGPT variant retrieves whole-day documents through LlamaIndex and receives an LLM-written answer; its lower retrieval accuracy (0.763/0.711) comes from a different retriever, not only a different backbone.",
+    "The repository has 100 probing questions per language; the paper reports 97 per language."
+   ]
+  },
+  "abstract": {
+   "text": "MemoryBank adds long-term memory to LLM chatbots. It stores the dated conversation log, LLM-written daily and global event summaries, and an evolving portrait of the user's personality, and retrieves relevant past exchanges with a dense retriever. An update rule inspired by the Ebbinghaus forgetting curve lets memories fade with time and strengthen when recalled. The authors build SiliconFriend, a companion bot on ChatGPT, ChatGLM and BELLE (the latter two LoRA-tuned on psychological dialogues), and test memory recall with simulated 10-day conversations of 15 users and human-scored probing questions.",
+   "note": "Summary in our words; the original abstract is on arXiv.",
+   "url": "https://arxiv.org/abs/2305.10250"
+  },
+  "sections": {
+   "Memory architecture": "§2",
+   "Results": "§4.2",
+   "Ablation": "none",
+   "Discussion": "§4.1, §6",
+   "Details": "§3, Table 1"
+  }
+ }
+}

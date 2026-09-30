@@ -1,0 +1,906 @@
+{
+ "1806.11532": {
+  "venue": "IJCAI",
+  "venue_full": "Presented at the Computer Games Workshop at IJCAI 2018, Stockholm",
+  "year": 2018,
+  "track": "workshop",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/1806.11532"
+ },
+ "1912.01734": {
+  "venue": "CVPR",
+  "venue_full": "Computer Vision and Pattern Recognition (CVPR) 2020 ; https://askforalfred.com/",
+  "year": 2020,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/1912.01734"
+ },
+ "2010.03768": {
+  "venue": "ICLR",
+  "venue_full": "ICLR 2021; Data, code, and videos are available at alfworld.github.io",
+  "year": 2021,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2010.03768"
+ },
+ "2104.08164": {
+  "venue": "EMNLP",
+  "venue_full": "Accepted at EMNLP2021 Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing. Code at https://github.com/nicola-decao/KnowledgeEditor . 16 pages, 6 figures, 2 tables",
+  "year": 2021,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2104.08164"
+ },
+ "2207.01206": {
+  "venue": "NeurIPS",
+  "venue_full": "Project page with code, data, demos: https://webshop-pnlp.github.io. v3 is NeurIPS camera ready version. v4 fixes the choice oracle result as per https://github.com/princeton-nlp/WebShop/issues/15",
+  "year": 2022,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2207.01206"
+ },
+ "2207.07115": {
+  "venue": "ECCV",
+  "venue_full": "Accepted to ECCV 2022. Project page: https://hkchengrex.github.io/XMem",
+  "year": 2022,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2207.07115"
+ },
+ "2306.06070": {
+  "venue": "NeurIPS",
+  "venue_full": "Website: https://osu-nlp-group.github.io/Mind2Web. Updated with supplementary material. NeurIPS'23 Spotlight",
+  "year": 2023,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2306.06070"
+ },
+ "2306.07863": {
+  "venue": "ICLR",
+  "venue_full": "ICLR 2024. Project page: https://ltzheng.github.io/Synapse",
+  "year": 2024,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2306.07863"
+ },
+ "2307.06945": {
+  "venue": "ICLR",
+  "venue_full": "v4: Final camera ready for ICLR'24",
+  "year": 2024,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2307.06945"
+ },
+ "2308.03688": {
+  "venue": "ICLR",
+  "venue_full": "Published in ICLR 2024",
+  "year": 2024,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2308.03688"
+ },
+ "2308.10144": {
+  "venue": "AAAI",
+  "venue_full": "Accepted by the 38th Annual AAAI Conference on Artificial Intelligence (AAAI-24)",
+  "year": 2024,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2308.10144"
+ },
+ "2308.14508": {
+  "venue": "ACL",
+  "venue_full": "ACL 2024",
+  "year": 2024,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2308.14508"
+ },
+ "2309.06180": {
+  "venue": "SOSP",
+  "venue_full": "SOSP 2023",
+  "year": 2023,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2309.06180"
+ },
+ "2310.03052": {
+  "venue": "ICML",
+  "venue_full": "Proceedings of the 41st International Conference on Machine Learning, PMLR 235:39587-39615, 2024",
+  "year": 2024,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2310.03052"
+ },
+ "2401.13649": {
+  "venue": "ACL",
+  "venue_full": "Accepted to ACL 2024. 24 pages. Project page: https://jykoh.com/vwa",
+  "year": 2024,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2401.13649"
+ },
+ "2403.06041": {
+  "venue": "ICRA",
+  "venue_full": "IEEE International Conference on Robotics and Automation (ICRA 2024)",
+  "year": 2024,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2403.06041"
+ },
+ "2404.00573": {
+  "venue": "CHI",
+  "venue_full": "Accepted to CHI 2024 Late-Breaking Work",
+  "year": 2024,
+  "track": "workshop",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2404.00573"
+ },
+ "2404.03384": {
+  "venue": "ECCV",
+  "venue_full": "Accepted by ECCV 2024",
+  "year": 2024,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2404.03384"
+ },
+ "2404.05726": {
+  "venue": "CVPR",
+  "venue_full": "Accepted at CVPR 2024. Project Page https://boheumd.github.io/MA-LMM/",
+  "year": 2024,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2404.05726"
+ },
+ "2404.11672": {
+  "venue": "TMLR",
+  "venue_full": "Published in Transactions on Machine Learning Research (TMLR)",
+  "year": 2024,
+  "track": "journal",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2404.11672"
+ },
+ "2405.14768": {
+  "venue": "NeurIPS",
+  "venue_full": "NeurIPS 2024",
+  "year": 2024,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2405.14768"
+ },
+ "2405.14831": {
+  "venue": "NeurIPS",
+  "venue_full": "NeurIPS 2024. Code and data: https://github.com/OSU-NLP-Group/HippoRAG",
+  "year": 2024,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2405.14831"
+ },
+ "2405.16089": {
+  "venue": "CIKM",
+  "venue_full": "Accepted by CIKM 2024; GitHub: https://github.com/quchangle1/COLT",
+  "year": 2024,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2405.16089"
+ },
+ "2406.10996": {
+  "venue": "NAACL",
+  "venue_full": "Accepted to NAACL 2025",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2406.10996"
+ },
+ "2407.09450": {
+  "venue": "ICLR",
+  "venue_full": "Proc. International Conference on Learning Representations (ICLR), 2025",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2407.09450"
+ },
+ "2407.18901": {
+  "venue": "ACL",
+  "venue_full": "ACL'24 Camera Ready",
+  "year": 2024,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2407.18901"
+ },
+ "2408.03615": {
+  "venue": "NeurIPS",
+  "venue_full": "Accepted by NeurIPS 2024",
+  "year": 2024,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2408.03615"
+ },
+ "2409.19401": {
+  "venue": "EMNLP",
+  "venue_full": "This paper has been accepted by EMNLP 2024",
+  "year": 2024,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2409.19401"
+ },
+ "2410.02355": {
+  "venue": "ICLR",
+  "venue_full": "13th International Conference on Learning Representations (ICLR 2025 Oral)",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2410.02355"
+ },
+ "2410.03439": {
+  "venue": "ICLR",
+  "venue_full": "ICLR 2025",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2410.03439"
+ },
+ "2410.08197": {
+  "venue": "ICLR",
+  "venue_full": "ICLR 2025 Oral;GitHub:https://github.com/quchangle1/DRAFT",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2410.08197"
+ },
+ "2410.10813": {
+  "venue": "ICLR",
+  "venue_full": "ICLR 2025",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2410.10813"
+ },
+ "2411.12364": {
+  "venue": "ICLR",
+  "venue_full": "Published as a conference paper at ICLR 2025",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2411.12364"
+ },
+ "2411.13093": {
+  "venue": "NeurIPS",
+  "venue_full": "Accepted at NeurIPS 2025. Camera-ready version",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2411.13093"
+ },
+ "2412.18069": {
+  "venue": "ACL",
+  "venue_full": "ACL 2025 Camera Ready",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2412.18069"
+ },
+ "2501.05874": {
+  "venue": "ACL",
+  "venue_full": "ACL Findings 2025",
+  "year": 2025,
+  "track": "findings",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2501.05874"
+ },
+ "2502.01630": {
+  "venue": "ACL",
+  "venue_full": "Accepted at ACL 2025 Findings",
+  "year": 2025,
+  "track": "findings",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2502.01630"
+ },
+ "2502.03358": {
+  "venue": "ICML",
+  "venue_full": "ICML 2025",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2502.03358"
+ },
+ "2502.05167": {
+  "venue": "ICML",
+  "venue_full": "Accepted at ICML 2025",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2502.05167"
+ },
+ "2502.12110": {
+  "venue": "NeurIPS",
+  "venue_full": "Advances in Neural Information Processing Systems (NeurIPS 2025)",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2502.12110"
+ },
+ "2502.13172": {
+  "venue": "ACL",
+  "venue_full": "ACL 2025 (Main Conference)",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2502.13172"
+ },
+ "2502.14802": {
+  "venue": "ICML",
+  "venue_full": "ICML 2025. Code and data are available at: https://github.com/OSU-NLP-Group/HippoRAG",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2502.14802"
+ },
+ "2503.01763": {
+  "venue": "ACL",
+  "venue_full": "ACL 2025. Code: https://github.com/mangopy/tool-retrieval-benchmark",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2503.01763"
+ },
+ "2503.08026": {
+  "venue": "ACL",
+  "venue_full": "Accepted to ACL 2025",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2503.08026"
+ },
+ "2503.10049": {
+  "venue": "ICRA",
+  "venue_full": "Accepted by the 2025 IEEE International Conference on Robotics & Automation (ICRA 2025)",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2503.10049"
+ },
+ "2503.15299": {
+  "venue": "COLM",
+  "venue_full": "Accepted to COLM 2025",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2503.15299"
+ },
+ "2503.21322": {
+  "venue": "NeurIPS",
+  "venue_full": "NeurIPS 2025",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2503.21322"
+ },
+ "2504.10739": {
+  "venue": "CVPR",
+  "venue_full": "Accepted at CVPR 2026 Findings",
+  "year": 2026,
+  "track": "findings",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2504.10739"
+ },
+ "2504.14225": {
+  "venue": "COLM",
+  "venue_full": "The 2025 Conference on Language Modeling (COLM)",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2504.14225"
+ },
+ "2504.15485": {
+  "venue": "ICCV",
+  "venue_full": "ICCV 2025",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2504.15485"
+ },
+ "2505.16348": {
+  "venue": "ICLR",
+  "venue_full": "Accepted at ICLR 2026",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2505.16348"
+ },
+ "2506.06698": {
+  "venue": "ACL",
+  "venue_full": "Accepted to ACL 2025. 20 pages",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2506.06698"
+ },
+ "2506.21605": {
+  "venue": "ACL",
+  "venue_full": "17 pages, 5 figures. Accepted by ACL 2025 findings",
+  "year": 2025,
+  "track": "findings",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2506.21605"
+ },
+ "2507.02259": {
+  "venue": "ICLR",
+  "venue_full": "International Conference on Learning Representations (ICLR), 2026",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2507.02259"
+ },
+ "2507.04607": {
+  "venue": "EMNLP",
+  "venue_full": "EMNLP'25 Main",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2507.04607"
+ },
+ "2508.06433": {
+  "venue": "ACL",
+  "venue_full": "ACL 2026 Findings",
+  "year": 2026,
+  "track": "findings",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2508.06433"
+ },
+ "2508.10419": {
+  "venue": "AAAI",
+  "venue_full": "Accepted by AAAI 2026",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2508.10419"
+ },
+ "2508.15253": {
+  "venue": "EMNLP",
+  "venue_full": "Accepted to EMNLP 2025; 15 pages; 5 figures, 11 tables; Code available at https://github.com/eunseongc/CARE",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2508.15253"
+ },
+ "2508.19236": {
+  "venue": "ICLR",
+  "venue_full": "ICLR 2026 | The project is available at https://shihao1895.github.io/MemoryVLA",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2508.19236"
+ },
+ "2509.10852": {
+  "venue": "EMNLP",
+  "venue_full": "Accepted by EMNLP 2025 (Findings)",
+  "year": 2025,
+  "track": "findings",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2509.10852"
+ },
+ "2509.12760": {
+  "venue": "ACL",
+  "venue_full": "Accepted to Findings of the Association for Computational Linguistics: ACL 2026. 21 pages, 8 tables, 1 algorithm. arXiv admin note: substantial text overlap with arXiv:2502.20167",
+  "year": 2026,
+  "track": "findings",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2509.12760"
+ },
+ "2509.17459": {
+  "venue": "EMNLP",
+  "venue_full": "Findings of the Association for Computational Linguistics: EMNLP 2025, pages 21329-21368",
+  "year": 2025,
+  "track": "findings",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2509.17459"
+ },
+ "2509.22315": {
+  "venue": "AAAI",
+  "venue_full": "Proceedings of AAAI 2026",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2509.22315"
+ },
+ "2509.25140": {
+  "venue": "ICLR",
+  "venue_full": "Accepted to ICLR 2026; Code: https://github.com/google-research/reasoning-bank",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2509.25140"
+ },
+ "2510.00444": {
+  "venue": "ICLR",
+  "venue_full": "Accepted by ICLR 2026",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2510.00444"
+ },
+ "2510.00615": {
+  "venue": "ICML",
+  "venue_full": "ICML 2026",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2510.00615"
+ },
+ "2510.02375": {
+  "venue": "ICLR",
+  "venue_full": "ICLR 2026",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2510.02375"
+ },
+ "2510.04618": {
+  "venue": "ICLR",
+  "venue_full": "ICLR 2026; 32 pages",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2510.04618"
+ },
+ "2510.05520": {
+  "venue": "NeurIPS",
+  "venue_full": "Accepted by NeurIPS 2025",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2510.05520"
+ },
+ "2510.07713": {
+  "venue": "WWW",
+  "venue_full": "Accepted by The Web Conference 2026 (WWW'26) 12 pages, 8 figures",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2510.07713"
+ },
+ "2510.07915": {
+  "venue": "ICLR",
+  "venue_full": "Accepted at ICLR 2026",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2510.07915"
+ },
+ "2510.08558": {
+  "venue": "ICML",
+  "venue_full": "ICML 2026",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2510.08558"
+ },
+ "2510.12422": {
+  "venue": "NeurIPS",
+  "venue_full": "NeurIPS-2025 Accepted Paper",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2510.12422"
+ },
+ "2510.13614": {
+  "venue": "WWW",
+  "venue_full": "Accepted by The Web Conference 2026 (WWW, 2026)",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2510.13614"
+ },
+ "2510.16079": {
+  "venue": "ICML",
+  "venue_full": "Accepted by ICML 2026",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2510.16079"
+ },
+ "2510.16392": {
+  "venue": "ICML",
+  "venue_full": "Accepted to ICML 2026",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2510.16392"
+ },
+ "2510.16907": {
+  "venue": "NeurIPS",
+  "venue_full": "Accepted to NeurIPS 2025",
+  "year": 2025,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2510.16907"
+ },
+ "2510.18866": {
+  "venue": "ICLR",
+  "venue_full": "ICLR 2026",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2510.18866"
+ },
+ "2510.21618": {
+  "venue": "WWW",
+  "venue_full": "Accepted by WWW 2026",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2510.21618"
+ },
+ "2511.02805": {
+  "venue": "ACL",
+  "venue_full": "Accepted to ACL 2026",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2511.02805"
+ },
+ "2511.07327": {
+  "venue": "ICLR",
+  "venue_full": "Camera Ready version for ICLR 2026. https://github.com/Chen-GX/IterResearch",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2511.07327"
+ },
+ "2511.20785": {
+  "venue": "CVPR",
+  "venue_full": "CVPR 2026",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2511.20785"
+ },
+ "2512.02425": {
+  "venue": "CVPR",
+  "venue_full": "CVPR 2026. Project page : https://worldmm.github.io",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2512.02425"
+ },
+ "2512.04123": {
+  "venue": "ICML",
+  "venue_full": "Accepted to the 43rd International Conference on Machine Learning (ICML 2026) as Oral Presentation",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2512.04123"
+ },
+ "2512.10696": {
+  "venue": "ACL",
+  "venue_full": "20 pages, 10 figures, 15 tables, ACL'26-Findings",
+  "year": 2026,
+  "track": "findings",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2512.10696"
+ },
+ "2601.01885": {
+  "venue": "ACL",
+  "venue_full": "ACL'26 SAC Highlight. The code is available at https://github.com/y1y5/AgeMem",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2601.01885"
+ },
+ "2601.02845": {
+  "venue": "ACL",
+  "venue_full": "ACL 2026 Findings",
+  "year": 2026,
+  "track": "findings",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2601.02845"
+ },
+ "2601.03236": {
+  "venue": "ACL",
+  "venue_full": "ACL 2026 Main",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2601.03236"
+ },
+ "2601.04463": {
+  "venue": "EMNLP",
+  "venue_full": "Accepted in the Findings of EMNLP 2026",
+  "year": 2026,
+  "track": "findings",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2601.04463"
+ },
+ "2601.09113": {
+  "venue": "TMLR",
+  "venue_full": "Transactions on Machine Learning Research (11/2025)",
+  "year": 2025,
+  "track": "journal",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2601.09113"
+ },
+ "2601.14724": {
+  "venue": "ACL",
+  "venue_full": "Accepted to ACL 2026 Main",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2601.14724"
+ },
+ "2601.20650": {
+  "venue": "EMNLP",
+  "venue_full": "EMNLP 2026 Main Conference, Project Page: https://os-marathon.github.io/",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2601.20650"
+ },
+ "2602.01869": {
+  "venue": "ICML",
+  "venue_full": "Accepted at ICML 2026 (spotlight); 22 Pages, 6 Figures, 5 Tables",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2602.01869"
+ },
+ "2602.02465": {
+  "venue": "ICML",
+  "venue_full": "9 pages, 8 figures, Accepted at ICML 2026",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2602.02465"
+ },
+ "2602.06052": {
+  "venue": "TMLR",
+  "venue_full": "Accepted at Transactions on Machine Learning Research (TMLR) with Survey Certification. Project page: https://github.com/AgentMemoryWorld/Awesome-Agent-Memory",
+  "year": 2026,
+  "track": "journal",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2602.06052"
+ },
+ "2602.06075": {
+  "venue": "ACM MM",
+  "venue_full": "Accepted to ACM MM 2026. Project page: https://memgui-bench.github.io/",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2602.06075"
+ },
+ "2602.13530": {
+  "venue": "ICLR",
+  "venue_full": "Accepted by The Fourteenth International Conference on Learning Representations (ICLR 2026) as poster",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2602.13530"
+ },
+ "2602.16313": {
+  "venue": "ICML",
+  "venue_full": "ICML 2026",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2602.16313"
+ },
+ "2603.00903": {
+  "venue": "ICLR",
+  "venue_full": "Published in ICLR 2026",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2603.00903"
+ },
+ "2603.01966": {
+  "venue": "ICLR",
+  "venue_full": "Accepted to ICLR 2026",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2603.01966"
+ },
+ "2603.02096": {
+  "venue": "CVPR",
+  "venue_full": "Accepted at CVPR 2026. Project page: https://yiwengxie.com/FluxMem/",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2603.02096"
+ },
+ "2603.09250": {
+  "venue": "ICLR",
+  "venue_full": "Accepted by ICLR 2026",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2603.09250"
+ },
+ "2603.13875": {
+  "venue": "ICML",
+  "venue_full": "International Conference on Machine Learning (ICML) 2026",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2603.13875"
+ },
+ "2604.08256": {
+  "venue": "ACL",
+  "venue_full": "ACL 2026 Main",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2604.08256"
+ },
+ "2604.13074": {
+  "venue": "CVPR",
+  "venue_full": "Accepted by CVPR 2026. Project page: https://PersonaVLM.github.io",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2604.13074"
+ },
+ "2604.18349": {
+  "venue": "ACL",
+  "venue_full": "Accepted to Findings of the Association for Computational Linguistics: ACL 2026. Camera-ready version. 10 pages, 2 figures. Code: https://github.com/ZeroLoss-Lab/HiGMem",
+  "year": 2026,
+  "track": "findings",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2604.18349"
+ },
+ "2604.21748": {
+  "venue": "ACL",
+  "venue_full": "Accepted by ACL 2026 main conference",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2604.21748"
+ },
+ "2604.23626": {
+  "venue": "ICLR",
+  "venue_full": "ICLR 2026",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2604.23626"
+ },
+ "2605.06716": {
+  "venue": "ACL",
+  "venue_full": "Accepted by ACL 2026 Findings",
+  "year": 2026,
+  "track": "findings",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2605.06716"
+ },
+ "2605.16045": {
+  "venue": "ACL",
+  "venue_full": "Accepted to ACL 2026 Findings",
+  "year": 2026,
+  "track": "findings",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2605.16045"
+ },
+ "2605.16883": {
+  "venue": "ICML",
+  "venue_full": "Accepted by ICML 2026",
+  "year": 2026,
+  "track": "main",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2605.16883"
+ },
+ "2606.14571": {
+  "venue": "EMNLP",
+  "venue_full": "Accepted to Findings of EMNLP 2026",
+  "year": 2026,
+  "track": "findings",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2606.14571"
+ },
+ "2606.17016": {
+  "venue": "EMNLP",
+  "venue_full": "EMNLP 2026 Findings",
+  "year": 2026,
+  "track": "findings",
+  "source": "arXiv comment",
+  "url": "https://arxiv.org/abs/2606.17016"
+ }
+}

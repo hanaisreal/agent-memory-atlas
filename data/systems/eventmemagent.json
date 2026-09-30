@@ -1,0 +1,720 @@
+{
+  "id": "eventmemagent",
+  "name": "EventMemAgent",
+  "paper": {
+    "title": "EventMemAgent: Hierarchical Event-Centric Memory for Online Video Understanding with Adaptive Tool Use",
+    "arxiv": "2602.15329",
+    "url": "https://arxiv.org/abs/2602.15329",
+    "venue": "arXiv 2026",
+    "venue_short": "arXiv",
+    "track": "preprint",
+    "year": 2026,
+    "code": "https://github.com/lingcco/EventMemAgent"
+  },
+  "design": {
+    "construction": {
+      "unit": "video event: frames in short-term memory; first frame + caption + embedding + change log in long-term memory",
+      "kept_as": "raw frames (STM, reservoir-sampled) and an MLLM caption of each archived event",
+      "processing": "1 fps frames; cut an event when the gray-histogram correlation with the event falls below 0.2 (after 8 frames); on eviction a 4B VLM captions the event and describes the change from the previous event",
+      "trigger": "buffer-full",
+      "writer": "Qwen3-VL-4B-Instruct (frozen captioner); Qwen3-Embedding-0.6B"
+    },
+    "organization": {
+      "structure": "two tiers: short-term buffer of up to 32 frames grouped into events; long-term list of event records linked by change logs",
+      "stores": "STM frame buffer; LTM event list",
+      "index": "Qwen3-Embedding-0.6B vectors of captions; event time ranges"
+    },
+    "management": {
+      "operations": "FIFO: when STM exceeds 32 frames the oldest event moves to LTM; a single event filling STM is thinned by reservoir sampling",
+      "conflicts": null,
+      "forgetting": "reservoir sampling drops frames of a long event before captioning; LTM keeps every archived event",
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "agent-written text query or time range, via tool calls",
+      "candidates": "cosine similarity of query to caption embeddings (text mode) or overlap with a time range (time mode)",
+      "selection": "top 3 events, similarity ≥ 0.3 (text mode); agent decides whether and how often to search",
+      "budget": "3 events per search; up to 10 agent turns in the evaluation scripts"
+    },
+    "use": {
+      "context": "all STM frames (≤ 32, labelled with frame number and time) + returned event captions, change logs and first frames + OCR/detection outputs",
+      "reasoning": "ReAct loop of the RL-trained agent; answer in \\boxed{}"
+    },
+    "control": {
+      "construction": "fixed-rule",
+      "management": "fixed-rule",
+      "retrieval": "learned-rl"
+    }
+  },
+  "classify": {
+    "structure": "tiers",
+    "index": "vector",
+    "management": "evict",
+    "candidates": "agent searches",
+    "decides": "top-k rule",
+    "note": "The agent chooses when and what to search, but each search returns a fixed top 3 by similarity (or time overlap)."
+  },
+  "tags": {
+    "fidelity": "verbatim+derived",
+    "structure": [
+      "tiered"
+    ],
+    "write_time": [
+      "segment",
+      "filter",
+      "summarize"
+    ],
+    "selection": [
+      "dense",
+      "llm-tool-call"
+    ],
+    "memory_type": [
+      "episodic",
+      "working"
+    ],
+    "learning": "rl",
+    "domain": [
+      "multimodal"
+    ]
+  },
+  "stages": {
+    "ingestion": "The stream is sampled at 1 fps; each frame is compared with the current event by the Pearson correlation of gray-level histograms and starts a new event when it falls below 0.2, once the event has at least 8 frames.",
+    "construction": "When an event leaves short-term memory, Qwen3-VL-4B writes a one-paragraph caption from up to 32 of its frames, the caption is embedded with Qwen3-Embedding-0.6B, and a change log sentence is generated from the first frames of this and the previous event.",
+    "organization": "Short-term memory holds at most 32 frames grouped into events and is shown to the agent in full; long-term memory is an ordered list of event records (first frame, time range, caption, embedding, change from previous / to next).",
+    "update": "When the buffer is full the oldest event moves to long-term memory (FIFO); if one event alone fills it, new frames replace random ones with probability 32/n (reservoir sampling).",
+    "retrieval": "The agent calls search_memory with a text query (cosine to caption embeddings, top 3 with similarity ≥ 0.3) or a time range (top 3 by overlap); it can also run OCR or object detection on an event's first frame or an STM frame.",
+    "answer": "Qwen3-VL-8B reasons over the STM frames and tool observations in a ReAct loop and answers in \\boxed{}.",
+    "learning": "The agent's reasoning and tool use are trained end to end with GRPO (group size 8, KL 0) on 10K MovieChat samples with a 0/1 answer-correctness reward; memory construction is not trained."
+  },
+  "summary": "Online video agent whose memory has two tiers: a 32-frame buffer segmented into events by histogram change (with reservoir sampling), and a long-term list of captioned events with change logs that an RL-trained MLLM agent searches and inspects with OCR and detection tools.",
+  "verified": false,
+  "notes": "Video memory, not dialogue: the 'turns' are 1 fps frames. Paper v2 (11 Sep 2026) read from the arXiv PDF; LNCS-style template, no venue stated, so recorded as a preprint. Code checked at commit 203e635b (8 Sep 2026), the release of training, inference and evaluation code. Benchmark scoring: OVO-Bench overall = mean of the three category averages (e.g. (68.29+58.03+55.92)/3 = 60.75); StreamingBench ALL is weighted accuracy per docs/EVALUATION.md.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2602.15329v2 (PDF read 2026-09-30)",
+      "code": "https://github.com/lingcco/EventMemAgent/tree/203e635b4663734716cd509fd47f9131933f3a37/",
+      "code_note": "Commit 203e635b (8 Sep 2026) follows 'Release EventMemAgent training, inference and evaluation code' (dec1461a) three days before paper v2. Benchmark runs read memory prebuilt by eventmemagent/memory/preprocess.py (parquet); the online builder (memory/builder.py) repeats the logic with a shorter caption prompt."
+    },
+    "headline": [
+      "Only captions are searchable: the query embedding is compared with the caption embedding; change logs and frames are returned with a hit but not matched.",
+      "The agent always sees the whole short-term buffer (≤ 32 frames); long-term memory is reached only through its own tool calls.",
+      "Each archived event is described from at most 32 frames that survived reservoir sampling, however long it lasted."
+    ],
+    "units": [
+      {
+        "name": "Short-term memory",
+        "role": "recent frames, grouped into events, in the agent's context",
+        "made_by": "histogram rule + FIFO / reservoir sampling",
+        "fields": [
+          {
+            "name": "frames",
+            "what": "up to 32 frames at 1 fps, padded to 420×360, stamped 'Frame i | t s'",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code preprocess.py L676-L698",
+            "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/memory/preprocess.py#L676-L698"
+          }
+        ]
+      },
+      {
+        "name": "Long-term event",
+        "role": "one archived event",
+        "made_by": "Qwen3-VL-4B captioner + Qwen3-Embedding-0.6B",
+        "fields": [
+          {
+            "name": "caption",
+            "what": "one paragraph from up to 32 frames sampled evenly from the event's surviving frames",
+            "kept_as": "summarized",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code preprocess.py L229-L294",
+            "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/memory/preprocess.py#L229-L294"
+          },
+          {
+            "name": "embedding",
+            "what": "normalised embedding of the caption",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code preprocess.py L296-L311, L716-L730",
+            "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/memory/preprocess.py#L296-L311"
+          },
+          {
+            "name": "first frame",
+            "what": "the event's first frame, returned as an image with search hits and used for OCR/detection",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code tools.py L233-L240, L252-L271",
+            "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/agent/tools.py#L233-L271"
+          },
+          {
+            "name": "time range",
+            "what": "start and end timestamps",
+            "kept_as": "derived",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "code tools.py L158-L174",
+            "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/agent/tools.py#L158-L174"
+          },
+          {
+            "name": "change log",
+            "what": "one sentence comparing this event's first frame with the previous event's first frame, stored as change_from_previous here and change_to_next there",
+            "kept_as": "summarized",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code preprocess.py L374-L437, L562-L592",
+            "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/memory/preprocess.py#L374-L437"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Sample",
+        "how": "decode the video at 1 fps",
+        "params": {
+          "fps": "1"
+        },
+        "src": "paper §3.2, §4.1; code preprocess.py L534",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/memory/preprocess.py#L534"
+      },
+      {
+        "step": "Cut events",
+        "how": "Pearson correlation between the gray histogram of the new frame and of the event's mean frame; a boundary when it is below δ, only once the event has 8 frames",
+        "params": {
+          "δ": "0.2",
+          "min event": "8 frames"
+        },
+        "src": "paper §3.2, App. B; code preprocess.py L206-L227, L618-L626",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/memory/preprocess.py#L618-L626"
+      },
+      {
+        "step": "Evict (FIFO)",
+        "how": "when STM exceeds 32 frames and holds more than one event, the oldest event is archived to LTM",
+        "params": {
+          "K": "32 frames"
+        },
+        "src": "paper §3.2, Alg. 1; code preprocess.py L638-L647",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/memory/preprocess.py#L638-L647"
+      },
+      {
+        "step": "Reservoir sample",
+        "how": "if the current event alone fills STM, the n-th frame replaces a random one with probability 32/n",
+        "src": "paper §3.2, Alg. 1; code preprocess.py L649-L663",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/memory/preprocess.py#L649-L663"
+      },
+      {
+        "step": "Caption and embed",
+        "how": "Qwen3-VL-4B-Instruct captions the evicted event from up to 32 evenly spaced frames (temperature 0.7); Qwen3-Embedding-0.6B embeds the caption",
+        "src": "paper App. B, D.2; code preprocess.py L229-L311",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/memory/preprocess.py#L229-L311"
+      },
+      {
+        "step": "Change log",
+        "how": "the same VLM gets the first frames of the previous and the new event and writes one sentence on what changed",
+        "src": "paper §3.2; code preprocess.py L374-L437, L562-L592",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/memory/preprocess.py#L562-L592"
+      }
+    ],
+    "read": [
+      {
+        "step": "Context",
+        "round": 1,
+        "input": "question at time t",
+        "how": "the prompt holds all STM frames, the question and only the number of LTM events",
+        "src": "code video_agent.py L324-L351",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/agent/video_agent.py#L324-L351"
+      },
+      {
+        "step": "Agent turn",
+        "round": 1,
+        "how": "the RL-trained Qwen3-VL-8B writes a thought and either a tool call or a \\boxed{} answer",
+        "params": {
+          "turns": "≤ 10 (eval scripts)",
+          "temperature": "0"
+        },
+        "src": "paper §3.4; code video_agent.py L481-L598; scripts/eval/ovobench.sh L47-L49",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/agent/video_agent.py#L481-L598"
+      },
+      {
+        "step": "search_memory (text)",
+        "round": 1,
+        "input": "agent-written query",
+        "scores": "caption embeddings",
+        "how": "cosine similarity; keep events at or above the threshold, best first",
+        "params": {
+          "top_k": "3",
+          "threshold": "0.3"
+        },
+        "out": "event id, time range, caption, change logs and first frame per hit",
+        "src": "paper §3.3, App. B; code tools.py L177-L249; configs/tools.yaml L9-L10",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/agent/tools.py#L177-L249"
+      },
+      {
+        "step": "search_memory (time)",
+        "round": 1,
+        "input": "start and end time",
+        "how": "events overlapping the range, ranked by overlap",
+        "params": {
+          "top_k": "3"
+        },
+        "src": "paper §3.3; code tools.py L158-L174",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/agent/tools.py#L158-L174"
+      },
+      {
+        "step": "OCR / detect",
+        "round": 1,
+        "how": "DeepSeek-OCR or Grounding DINO on one LTM first frame (by event id) or one STM frame",
+        "params": {
+          "box threshold": "0.4",
+          "text threshold": "0.3"
+        },
+        "src": "paper §3.3; code tools.py L290-L396",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/agent/tools.py#L290-L396"
+      }
+    ],
+    "answer_context": {
+      "sees": "≤ 32 STM frames + every tool observation so far",
+      "format": "\"We have N events in the long-term memory.\\nRecent Video (n frames) in the short-term memory:\" <frames> \"Question: ...\"; search hits as \"Event i [a s - b s]: Caption / Change from previous / Change to next\" with the first frame as an image",
+      "excludes": [
+        "LTM captions not returned by a search",
+        "reservoir-dropped frames",
+        "embeddings"
+      ],
+      "includes": [
+        "all STM frames with frame number and timestamp",
+        "up to 3 events per search call"
+      ],
+      "src": "code video_agent.py L324-L351; tools.py L221-L249",
+      "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/agent/video_agent.py#L324-L351"
+    },
+    "compression": [
+      {
+        "what": "visual frames in context vs frames sampled from the video",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported as a ratio. The buffer is capped at 32 frames at 1 fps (≤ 32 of the frames before t); captions of older events enter only through search.",
+        "src": "paper §4.1",
+        "url": "https://arxiv.org/pdf/2602.15329"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "OVO-Bench overall",
+        "value": "60.75",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "StreamingBench (real-time) overall",
+        "value": "77.00",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "Fixed 30 s segments instead of event memory",
+        "value": "58.27 / 75.09",
+        "src": "paper Table 3"
+      },
+      {
+        "label": "Untrained agent (no RL)",
+        "value": "56.16 / 68.44",
+        "src": "paper Table 6"
+      },
+      {
+        "label": "Base Qwen3-VL-8B, 64 frames, no memory or tools",
+        "value": "55.81 / 70.20",
+        "src": "paper Tables 1, 2, 6"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Boundary test",
+        "paper": "new frame's histogram vs the average histogram of the event's frames",
+        "code": "histogram of the pixel-wise mean frame of the event vs the new frame's histogram",
+        "src": "preprocess.py L618-L626",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/memory/preprocess.py#L618-L626"
+      },
+      {
+        "topic": "Change log input",
+        "paper": "records state transitions and logical shifts between consecutive events",
+        "code": "generated from the two events' first frames only",
+        "src": "preprocess.py L562-L592",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/memory/preprocess.py#L562-L592"
+      },
+      {
+        "topic": "Time-range search",
+        "paper": "returns events whose time spans intersect the range",
+        "code": "returns only the 3 with the largest overlap",
+        "src": "tools.py L158-L174",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/agent/tools.py#L158-L174"
+      },
+      {
+        "topic": "Online builder",
+        "paper": "caption prompt of App. D.2",
+        "code": "the benchmark parquet uses that prompt (preprocess.py); the online builder uses a shorter prompt without the detail and anti-hallucination lines",
+        "src": "builder.py L241-L262",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/memory/builder.py#L241-L262"
+      }
+    ],
+    "open_questions": [
+      "The fixed-length ablation (30 s segments) changes STM buffering and LTM units at once, so event segmentation and reservoir sampling are not separated.",
+      "No ablation removes long-term memory or the search tool, and StreamingBench (the paper notes) depends mostly on current frames, so the share of the gain due to memory is not measured.",
+      "The RL, tools and memory are added together: the untrained agent (56.16) is barely above the base model (55.81) on OVO-Bench overall, and the jump to 60.75 comes with training."
+    ],
+    "glance": [
+      {
+        "q": "What is one memory item?",
+        "a": "An event: a run of 1 fps frames with a similar gray histogram. In short-term memory it is the frames themselves; in long-term memory it is the first frame, time range, a VLM caption with its embedding, and a change log.",
+        "src": "paper §3.2",
+        "url": "https://arxiv.org/pdf/2602.15329"
+      },
+      {
+        "q": "Is the video summarised?",
+        "a": "Yes, when an event leaves the 32-frame buffer: a 4B VLM writes one paragraph from up to 32 of its frames. Other frames are discarded.",
+        "src": "code preprocess.py L229-L294, L562-L592",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/memory/preprocess.py#L229-L294"
+      },
+      {
+        "q": "How is memory organised?",
+        "a": "Two tiers: a 32-frame buffer grouped into events (FIFO, reservoir sampling within a single long event) and an ordered list of archived events linked by change logs.",
+        "src": "paper §3.2, Alg. 1",
+        "url": "https://arxiv.org/pdf/2602.15329"
+      },
+      {
+        "q": "Is there reranking?",
+        "a": "No. A text search keeps the top 3 captions by cosine similarity (≥ 0.3); a time search keeps the top 3 by overlap.",
+        "src": "code tools.py L158-L205",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/agent/tools.py#L158-L205"
+      },
+      {
+        "q": "Is memory reconstructed at question time?",
+        "a": "The agent can search again, change the query, or run OCR and detection on stored frames, for up to 10 turns; the policy is trained with GRPO.",
+        "src": "paper §3.4; code configs/train.yaml L57-L60",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/configs/train.yaml#L57-L60"
+      },
+      {
+        "q": "What does the model read?",
+        "a": "Always the ≤ 32 recent frames; plus whatever its searches return (caption, change logs, first frame per event) and tool outputs.",
+        "src": "code video_agent.py L324-L351; tools.py L221-L249",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/agent/video_agent.py#L324-L351"
+      }
+    ],
+    "funnel": [
+      {
+        "round": 1,
+        "steps": [
+          {
+            "n": "all",
+            "what": "archived events (e.g. 12-36 in the paper's examples)"
+          },
+          {
+            "n": "≥ 0.3",
+            "what": "caption similarity to the agent's query"
+          },
+          {
+            "n": "3",
+            "what": "events returned per search"
+          }
+        ],
+        "src": "paper App. B, Fig. 7-11; code tools.py L177-L205",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/agent/tools.py#L177-L205"
+      }
+    ],
+    "flow": [
+      {
+        "n": 1,
+        "round": 1,
+        "title": "Read the buffer",
+        "actor": "llm",
+        "method": "multimodal generation",
+        "model": "Qwen3-VL-8B-Instruct, GRPO-trained",
+        "in": "question, ≤ 32 STM frames, LTM event count",
+        "out": "thought + tool call or answer",
+        "sees": "Every STM frame, stamped with frame number and time; only the count of LTM events.",
+        "params": {
+          "temperature": "0"
+        },
+        "src": "video_agent.py L324-L351",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/agent/video_agent.py#L324-L351",
+        "short": "Read buffer",
+        "count": "≤ 32 frames"
+      },
+      {
+        "n": 2,
+        "round": 1,
+        "title": "Search long-term memory",
+        "actor": "retriever",
+        "method": "bi-encoder cosine (text) or time overlap",
+        "model": "Qwen3-Embedding-0.6B",
+        "in": "agent query or time range",
+        "out": "≤ 3 events",
+        "sees": "Query vs caption embeddings only; change logs are not matched.",
+        "params": {
+          "top_k": "3",
+          "threshold": "0.3"
+        },
+        "src": "tools.py L146-L249",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/agent/tools.py#L146-L249",
+        "short": "Search LTM",
+        "count": "all → 3"
+      },
+      {
+        "n": 3,
+        "round": 1,
+        "title": "Inspect a frame",
+        "actor": "rule",
+        "method": "OCR or open-set detection service",
+        "model": "DeepSeek-OCR; Grounding DINO",
+        "in": "event id or STM frame index",
+        "out": "text or boxes",
+        "sees": "One image: an event's first frame or one STM frame.",
+        "params": {},
+        "src": "tools.py L290-L396",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/agent/tools.py#L290-L396",
+        "short": "OCR / detect",
+        "count": "1 image"
+      },
+      {
+        "n": 4,
+        "round": 0,
+        "title": "Answer",
+        "actor": "llm",
+        "method": "same agent, final turn",
+        "model": "Qwen3-VL-8B-Instruct, GRPO-trained",
+        "in": "frames + observations",
+        "out": "\\boxed{} answer",
+        "sees": "The whole trajectory so far, including returned first-frame images.",
+        "params": {
+          "turns": "≤ 10"
+        },
+        "src": "video_agent.py L481-L598",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/agent/video_agent.py#L481-L598",
+        "short": "Answer",
+        "count": "→ answer"
+      }
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 240",
+        "body": "<text class=\"fig-t\" x=\"56\" y=\"16\" text-anchor=\"middle\">Video, 1 fps</text><rect class=\"gi-ev\" x=\"30\" y=\"26\" width=\"44\" height=\"14\" rx=\"3\"/><rect class=\"gi-ev\" x=\"30\" y=\"44\" width=\"44\" height=\"14\" rx=\"3\"/><rect class=\"gi-ev\" x=\"30\" y=\"62\" width=\"44\" height=\"14\" rx=\"3\"/><rect class=\"gi-ev\" x=\"30\" y=\"88\" width=\"44\" height=\"14\" rx=\"3\"/><rect class=\"gi-ev\" x=\"30\" y=\"106\" width=\"44\" height=\"14\" rx=\"3\"/><rect class=\"gi-ev\" x=\"30\" y=\"132\" width=\"44\" height=\"14\" rx=\"3\"/><rect class=\"gi-ev\" x=\"30\" y=\"150\" width=\"44\" height=\"14\" rx=\"3\"/><rect class=\"gi-ev\" x=\"30\" y=\"168\" width=\"44\" height=\"14\" rx=\"3\"/><line class=\"gi-e d\" x1=\"18\" y1=\"81\" x2=\"88\" y2=\"81\"/><line class=\"gi-e d\" x1=\"18\" y1=\"125\" x2=\"88\" y2=\"125\"/><text class=\"fig-s\" x=\"80\" y=\"78\" text-anchor=\"start\">ρ &lt; 0.2</text><text class=\"fig-s\" x=\"80\" y=\"122\" text-anchor=\"start\">ρ &lt; 0.2</text><text class=\"fig-s\" x=\"56\" y=\"200\" text-anchor=\"middle\">cut when gray-histogram</text><text class=\"fig-s\" x=\"56\" y=\"213\" text-anchor=\"middle\">corr. with the event</text><text class=\"fig-s\" x=\"56\" y=\"226\" text-anchor=\"middle\">&lt; 0.2, after ≥ 8 frames</text><path class=\"gi-a\" d=\"M112 100 L131 100\"/><polygon class=\"gi-ah\" points=\"138,100 131,96 131,104\"/><text class=\"fig-t\" x=\"218\" y=\"16\" text-anchor=\"middle\">Short-term memory</text><rect class=\"gi-f\" x=\"140\" y=\"26\" width=\"156\" height=\"150\" rx=\"10\"/><rect class=\"gi-ev\" x=\"148\" y=\"36\" width=\"140\" height=\"30\" rx=\"6\"/><text class=\"fig-s\" x=\"156\" y=\"55\" text-anchor=\"start\">E1 (oldest)</text><rect class=\"gi-r\" x=\"272\" y=\"45\" width=\"12\" height=\"12\" rx=\"2\"/><rect class=\"gi-r\" x=\"256\" y=\"45\" width=\"12\" height=\"12\" rx=\"2\"/><rect class=\"gi-r\" x=\"240\" y=\"45\" width=\"12\" height=\"12\" rx=\"2\"/><rect class=\"gi-ev\" x=\"148\" y=\"74\" width=\"140\" height=\"30\" rx=\"6\"/><text class=\"fig-s\" x=\"156\" y=\"93\" text-anchor=\"start\">E2</text><rect class=\"gi-r\" x=\"272\" y=\"83\" width=\"12\" height=\"12\" rx=\"2\"/><rect class=\"gi-r\" x=\"256\" y=\"83\" width=\"12\" height=\"12\" rx=\"2\"/><rect class=\"gi-ev\" x=\"148\" y=\"112\" width=\"140\" height=\"30\" rx=\"6\"/><text class=\"fig-s\" x=\"156\" y=\"131\" text-anchor=\"start\">current event</text><rect class=\"gi-r\" x=\"272\" y=\"121\" width=\"12\" height=\"12\" rx=\"2\"/><rect class=\"gi-r\" x=\"256\" y=\"121\" width=\"12\" height=\"12\" rx=\"2\"/><rect class=\"gi-r\" x=\"240\" y=\"121\" width=\"12\" height=\"12\" rx=\"2\"/><rect class=\"gi-r\" x=\"224\" y=\"121\" width=\"12\" height=\"12\" rx=\"2\"/><text class=\"fig-s\" x=\"218\" y=\"158\" text-anchor=\"middle\">≤ 32 frames in all,</text><text class=\"fig-s\" x=\"218\" y=\"170\" text-anchor=\"middle\">all seen by the agent</text><text class=\"fig-s\" x=\"218\" y=\"196\" text-anchor=\"middle\">one event alone at 32:</text><text class=\"fig-s\" x=\"218\" y=\"209\" text-anchor=\"middle\">keep frame n with p = 32/n</text><text class=\"fig-s\" x=\"218\" y=\"222\" text-anchor=\"middle\">(reservoir sampling)</text><path class=\"gi-a\" d=\"M296 51 L321 51\"/><polygon class=\"gi-ah\" points=\"328,51 321,47 321,55\"/><rect class=\"gi-llm\" x=\"298\" y=\"30\" width=\"28\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"312.0\" y=\"40\" text-anchor=\"middle\">VLM</text><text class=\"fig-t\" x=\"442\" y=\"16\" text-anchor=\"middle\">Long-term memory</text><rect class=\"gi-ev\" x=\"330\" y=\"26\" width=\"224\" height=\"104\" rx=\"10\"/><rect class=\"gi-r\" x=\"338\" y=\"36\" width=\"34\" height=\"26\" rx=\"3\"/><text class=\"fig-s\" x=\"355\" y=\"74\" text-anchor=\"middle\">1st frame</text><text class=\"fig-s\" x=\"355\" y=\"100\" text-anchor=\"middle\">time</text><text class=\"fig-s\" x=\"355\" y=\"112\" text-anchor=\"middle\">range</text><rect class=\"gi-hi\" x=\"380\" y=\"34\" width=\"166\" height=\"44\" rx=\"6\"/><text class=\"fig-t\" x=\"388\" y=\"49\" text-anchor=\"start\">caption</text><text class=\"fig-s\" x=\"388\" y=\"62\" text-anchor=\"start\">4B VLM, ≤ 32 frames</text><text class=\"fig-s\" x=\"388\" y=\"74\" text-anchor=\"start\">embedded for search</text><rect class=\"gi-f\" x=\"380\" y=\"84\" width=\"166\" height=\"38\" rx=\"6\"/><text class=\"fig-t\" x=\"388\" y=\"98\" text-anchor=\"start\">change log</text><text class=\"fig-s\" x=\"388\" y=\"112\" text-anchor=\"start\">from 2 first frames</text><rect class=\"gi-ev\" x=\"330\" y=\"138\" width=\"224\" height=\"22\" rx=\"6\"/><rect class=\"gi-r\" x=\"338\" y=\"142\" width=\"18\" height=\"14\" rx=\"2\"/><line class=\"gi-t\" x1=\"366\" y1=\"149\" x2=\"540\" y2=\"149\"/><rect class=\"gi-ev\" x=\"330\" y=\"166\" width=\"224\" height=\"22\" rx=\"6\"/><rect class=\"gi-r\" x=\"338\" y=\"170\" width=\"18\" height=\"14\" rx=\"2\"/><line class=\"gi-t\" x1=\"366\" y1=\"177\" x2=\"540\" y2=\"177\"/><text class=\"fig-s\" x=\"442\" y=\"206\" text-anchor=\"middle\">the oldest STM event moves here</text><text class=\"fig-s\" x=\"442\" y=\"219\" text-anchor=\"middle\">when STM is full (first in, first out);</text><text class=\"fig-s\" x=\"442\" y=\"232\" text-anchor=\"middle\">kept for the rest of the video</text>",
+        "text": [
+          "Frames arrive at 1 fps and are cut into events when their gray histogram stops matching the current event; a 32-frame buffer holds the recent events.",
+          "When the buffer overflows, its oldest event is captioned by a 4B VLM, embedded, linked to the previous event by a change log, and archived."
+        ],
+        "src": "paper §3.2, Alg. 1, App. B; code preprocess.py L206-L700",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/memory/preprocess.py#L562-L663"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 256",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"30\" width=\"96\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"52\" y=\"54\" text-anchor=\"middle\">Question at t</text><rect class=\"gi-f\" x=\"4\" y=\"82\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"52\" y=\"100\" text-anchor=\"middle\">STM frames</text><text class=\"fig-s\" x=\"52\" y=\"114\" text-anchor=\"middle\">≤ 32, labelled</text><rect class=\"gi-ev d\" x=\"4\" y=\"138\" width=\"96\" height=\"40\" rx=\"8\"/><text class=\"fig-s\" x=\"52\" y=\"154\" text-anchor=\"middle\">LTM: only the</text><text class=\"fig-s\" x=\"52\" y=\"167\" text-anchor=\"middle\">event count</text><path class=\"gi-a\" d=\"M100 50 L117 50\"/><polygon class=\"gi-ah\" points=\"124,50 117,46 117,54\"/><path class=\"gi-a\" d=\"M100 104 L117 104\"/><polygon class=\"gi-ah\" points=\"124,104 117,100 117,108\"/><path class=\"gi-a\" d=\"M100 158 L117 158\"/><polygon class=\"gi-ah\" points=\"124,158 117,154 117,162\"/><rect class=\"gi-llm\" x=\"124\" y=\"40\" width=\"96\" height=\"130\" rx=\"10\"/><text class=\"fig-t\" x=\"172\" y=\"92\" text-anchor=\"middle\">Agent</text><text class=\"fig-s\" x=\"172\" y=\"106\" text-anchor=\"middle\">Qwen3-VL-8B</text><text class=\"fig-s\" x=\"172\" y=\"120\" text-anchor=\"middle\">GRPO-trained</text><text class=\"fig-s\" x=\"172\" y=\"134\" text-anchor=\"middle\">thought / action</text><path class=\"gi-a\" d=\"M220 105 L229 105\"/><polygon class=\"gi-ah\" points=\"236,105 229,101 229,109\"/><polygon class=\"gi-llm\" points=\"276,75 316,105 276,135 236,105\"/><text class=\"fig-t\" x=\"276\" y=\"104\" text-anchor=\"middle\">Answer?</text><text class=\"fig-s\" x=\"276\" y=\"117\" text-anchor=\"middle\">or tool</text><path class=\"gi-a\" d=\"M276 135 L276 183\"/><polygon class=\"gi-ah\" points=\"276,190 280,183 272,183\"/><text class=\"fig-yes\" x=\"282\" y=\"166\" text-anchor=\"start\">answer</text><rect class=\"gi-hi\" x=\"232\" y=\"190\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"276\" y=\"210\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"276\" y=\"223\" text-anchor=\"middle\">in \\boxed{}</text><path class=\"gi-a\" d=\"M316 105 L339 105\"/><polygon class=\"gi-ah\" points=\"346,105 339,101 339,109\"/><text class=\"fig-no\" x=\"331\" y=\"97\" text-anchor=\"middle\">call</text><line class=\"gi-e\" x1=\"348\" y1=\"40\" x2=\"348\" y2=\"160\"/><rect class=\"gi-v fig-soft\" x=\"354\" y=\"26\" width=\"200\" height=\"60\" rx=\"8\"/><text class=\"fig-t\" x=\"362\" y=\"42\" text-anchor=\"start\">search_memory</text><text class=\"fig-s\" x=\"362\" y=\"56\" text-anchor=\"start\">text: top 3, similarity ≥ 0.3</text><text class=\"fig-s\" x=\"362\" y=\"68\" text-anchor=\"start\">time range: top 3 by overlap</text><text class=\"fig-s\" x=\"362\" y=\"80\" text-anchor=\"start\">→ caption, change log, frame</text><rect class=\"gi-f\" x=\"354\" y=\"94\" width=\"200\" height=\"36\" rx=\"8\"/><text class=\"fig-t\" x=\"362\" y=\"110\" text-anchor=\"start\">ocr</text><text class=\"fig-s\" x=\"362\" y=\"123\" text-anchor=\"start\">DeepSeek-OCR, one image</text><rect class=\"gi-f\" x=\"354\" y=\"138\" width=\"200\" height=\"36\" rx=\"8\"/><text class=\"fig-t\" x=\"362\" y=\"154\" text-anchor=\"start\">detect_objects</text><text class=\"fig-s\" x=\"362\" y=\"167\" text-anchor=\"start\">Grounding DINO, one image</text><path class=\"gi-a d\" d=\"M454 174 L454 248 L172 248 L172 177\"/><polygon class=\"gi-ah\" points=\"172,170 168,177 176,177\"/><text class=\"fig-s\" x=\"330\" y=\"242\" text-anchor=\"middle\">observation (text + images)</text><text class=\"fig-s\" x=\"60\" y=\"204\" text-anchor=\"middle\">up to 10 turns</text><text class=\"fig-s\" x=\"60\" y=\"217\" text-anchor=\"middle\">(evaluation script)</text>",
+        "text": [
+          "The agent sees the recent frames and the question, then decides each turn whether to answer or call a tool.",
+          "Memory search returns at most 3 archived events (caption, change log, first frame); OCR and detection read single frames."
+        ],
+        "src": "paper §3.3-3.4, App. D.1; code tools.py L146-L396, video_agent.py L452-L598",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/agent/tools.py#L146-L249"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Frame rate",
+        "value": "1 fps",
+        "src": "paper §4.1",
+        "section": "construction"
+      },
+      {
+        "label": "Short-term buffer",
+        "value": "32 frames",
+        "src": "paper §4.1",
+        "section": "construction"
+      },
+      {
+        "label": "Event cut",
+        "value": "histogram correlation < 0.2, after ≥ 8 frames",
+        "src": "paper §4.1, App. B",
+        "section": "construction"
+      },
+      {
+        "label": "Caption model",
+        "value": "Qwen3-VL-4B, ≤ 32 frames per event",
+        "src": "paper App. B; code preprocess.py L92",
+        "section": "construction"
+      },
+      {
+        "label": "Archived events in the paper's examples",
+        "value": "12-36 per video (~7-8 min)",
+        "src": "paper Fig. 7-11",
+        "section": "construction"
+      },
+      {
+        "label": "Search returns",
+        "value": "top 3, similarity > 0.3",
+        "src": "paper App. B",
+        "section": "method"
+      },
+      {
+        "label": "Agent turns",
+        "value": "≤ 10 (training and evaluation configs)",
+        "src": "code configs/train.yaml L60; scripts/eval/ovobench.sh L47",
+        "section": "method"
+      },
+      {
+        "label": "RL training",
+        "value": "GRPO, 10K MovieChat samples, G = 8, KL 0",
+        "src": "paper §4.1, Table 5",
+        "section": "method"
+      },
+      {
+        "label": "Median response latency",
+        "value": "1.78 s, flat up to 30-min videos",
+        "src": "paper §4.3, Fig. 4",
+        "section": "results"
+      },
+      {
+        "label": "Latency share",
+        "value": "MLLM generation 89.4% · tools 1.6%",
+        "src": "paper Fig. 4(b)",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "OVO-Bench",
+        "StreamingBench"
+      ],
+      "rows": [
+        [
+          "Full EventMemAgent",
+          "60.75",
+          "77.00"
+        ],
+        [
+          "Fixed 30 s segments instead of events",
+          "58.27",
+          "75.09"
+        ],
+        [
+          "Without OCR",
+          "58.98",
+          "–"
+        ],
+        [
+          "Without object detection",
+          "57.80",
+          "–"
+        ],
+        [
+          "Untrained agent (no RL)",
+          "56.16",
+          "68.44"
+        ],
+        [
+          "Base Qwen3-VL-8B (no memory, no tools)",
+          "55.81",
+          "70.20"
+        ]
+      ],
+      "src": "paper Tables 3, 4, 6"
+    },
+    "components": [
+      {
+        "role": "Event boundaries",
+        "model": "gray-histogram Pearson correlation, δ = 0.2",
+        "kind": "rule",
+        "src": "paper §3.2; code preprocess.py L206-L227",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/memory/preprocess.py#L206-L227"
+      },
+      {
+        "role": "Captions and change logs",
+        "model": "Qwen3-VL-4B-Instruct (frozen), temperature 0.7",
+        "kind": "llm",
+        "src": "paper App. B; code preprocess.py L160-L175",
+        "url": "https://github.com/lingcco/EventMemAgent/blob/203e635b4663734716cd509fd47f9131933f3a37/eventmemagent/memory/preprocess.py#L160-L175"
+      },
+      {
+        "role": "Memory search",
+        "model": "Qwen3-Embedding-0.6B, cosine",
+        "kind": "retriever",
+        "src": "paper App. B"
+      },
+      {
+        "role": "OCR / detection tools",
+        "model": "DeepSeek-OCR; Grounding DINO",
+        "kind": "rule",
+        "src": "paper §4.1"
+      },
+      {
+        "role": "Agent and answer",
+        "model": "Qwen3-VL-8B-Instruct trained with GRPO",
+        "kind": "llm",
+        "src": "paper §3.4, §4.1, Table 5"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Keep a small event-segmented frame buffer, archive older events as captioned records, and train the MLLM with RL to decide when to search them or zoom in with OCR and detection. With at most 32 frames in context it beats the other open-source models on OVO-Bench and is competitive on StreamingBench.",
+      "claims": [
+        {
+          "claim": "Best open-source result on OVO-Bench, above GPT-4o.",
+          "evidence": "60.75 overall vs 59.54 GPT-4o and 55.81 Qwen3-VL-8B with 64 frames. Table 1, §4.2"
+        },
+        {
+          "claim": "Competitive on StreamingBench real-time tasks with ≤ 32 frames.",
+          "evidence": "77.00 vs 77.26 StreamForest and 75.69 Gemini 1.5 Pro. Table 2"
+        },
+        {
+          "claim": "Event memory beats fixed-length memory.",
+          "evidence": "58.27 → 60.75 on OVO-Bench and 75.09 → 77.00 on StreamingBench. Table 3"
+        },
+        {
+          "claim": "Perception tools add fine-grained evidence.",
+          "evidence": "Without detection 57.80, without OCR 58.98, vs 60.75. Table 4"
+        },
+        {
+          "claim": "Agentic RL is needed to use memory and tools.",
+          "evidence": "Untrained agent 56.16 / 68.44 vs 60.75 / 77.00; Backward Tracing 46.18 (base) → 56.33 (untrained) → 58.03. Table 6, App. C"
+        },
+        {
+          "claim": "Latency stays flat as the video grows.",
+          "evidence": "Median 1.78 s up to 30 min; tools 1.6% of latency. Fig. 4, §4.3"
+        }
+      ],
+      "limits": [
+        "StreamingBench mostly rewards perception of current frames, so the long-term memory is not fully exercised there (stated as a caveat, §4.2)."
+      ],
+      "limits_src": "paper §4.2 (no limitations section)",
+      "reading": [
+        "Only captions are embedded; change logs and first frames come back with a hit but never decide which events are found.",
+        "A long event is captioned from at most 32 frames that survived reservoir sampling (e.g. Event 11 in Fig. 9 spans 228-431 s from 32 frames).",
+        "The change log is written from two first frames, so it describes how the openings of consecutive events differ, not what happened within them.",
+        "Baselines use different frame budgets (64 frames or 1 fps) and the paper does not say whether their numbers were rerun or taken from earlier reports.",
+        "No row removes long-term memory while keeping the trained agent, so memory's own contribution is not isolated; the fixed-length ablation keeps a long-term memory.",
+        "Base and fine-tuned models differ in training as well as memory: EventMemAgent is Qwen3-VL-8B after GRPO on MovieChat, while the Qwen3-VL row is the untrained model."
+      ]
+    },
+    "abstract": {
+      "text": "EventMemAgent targets online video question answering, where an unbounded stream must fit a fixed MLLM context. It keeps a short-term buffer of recent frames split into events by visual change and thinned by reservoir sampling, and moves older events into a long-term store as captioned, searchable records with change logs. An MLLM agent searches that store and applies OCR and object detection, and its reasoning and tool use are trained end to end with GRPO. The authors report strong results on OVO-Bench and StreamingBench with at most 32 input frames.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2602.15329"
+    },
+    "sections": {
+      "Memory architecture": "§3.2",
+      "Results": "§4.2, §4.3",
+      "Ablation": "§4.4, App. C",
+      "Discussion": "§4.2, §5",
+      "Details": "§3.3-3.4, §4.1, App. A, B, D"
+    }
+  }
+}

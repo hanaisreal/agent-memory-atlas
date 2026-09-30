@@ -1,0 +1,748 @@
+{
+  "id": "tracemem",
+  "name": "TraceMem",
+  "paper": {
+    "title": "TraceMem: Weaving Narrative Memory Schemata from User Conversational Traces",
+    "arxiv": "2602.09712",
+    "url": "https://arxiv.org/abs/2602.09712",
+    "venue": "arXiv 2026",
+    "venue_short": "arXiv",
+    "track": "preprint",
+    "year": 2026,
+    "code": "https://github.com/YimingShu-teay/TraceMem"
+  },
+  "design": {
+    "construction": {
+      "unit": "episode summary (shared) + per-user experience trace; traces clustered into memory-card threads",
+      "kept_as": "rewritten dated episode narrative + extracted per-user experience traces",
+      "processing": "one LLM pass per session labels each turn as topic change or development and writes a fact line per turn; LLM summarises each episode; LLM distils each speaker's own experiences from summary + fact lines",
+      "trigger": "session-end",
+      "writer": "backbone LLM (GPT-4o-mini or GPT-4.1-mini)"
+    },
+    "organization": {
+      "structure": "per-user memory card: theme > topics > threads, over experience traces; flat episode store beside it",
+      "stores": "ChromaDB collections per conversation: episodes, semantics, experiences, threads; card JSON files per user",
+      "index": "text-embedding-3-small dense vectors (ChromaDB)"
+    },
+    "management": {
+      "operations": "PCA + UMAP + HDBSCAN clusters a user's traces into topics (min 5), then each topic into threads (min 2); LLM titles themes, topics and threads",
+      "conflicts": null,
+      "forgetting": "experience distillation returns N/A for episodes with no personal facts; these are dropped (13-25% of episodes, Table 3)",
+      "timing": "offline"
+    },
+    "retrieval": {
+      "query": "question used as is",
+      "candidates": "dense search over episode summaries; separately an LLM reads the chosen user card(s) in full",
+      "selection": "top-K episodes by similarity; LLM returns up to 10 thread ids per user, threads fetched by id",
+      "budget": "K=10 episodes (paper) / 20 (code) + up to 10 threads per chosen user"
+    },
+    "use": {
+      "context": "episode summaries + joined experience traces of the selected threads",
+      "reasoning": "single answer call with a step-by-step prompt"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "fixed-rule",
+      "retrieval": "prompted-llm"
+    }
+  },
+  "classify": {
+    "structure": "hierarchy",
+    "index": "vector",
+    "management": "consolidate",
+    "candidates": "LLM routing",
+    "decides": "LLM decides",
+    "note": "Two paths are merged: episodes come from dense top-K; threads are chosen by an LLM reading the whole card. The card path is the paper's contribution, so it sets the placement."
+  },
+  "tags": {
+    "fidelity": "rewritten",
+    "structure": [
+      "tree",
+      "profile"
+    ],
+    "write_time": [
+      "segment",
+      "summarize",
+      "extract",
+      "consolidate"
+    ],
+    "selection": [
+      "dense",
+      "model-reads"
+    ],
+    "memory_type": [
+      "episodic",
+      "semantic",
+      "profile"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "conversation"
+    ]
+  },
+  "stages": {
+    "ingestion": "Each session is formatted with numbered turns (image captions inlined) and one LLM call labels every turn as topic change or topic development; the session is cut before each topic change into episodes.",
+    "construction": "The same call writes a fact line per turn (the 'semantic' representation). An LLM rewrites each episode into an exhaustive dated summary, then, per speaker, distils that speaker's own experiences from the summary and their fact lines into one experience trace (or N/A).",
+    "organization": "Per user, experience-trace embeddings are clustered twice (PCA, UMAP, HDBSCAN; noise reassigned) into topics and then threads; an LLM titles each topic and the whole theme and writes a title and summary per thread, giving a JSON memory card (theme > topics > threads with ids).",
+    "update": "Cards are built in a separate pass after all sessions are added; the paper describes no incremental update or conflict handling.",
+    "retrieval": "An LLM picks which user card(s) the question is about, reads the full card(s) and returns thread ids (10 per user in the code); in parallel the question retrieves the top episode summaries by embedding similarity (K=10 in the paper, 20 in the code).",
+    "answer": "The answer LLM reads the episode summaries plus, per user, the concatenated experience traces of each selected thread, with rules for resolving relative dates.",
+    "learning": ""
+  },
+  "summary": "Consolidates dialogue into per-user narrative memory cards: episodes are summarised, each speaker's own experiences are distilled, and these traces are clustered into topics and threads that an LLM browses at question time alongside dense-retrieved episodes.",
+  "verified": false,
+  "notes": "Paper v1 (10 Feb 2026) read from the arXiv PDF; ACM template with placeholder header ('Trovato et al.'), no venue stated, so recorded as a preprint. Appendix prompt figures are images; prompts were read from the code instead. Code checked at commit 1b681ed9 (19 Feb 2026, latest on main). Table 2 backbone labels: the paper's text ties the 0.9019 block to GPT-4o-mini and the 0.9227 block to GPT-4.1-mini; the table itself lists them in that order.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2602.09712v1 (PDF read 2026-09-30)",
+      "code": "https://github.com/YimingShu-teay/TraceMem/tree/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/",
+      "code_note": "Commit 1b681ed9 (19 Feb 2026) is the head of main, nine days after paper v1. It ships the LoCoMo add/build/answer scripts and the answer files for both backbones (1,540 questions each), so it is taken as the evaluation code; exact identity with the paper's runs is not stated."
+    },
+    "headline": [
+      "The answer model reads LLM summaries of episodes and LLM-distilled experience traces, never the original turns (which are not stored).",
+      "Threads are not retrieved by similarity: an LLM reads the whole user card in its prompt and names thread ids.",
+      "The released code retrieves 20 episodes per question; the paper says K = 10."
+    ],
+    "units": [
+      {
+        "name": "Episode",
+        "role": "one topic segment of a session, shared by both speakers",
+        "made_by": "backbone LLM (segmentation, then summarisation)",
+        "fields": [
+          {
+            "name": "summary",
+            "what": "exhaustive narrative of the segment, prefixed with the session date ('As of ...'), keeping relative time words",
+            "kept_as": "rewritten",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "code prompts.py L64-L93; memory.py L79-L88",
+            "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/prompts.py#L64-L93"
+          },
+          {
+            "name": "timestamp",
+            "what": "session date, kept as metadata",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "code chroma.py L201-L220",
+            "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/configs/chroma.py#L201-L220"
+          }
+        ]
+      },
+      {
+        "name": "Semantic memory",
+        "role": "fact lines extracted per turn during segmentation",
+        "made_by": "backbone LLM (same call as segmentation)",
+        "fields": [
+          {
+            "name": "fact line",
+            "what": "who did or felt what, when, where, using the two previous turns as context; image captions kept",
+            "kept_as": "extracted",
+            "used_for": [],
+            "src": "code prompts.py L29-L33; memory.py L90-L105",
+            "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/prompts.py#L29-L33"
+          }
+        ]
+      },
+      {
+        "name": "Experience trace",
+        "role": "one speaker's own biographical facts from one episode",
+        "made_by": "backbone LLM from the episode summary and that speaker's fact lines",
+        "fields": [
+          {
+            "name": "experience",
+            "what": "'As of <date>, ...' text of the speaker's own actions, plans, possessions and feelings; N/A when none (then dropped)",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "code prompts.py L95-L121; memory.py L107-L123",
+            "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/prompts.py#L95-L121"
+          }
+        ]
+      },
+      {
+        "name": "Memory card",
+        "role": "per-user narrative schema: theme > topics > threads",
+        "made_by": "UMAP + HDBSCAN clustering of trace embeddings, LLM titles and summaries",
+        "fields": [
+          {
+            "name": "theme / topic titles",
+            "what": "LLM titles of the whole card and of each topic cluster, no time information",
+            "kept_as": "summarized",
+            "used_for": [
+              "scene routing"
+            ],
+            "src": "code categorizer.py L129-L164; prompts.py L123-L158",
+            "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/categorizer.py#L129-L164"
+          },
+          {
+            "name": "thread title + summary",
+            "what": "LLM title and keyword-dense summary of the traces in the thread, no time information",
+            "kept_as": "summarized",
+            "used_for": [
+              "scene routing"
+            ],
+            "src": "code categorizer.py L184-L201; prompts.py L160-L178",
+            "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/categorizer.py#L184-L201"
+          },
+          {
+            "name": "thread text",
+            "what": "the member experience traces joined with spaces, stored in a thread collection under the thread id",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code categorizer.py L204-L218",
+            "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/categorizer.py#L204-L218"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Segment and extract",
+        "how": "one LLM call per session labels every numbered turn CHANGE_TOPIC or DEVELOP_TOPIC (looking two turns back and ahead) and writes a fact line per turn; the session is cut before each CHANGE_TOPIC",
+        "out": "925 episodes over the 10 LoCoMo conversations with GPT-4o-mini, 1,212 with GPT-4.1-mini",
+        "src": "paper §3.1, Table 3; code segmenter.py L47-L116, prompts.py L1-L61",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/segmenter.py#L47-L116"
+      },
+      {
+        "step": "Summarise episode",
+        "how": "LLM rewrites the episode's turns into an exhaustive dated narrative",
+        "src": "paper §3.2; code summarizer.py L35-L42",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/summarizer.py#L35-L42"
+      },
+      {
+        "step": "Distil traces",
+        "how": "per speaker, LLM combines the summary with that speaker's fact lines and keeps only their own experiences, or returns N/A",
+        "out": "1,379 traces (GPT-4o-mini), 2,104 (GPT-4.1-mini); discard rate 25.46% and 13.20%",
+        "src": "paper §3.2, Table 3; code persona_extractor.py L40-L51, memory.py L114-L122",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/persona_extractor.py#L40-L51"
+      },
+      {
+        "step": "Cluster into topics",
+        "how": "per user: PCA to at most 50 dims, UMAP to 2-D (cosine), HDBSCAN; noise points go to their best soft cluster or a KNN vote",
+        "params": {
+          "n_neighbors": "10",
+          "min_cluster_size": "5",
+          "min_samples": "1"
+        },
+        "src": "paper §3.3.1, §4.1.4; code categorizer.py L46-L94, L129-L136",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/categorizer.py#L46-L94"
+      },
+      {
+        "step": "Cluster into threads",
+        "how": "same pipeline inside each topic; each thread's traces are joined and stored, and the LLM writes its title and summary",
+        "params": {
+          "n_neighbors": "2",
+          "min_cluster_size": "2"
+        },
+        "out": "475 threads (GPT-4o-mini), 736 (GPT-4.1-mini)",
+        "src": "paper §3.3, Table 3; code categorizer.py L166-L218",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/categorizer.py#L166-L218"
+      },
+      {
+        "step": "Write card",
+        "how": "LLM titles each topic and the theme; theme, topics and threads (title, summary, id) are saved as one JSON card per user",
+        "src": "paper §3.3.2, Fig. 3; code memory.py L183-L204",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/memory.py#L183-L204"
+      }
+    ],
+    "read": [
+      {
+        "step": "Pick card(s)",
+        "round": 1,
+        "input": "question + the two speaker names",
+        "how": "LLM returns which user(s) the question is about (one or both)",
+        "src": "paper §3.4; code agentic_search.py L15-L45, prompts.py L180-L206",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/agentic_search.py#L15-L45"
+      },
+      {
+        "step": "Search card(s)",
+        "round": 1,
+        "input": "question + full JSON card(s)",
+        "scores": "theme, topic and thread titles and thread summaries, read by the LLM",
+        "how": "LLM returns relevant thread ids per user",
+        "params": {
+          "threads": "10 per user (prompt)"
+        },
+        "src": "code agentic_search.py L47-L83, prompts.py L209-L275",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/agentic_search.py#L47-L83"
+      },
+      {
+        "step": "Retrieve episodes",
+        "round": 1,
+        "input": "question",
+        "scores": "episode summary embeddings",
+        "how": "text-embedding-3-small cosine search in the conversation's episode collection",
+        "params": {
+          "K": "10 (paper), 20 (code)"
+        },
+        "src": "paper §3.4, §4.1.4; code agentic_search.py L85-L90",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/agentic_search.py#L85-L90"
+      },
+      {
+        "step": "Fetch threads",
+        "round": 1,
+        "how": "look up each chosen thread id in the user's thread collection and take its stored text (joined traces)",
+        "src": "code agentic_search.py L94-L105",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/agentic_search.py#L94-L105"
+      }
+    ],
+    "answer_context": {
+      "sees": "episode summaries + experience traces of the chosen threads",
+      "format": "\"Question: ...\\n\\nContents:\\nEpisodes:\\n<summaries, one per line>\" then \"<user> threads:\\n<thread texts>\" per user",
+      "excludes": [
+        "original turns (not stored)",
+        "fact lines (semantic memory)",
+        "card titles and thread summaries",
+        "timestamps as a field"
+      ],
+      "includes": [
+        "20 episode summaries in the code (10 in the paper)",
+        "joined experience traces of up to 10 threads per chosen user"
+      ],
+      "src": "code agentic_search.py L89-L109",
+      "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/agentic_search.py#L89-L109"
+    },
+    "compression": [
+      {
+        "what": "answer context vs one LoCoMo conversation",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported: the paper gives no context length, token or cost figures.",
+        "src": "paper §4",
+        "url": "https://arxiv.org/pdf/2602.09712"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Complete TraceMem, LoCoMo overall (GPT-4o-mini)",
+        "value": "90.19",
+        "src": "paper Tables 2 and 4"
+      },
+      {
+        "label": "Episodic memory only (top-10 episodes)",
+        "value": "84.29",
+        "src": "paper Table 4"
+      },
+      {
+        "label": "Episodes + 20 / 40 fact lines",
+        "value": "87.01 / 87.92",
+        "src": "paper Table 4"
+      },
+      {
+        "label": "Without agentic search",
+        "value": "88.44",
+        "src": "paper Table 4"
+      },
+      {
+        "label": "Complete TraceMem, GPT-4.1-mini",
+        "value": "92.27",
+        "src": "paper Table 2"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Episodes retrieved",
+        "paper": "top K = 10",
+        "code": "top_k = 20",
+        "src": "agentic_search.py L85-L87",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/agentic_search.py#L85-L87"
+      },
+      {
+        "topic": "Thread selection",
+        "paper": "agent examines titles, summaries and ids to pinpoint relevant threads",
+        "code": "the prompt asks for exactly 10 thread ids per user and forbids an empty list",
+        "src": "prompts.py L229-L230",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/prompts.py#L229-L230"
+      },
+      {
+        "topic": "Clustering and time",
+        "paper": "threads group experiences that are semantically close and chronologically sequential",
+        "code": "clusters on embeddings only (UMAP to 2-D, HDBSCAN); no time term",
+        "src": "categorizer.py L46-L94",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/categorizer.py#L46-L94"
+      },
+      {
+        "topic": "Card selection",
+        "paper": "cards chosen from user or topic cues in the query",
+        "code": "an LLM chooses among the two speakers only",
+        "src": "agentic_search.py L15-L45",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/agentic_search.py#L15-L45"
+      }
+    ],
+    "open_questions": [
+      "The 'without agentic search' ablation is not specified further: it is unclear whether it drops the cards entirely or only the LLM thread selection, so the card structure and the LLM selection are not separated.",
+      "If the headline run used the code's 20 episodes, the gap to 'episodic memory only' (10 episodes, 84.29 vs 90.19) mixes more episodes with the added threads.",
+      "No baseline gets the same answer prompt, so how much of the lead over Nemori and LightMem comes from memory rather than from the answer prompt is not measured."
+    ],
+    "glance": [
+      {
+        "q": "What is one memory item?",
+        "a": "Two kinds: an episode summary (an LLM rewrite of one topic segment, dated) and, per speaker, an experience trace of that speaker's own facts from the episode.",
+        "src": "paper §3.1-3.2",
+        "url": "https://arxiv.org/pdf/2602.09712"
+      },
+      {
+        "q": "Is the dialogue summarised?",
+        "a": "Yes. Episodes are stored only as LLM summaries told to omit nothing; the raw turns are not kept in memory.",
+        "src": "code summarizer.py L35-L42, prompts.py L64-L93",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/prompts.py#L64-L93"
+      },
+      {
+        "q": "How is memory organised?",
+        "a": "Each user's traces are clustered into topics (HDBSCAN, min 5) and threads (min 2), written up as a JSON memory card: theme > topics > threads with titles, summaries and ids.",
+        "src": "paper §3.3, §4.1.4",
+        "url": "https://arxiv.org/pdf/2602.09712"
+      },
+      {
+        "q": "Is there reranking?",
+        "a": "No. Episodes are taken in embedding order; threads are picked by an LLM that reads the whole card.",
+        "src": "code agentic_search.py L62-L111",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/agentic_search.py#L62-L111"
+      },
+      {
+        "q": "Is memory reconstructed at question time?",
+        "a": "No second round: three LLM calls (pick card, pick threads, answer) and one embedding search per question.",
+        "src": "code agentic_search.py L62-L111",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/agentic_search.py#L62-L111"
+      },
+      {
+        "q": "What does the answer model read?",
+        "a": "The episode summaries (20 in the code) and, for each chosen user, the joined experience traces of the selected threads. No original turns, fact lines or card summaries.",
+        "src": "code agentic_search.py L89-L109",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/agentic_search.py#L89-L109"
+      }
+    ],
+    "funnel": [
+      {
+        "round": 1,
+        "steps": [
+          {
+            "n": "all",
+            "what": "episode summaries of the conversation"
+          },
+          {
+            "n": "20",
+            "what": "episodes by similarity (paper: 10)"
+          },
+          {
+            "n": "1-2 cards",
+            "what": "chosen by the LLM"
+          },
+          {
+            "n": "10 per user",
+            "what": "thread ids named by the LLM"
+          }
+        ],
+        "src": "code agentic_search.py L62-L105",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/agentic_search.py#L62-L105"
+      }
+    ],
+    "flow": [
+      {
+        "n": 1,
+        "round": 1,
+        "title": "Pick the user card(s)",
+        "actor": "llm",
+        "method": "LLM classification, temperature 0.1",
+        "model": "backbone (GPT-4o-mini or GPT-4.1-mini)",
+        "in": "question, two speaker names",
+        "out": "one or both names",
+        "sees": "Only the question and the two names.",
+        "params": {},
+        "src": "agentic_search.py L15-L45",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/agentic_search.py#L15-L45",
+        "short": "Pick cards",
+        "count": "→ 1-2 cards"
+      },
+      {
+        "n": 2,
+        "round": 1,
+        "title": "Choose threads from the card",
+        "actor": "llm",
+        "method": "LLM reads the whole card JSON",
+        "model": "backbone",
+        "in": "question, full card(s)",
+        "out": "thread ids per user",
+        "sees": "Theme title, topic titles, and each thread's title, summary and id. Thread summaries carry no dates.",
+        "params": {
+          "threads": "10 per user"
+        },
+        "src": "agentic_search.py L47-L83; prompts.py L209-L275",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/agentic_search.py#L47-L83",
+        "short": "Pick threads",
+        "count": "card → 10 ids/user"
+      },
+      {
+        "n": 3,
+        "round": 1,
+        "title": "Search episodes",
+        "actor": "retriever",
+        "method": "bi-encoder (dense)",
+        "model": "text-embedding-3-small; ChromaDB",
+        "in": "question",
+        "out": "top 20 episode summaries",
+        "sees": "Question vs each episode summary, embedded separately.",
+        "params": {
+          "K": "20 (code), 10 (paper)"
+        },
+        "src": "agentic_search.py L85-L90; chroma.py L353-L389",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/configs/chroma.py#L353-L389",
+        "short": "Search episodes",
+        "count": "all → 20"
+      },
+      {
+        "n": 4,
+        "round": 1,
+        "title": "Fetch thread texts",
+        "actor": "rule",
+        "method": "lookup by id",
+        "in": "thread ids",
+        "out": "joined experience traces",
+        "sees": "Each thread's stored text is its member traces joined together, each starting 'As of <date>'.",
+        "params": {},
+        "src": "agentic_search.py L94-L105",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/agentic_search.py#L94-L105",
+        "short": "Fetch threads",
+        "count": "ids → texts"
+      },
+      {
+        "n": 5,
+        "round": 0,
+        "title": "Answer",
+        "actor": "llm",
+        "method": "LLM generation with step-by-step reasoning",
+        "model": "backbone",
+        "in": "episodes + thread texts",
+        "out": "answer with reasoning",
+        "sees": "Question, episode summaries, then per user the thread texts. Rules tell it to turn relative dates into absolute ones.",
+        "params": {},
+        "src": "agentic_search.py L92-L109; prompts.py L277-L306",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/agentic_search.py#L92-L109",
+        "short": "Answer",
+        "count": "→ answer"
+      }
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 240",
+        "body": "<text class=\"fig-t\" x=\"56\" y=\"16\" text-anchor=\"middle\">Session</text><rect class=\"gi-ev\" x=\"12\" y=\"26\" width=\"70\" height=\"16\" rx=\"6\"/><line class=\"gi-t\" x1=\"20\" y1=\"34\" x2=\"68\" y2=\"34\"/><rect class=\"gi-ev\" x=\"30\" y=\"48\" width=\"70\" height=\"16\" rx=\"6\"/><line class=\"gi-t\" x1=\"38\" y1=\"56\" x2=\"86\" y2=\"56\"/><rect class=\"gi-ev\" x=\"12\" y=\"70\" width=\"70\" height=\"16\" rx=\"6\"/><line class=\"gi-t\" x1=\"20\" y1=\"78\" x2=\"68\" y2=\"78\"/><rect class=\"gi-ev\" x=\"30\" y=\"98\" width=\"70\" height=\"16\" rx=\"6\"/><line class=\"gi-t\" x1=\"38\" y1=\"106\" x2=\"86\" y2=\"106\"/><rect class=\"gi-ev\" x=\"12\" y=\"120\" width=\"70\" height=\"16\" rx=\"6\"/><line class=\"gi-t\" x1=\"20\" y1=\"128\" x2=\"68\" y2=\"128\"/><rect class=\"gi-ev\" x=\"30\" y=\"148\" width=\"70\" height=\"16\" rx=\"6\"/><line class=\"gi-t\" x1=\"38\" y1=\"156\" x2=\"86\" y2=\"156\"/><rect class=\"gi-ev\" x=\"12\" y=\"170\" width=\"70\" height=\"16\" rx=\"6\"/><line class=\"gi-t\" x1=\"20\" y1=\"178\" x2=\"68\" y2=\"178\"/><line class=\"gi-e d\" x1=\"6\" y1=\"92\" x2=\"108\" y2=\"92\"/><line class=\"gi-e d\" x1=\"6\" y1=\"142\" x2=\"108\" y2=\"142\"/><text class=\"fig-s\" x=\"56\" y=\"204\" text-anchor=\"middle\">LLM tags every turn:</text><text class=\"fig-s\" x=\"56\" y=\"217\" text-anchor=\"middle\">new topic or same topic;</text><text class=\"fig-s\" x=\"56\" y=\"230\" text-anchor=\"middle\">cut at each new topic</text><path class=\"gi-a\" d=\"M110 110 L135 110\"/><polygon class=\"gi-ah\" points=\"142,110 135,106 135,114\"/><rect class=\"gi-llm\" x=\"111\" y=\"92\" width=\"28\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"125.0\" y=\"102\" text-anchor=\"middle\">LLM</text><rect class=\"gi-ev\" x=\"144\" y=\"26\" width=\"132\" height=\"160\" rx=\"10\"/><text class=\"fig-t\" x=\"210\" y=\"44\" text-anchor=\"middle\">Episode</text><rect class=\"gi-hi\" x=\"152\" y=\"54\" width=\"116\" height=\"44\" rx=\"6\"/><text class=\"fig-t\" x=\"160\" y=\"68\" text-anchor=\"start\">summary</text><text class=\"fig-s\" x=\"160\" y=\"81\" text-anchor=\"start\">rewritten, dated</text><text class=\"fig-s\" x=\"260\" y=\"93\" text-anchor=\"end\">→ read</text><rect class=\"gi-f\" x=\"152\" y=\"104\" width=\"116\" height=\"34\" rx=\"6\"/><text class=\"fig-t\" x=\"160\" y=\"118\" text-anchor=\"start\">semantics</text><text class=\"fig-s\" x=\"160\" y=\"131\" text-anchor=\"start\">facts per turn</text><rect class=\"gi-ev d\" x=\"152\" y=\"144\" width=\"116\" height=\"34\" rx=\"6\"/><text class=\"fig-s\" x=\"160\" y=\"158\" text-anchor=\"start\">raw turns:</text><text class=\"fig-s\" x=\"160\" y=\"171\" text-anchor=\"start\">not stored</text><text class=\"fig-s\" x=\"210\" y=\"204\" text-anchor=\"middle\">one per episode,</text><text class=\"fig-s\" x=\"210\" y=\"217\" text-anchor=\"middle\">shared by both speakers</text><path class=\"gi-a\" d=\"M278 110 L301 110\"/><polygon class=\"gi-ah\" points=\"308,110 301,106 301,114\"/><rect class=\"gi-llm\" x=\"279\" y=\"92\" width=\"28\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"293.0\" y=\"102\" text-anchor=\"middle\">LLM</text><text class=\"fig-t\" x=\"353\" y=\"16\" text-anchor=\"middle\">Traces</text><rect class=\"gi-f\" x=\"310\" y=\"26\" width=\"86\" height=\"70\" rx=\"8\"/><text class=\"fig-t\" x=\"318\" y=\"42\" text-anchor=\"start\">user A</text><rect class=\"gi-r\" x=\"318\" y=\"50\" width=\"70\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"318\" y=\"64\" width=\"70\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"318\" y=\"78\" width=\"70\" height=\"10\" rx=\"2\"/><rect class=\"gi-f\" x=\"310\" y=\"104\" width=\"86\" height=\"70\" rx=\"8\"/><text class=\"fig-t\" x=\"318\" y=\"120\" text-anchor=\"start\">user B</text><rect class=\"gi-r\" x=\"318\" y=\"128\" width=\"70\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"318\" y=\"142\" width=\"70\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"318\" y=\"156\" width=\"70\" height=\"10\" rx=\"2\"/><text class=\"fig-s\" x=\"353\" y=\"192\" text-anchor=\"middle\">own facts only;</text><text class=\"fig-s\" x=\"353\" y=\"205\" text-anchor=\"middle\">else N/A, dropped</text><text class=\"fig-s\" x=\"353\" y=\"218\" text-anchor=\"middle\">(13-25% of episodes)</text><path class=\"gi-a\" d=\"M398 110 L415 110\"/><polygon class=\"gi-ah\" points=\"422,110 415,106 415,114\"/><text class=\"fig-t\" x=\"489\" y=\"16\" text-anchor=\"middle\">Memory card</text><rect class=\"gi-ev\" x=\"424\" y=\"26\" width=\"130\" height=\"160\" rx=\"10\"/><text class=\"fig-t\" x=\"432\" y=\"42\" text-anchor=\"start\">theme title</text><rect class=\"gi-f\" x=\"432\" y=\"50\" width=\"114\" height=\"62\" rx=\"6\"/><text class=\"fig-s\" x=\"440\" y=\"64\" text-anchor=\"start\">topic</text><rect class=\"gi-r\" x=\"440\" y=\"72\" width=\"28\" height=\"18\" rx=\"3\"/><line class=\"gi-t\" x1=\"445\" y1=\"81\" x2=\"463\" y2=\"81\"/><rect class=\"gi-r\" x=\"474\" y=\"72\" width=\"28\" height=\"18\" rx=\"3\"/><line class=\"gi-t\" x1=\"479\" y1=\"81\" x2=\"497\" y2=\"81\"/><rect class=\"gi-r\" x=\"508\" y=\"72\" width=\"28\" height=\"18\" rx=\"3\"/><line class=\"gi-t\" x1=\"513\" y1=\"81\" x2=\"531\" y2=\"81\"/><text class=\"fig-s\" x=\"440\" y=\"104\" text-anchor=\"start\">threads</text><rect class=\"gi-f\" x=\"432\" y=\"118\" width=\"114\" height=\"62\" rx=\"6\"/><text class=\"fig-s\" x=\"440\" y=\"132\" text-anchor=\"start\">topic</text><rect class=\"gi-r\" x=\"440\" y=\"140\" width=\"28\" height=\"18\" rx=\"3\"/><line class=\"gi-t\" x1=\"445\" y1=\"149\" x2=\"463\" y2=\"149\"/><rect class=\"gi-r\" x=\"474\" y=\"140\" width=\"28\" height=\"18\" rx=\"3\"/><line class=\"gi-t\" x1=\"479\" y1=\"149\" x2=\"497\" y2=\"149\"/><rect class=\"gi-r\" x=\"508\" y=\"140\" width=\"28\" height=\"18\" rx=\"3\"/><line class=\"gi-t\" x1=\"513\" y1=\"149\" x2=\"531\" y2=\"149\"/><text class=\"fig-s\" x=\"440\" y=\"172\" text-anchor=\"start\">threads</text><text class=\"fig-s\" x=\"489\" y=\"204\" text-anchor=\"middle\">topics: clusters ≥ 5</text><text class=\"fig-s\" x=\"489\" y=\"217\" text-anchor=\"middle\">threads: clusters ≥ 2</text><text class=\"fig-s\" x=\"489\" y=\"230\" text-anchor=\"middle\">each: title, summary, id</text>",
+        "text": [
+          "An LLM cuts each session where a turn opens a new topic, summarises every episode, and distils each speaker's own experiences from it.",
+          "Per user, those traces are clustered into topics and threads and written up as a memory card of titles, summaries and ids."
+        ],
+        "src": "paper §3.1-3.3, Fig. 2-3, §4.1.4; code segmenter.py, persona_extractor.py, categorizer.py",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/categorizer.py#L46-L218"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 250",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"100\" width=\"60\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"34\" y=\"126\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M64 112 L76 112 L76 52 L83 52\"/><polygon class=\"gi-ah\" points=\"90,52 83,48 83,56\"/><path class=\"gi-a\" d=\"M64 132 L76 132 L76 192 L83 192\"/><polygon class=\"gi-ah\" points=\"90,192 83,188 83,196\"/><rect class=\"gi-llm\" x=\"90\" y=\"30\" width=\"92\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"136\" y=\"50\" text-anchor=\"middle\">Pick card(s)</text><text class=\"fig-s\" x=\"136\" y=\"63\" text-anchor=\"middle\">LLM: which user</text><path class=\"gi-a\" d=\"M182 52 L191 52\"/><polygon class=\"gi-ah\" points=\"198,52 191,48 191,56\"/><rect class=\"gi-llm\" x=\"198\" y=\"30\" width=\"104\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"250\" y=\"50\" text-anchor=\"middle\">Read card</text><text class=\"fig-s\" x=\"250\" y=\"63\" text-anchor=\"middle\">picks 10 threads</text><path class=\"gi-a\" d=\"M302 52 L311 52\"/><polygon class=\"gi-ah\" points=\"318,52 311,48 311,56\"/><rect class=\"gi-f\" x=\"318\" y=\"30\" width=\"100\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"368\" y=\"50\" text-anchor=\"middle\">Fetch by id</text><text class=\"fig-s\" x=\"368\" y=\"63\" text-anchor=\"middle\">joined traces</text><path class=\"gi-a\" d=\"M418 52 L508 52 L508 93\"/><polygon class=\"gi-ah\" points=\"508,100 512,93 504,93\"/><text class=\"fig-s\" x=\"260\" y=\"98\" text-anchor=\"middle\">the LLM reads whole cards (theme → topics → threads)</text><text class=\"fig-s\" x=\"260\" y=\"111\" text-anchor=\"middle\">and returns thread ids; no embedding match here</text><rect class=\"gi-v fig-soft\" x=\"90\" y=\"170\" width=\"112\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"146\" y=\"190\" text-anchor=\"middle\">Search episodes</text><text class=\"fig-s\" x=\"146\" y=\"203\" text-anchor=\"middle\">dense, question</text><path class=\"gi-a\" d=\"M202 192 L211 192\"/><polygon class=\"gi-ah\" points=\"218,192 211,188 211,196\"/><rect class=\"gi-f\" x=\"218\" y=\"170\" width=\"110\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"273\" y=\"190\" text-anchor=\"middle\">top 20</text><text class=\"fig-s\" x=\"273\" y=\"203\" text-anchor=\"middle\">episode summaries</text><path class=\"gi-a\" d=\"M328 192 L508 192 L508 155\"/><polygon class=\"gi-ah\" points=\"508,148 504,155 512,155\"/><text class=\"fig-s\" x=\"273\" y=\"230\" text-anchor=\"middle\">paper: K = 10; released code: 20</text><rect class=\"gi-hi\" x=\"462\" y=\"100\" width=\"92\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"508\" y=\"120\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"508\" y=\"134\" text-anchor=\"middle\">episodes + threads</text><text class=\"fig-s\" x=\"420\" y=\"230\" text-anchor=\"middle\">3 LLM calls, one round,</text><text class=\"fig-s\" x=\"420\" y=\"243\" text-anchor=\"middle\">no reranker</text>",
+        "text": [
+          "An LLM picks the user card(s), reads them whole and names threads, whose stored traces are fetched by id.",
+          "In parallel the question retrieves the closest episode summaries; both go to one answer call."
+        ],
+        "src": "paper §3.4, Fig. 4; code agentic_search.py L15-L111",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/agentic_search.py#L15-L111"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Episodes, all of LoCoMo",
+        "value": "925 (GPT-4o-mini) · 1,212 (GPT-4.1-mini)",
+        "src": "paper Table 3",
+        "section": "construction"
+      },
+      {
+        "label": "Experience traces",
+        "value": "1,379 · 2,104",
+        "src": "paper Table 3",
+        "section": "construction"
+      },
+      {
+        "label": "Threads",
+        "value": "475 · 736",
+        "src": "paper Table 3",
+        "section": "construction"
+      },
+      {
+        "label": "Episodes with no trace (dropped)",
+        "value": "25.46% · 13.20%",
+        "src": "paper Table 3",
+        "section": "construction"
+      },
+      {
+        "label": "Clustering (UMAP neighbours, HDBSCAN min size)",
+        "value": "topics 10, 5 · threads 2, 2",
+        "src": "paper §4.1.4",
+        "section": "construction"
+      },
+      {
+        "label": "Episodes to the answer model",
+        "value": "10 (paper) · 20 (code)",
+        "src": "paper §4.1.4; code agentic_search.py L87",
+        "section": "method"
+      },
+      {
+        "label": "Threads chosen",
+        "value": "10 per selected user (prompt)",
+        "src": "code prompts.py L229",
+        "section": "method"
+      },
+      {
+        "label": "LLM calls per question",
+        "value": "3 (pick card, pick threads, answer)",
+        "src": "code agentic_search.py L62-L111",
+        "section": "method"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "Single-hop",
+        "Multi-hop",
+        "Temporal",
+        "Open-domain",
+        "Overall"
+      ],
+      "rows": [
+        [
+          "Complete TraceMem",
+          "93.10",
+          "92.20",
+          "86.60",
+          "70.83",
+          "90.19"
+        ],
+        [
+          "Without agentic search",
+          "92.87",
+          "86.52",
+          "83.49",
+          "71.88",
+          "88.44"
+        ],
+        [
+          "Episodes + 40 fact lines",
+          "93.34",
+          "89.01",
+          "78.50",
+          "68.75",
+          "87.92"
+        ],
+        [
+          "Episodes + 20 fact lines",
+          "92.98",
+          "86.17",
+          "77.26",
+          "69.79",
+          "87.01"
+        ],
+        [
+          "Episodic memory only (top 10)",
+          "89.54",
+          "82.62",
+          "76.64",
+          "68.75",
+          "84.29"
+        ]
+      ],
+      "src": "paper Table 4 (LoCoMo; the full row equals the GPT-4o-mini row of Table 2)"
+    },
+    "components": [
+      {
+        "role": "Segments, summarises, distils, titles clusters",
+        "model": "backbone LLM (GPT-4o-mini or GPT-4.1-mini), temperature 0.1",
+        "kind": "llm",
+        "src": "paper §4.1.4; code client.py L39-L48",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/configs/client.py#L39-L48"
+      },
+      {
+        "role": "Clusters traces into topics and threads",
+        "model": "PCA + UMAP + HDBSCAN (KNN for noise)",
+        "kind": "rule",
+        "src": "paper §3.3.1; code categorizer.py L46-L94",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/categorizer.py#L46-L94"
+      },
+      {
+        "role": "Episode search",
+        "model": "text-embedding-3-small in ChromaDB",
+        "kind": "retriever",
+        "src": "paper §4.1.4"
+      },
+      {
+        "role": "Card and thread selection",
+        "model": "backbone LLM",
+        "kind": "llm",
+        "src": "paper §3.4; code agentic_search.py L15-L83",
+        "url": "https://github.com/YimingShu-teay/TraceMem/blob/1b681ed94794f3f7f7ae05218c4b6cf345c41f29/src/tracemem/memory/agentic_search.py#L15-L83"
+      },
+      {
+        "role": "Answer",
+        "model": "backbone LLM",
+        "kind": "llm",
+        "src": "paper Table 2"
+      },
+      {
+        "role": "Judge",
+        "model": "GPT-4o-mini, Nemori's judge prompt",
+        "kind": "llm",
+        "src": "paper §4.1.3"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Turn dialogue into per-user narratives: summarise episodes, keep each speaker's own experiences, and cluster them into topic and thread cards that an LLM browses at question time. On LoCoMo this scores highest in the paper's own comparison, with the largest margins on multi-hop and temporal questions.",
+      "claims": [
+        {
+          "claim": "State of the art on LoCoMo across two backbones.",
+          "evidence": "Overall 90.19 (GPT-4o-mini) and 92.27 (GPT-4.1-mini) vs best baseline Nemori 74.03 and 80.52. Table 2, §4.2"
+        },
+        {
+          "claim": "Narrative threads help multi-hop and temporal reasoning.",
+          "evidence": "Multi-hop 92.20 vs 69.86 for full context (GPT-4o-mini); temporal 90.97 vs 81.62 full context (GPT-4.1-mini). §4.2"
+        },
+        {
+          "claim": "Consolidation beats simply adding more semantic facts.",
+          "evidence": "Episodes + 20/40 fact lines reach 87.01/87.92 overall vs 90.19 for the full system. Table 4, §4.3"
+        },
+        {
+          "claim": "Agentic search matters for multi-hop reasoning.",
+          "evidence": "Without it multi-hop falls 92.20 → 86.52 and overall 90.19 → 88.44, while open-domain rises to 71.88. Table 4"
+        }
+      ],
+      "limits": [
+        "The paper has no limitations section. Its open discussion names memory rewriting on recall, regulated forgetting, and deciding when to use memory at all as unaddressed.",
+        "Only LoCoMo is evaluated (the repo's LongMemEval folder holds only an empty readme)."
+      ],
+      "limits_src": "paper §5 (Open Discussion); code evaluation/longmemeval/readme.md",
+      "reading": [
+        "Full context scores 73.05 and 87.40 here while TraceMem scores 90.19 and 92.27, so the memory beats giving the model the whole conversation; the answer prompts differ, and the paper does not say which prompt the baselines used.",
+        "Fact lines (semantic memory) are stored in ChromaDB but read by no retrieval or answer code; they only feed trace distillation.",
+        "Thread summaries in the card carry no dates (the prompt forbids them), but the fetched thread text is the raw traces, which begin with 'As of <date>'.",
+        "The released code retrieves 20 episodes; the paper and its episodic-only ablation use 10.",
+        "No token, latency or cost figures are reported, although building cards adds per-user clustering and LLM titling after ingestion and each question needs three LLM calls.",
+        "Table 4 does not name its backbone; its full row matches the GPT-4o-mini numbers."
+      ]
+    },
+    "abstract": {
+      "text": "TraceMem builds long-term memory for dialogue agents by imitating memory consolidation. Each session is cut into topic episodes by an LLM that labels every turn, the episodes are summarised, and each speaker's own experiences are distilled from them. These experience traces are clustered per user into topics and threads and packaged as a structured memory card. At question time an LLM chooses cards and threads while dense search supplies episode summaries, and the authors report the best LoCoMo scores among their baselines with two GPT backbones.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2602.09712"
+    },
+    "sections": {
+      "Memory architecture": "§3",
+      "Results": "§4.2",
+      "Ablation": "§4.3",
+      "Discussion": "§5, §6",
+      "Details": "§3.4, §4.1, App. A"
+    }
+  }
+}

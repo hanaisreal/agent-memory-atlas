@@ -1,0 +1,509 @@
+{
+  "id": "iterresearch",
+  "name": "IterResearch",
+  "paper": {
+    "title": "IterResearch: Rethinking Long-Horizon Agents with Interaction Scaling",
+    "arxiv": "2511.07327",
+    "url": "https://arxiv.org/abs/2511.07327",
+    "venue": "ICLR 2026",
+    "venue_short": "ICLR",
+    "track": "main",
+    "year": 2026,
+    "code": "https://github.com/Chen-GX/IterResearch"
+  },
+  "design": {
+    "construction": {
+      "unit": "one evolving report per question, plus the last tool call and its response",
+      "kept_as": "report rewritten in full by the policy every round",
+      "processing": "each round the policy outputs think, a new report and one action; the report must record all findings with sources",
+      "trigger": "every-turn",
+      "writer": "the agent policy itself (Qwen3-30B-A3B after rejection-sampling SFT and EAPO RL; o3 or DeepSeek-V3.1 when used as a prompt)"
+    },
+    "organization": {
+      "structure": "single text report inside a fixed four-part workspace",
+      "stores": "workspace = question, report, last tool call, last tool response",
+      "index": null
+    },
+    "management": {
+      "operations": "workspace rebuilt each round from the new report and the latest exchange",
+      "conflicts": "left to the policy when it rewrites the report (prompt asks it to separate confirmed facts, inferences and open hypotheses)",
+      "forgetting": "all earlier tool calls, responses and think traces are dropped every round; only what the report keeps survives",
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": null,
+      "candidates": "none: the whole workspace is in context every round",
+      "selection": null,
+      "budget": "40,960-token context (prompt + response); tool response cut at 32k tokens in the released code"
+    },
+    "use": {
+      "context": "question + latest report + last tool call + last tool response",
+      "reasoning": "one policy call per round, up to Tmax rounds (32-256 by benchmark); answers when it emits <answer>"
+    },
+    "control": {
+      "construction": "learned-rl",
+      "management": "fixed-rule",
+      "retrieval": "none"
+    }
+  },
+  "classify": {
+    "structure": "flat",
+    "index": "none",
+    "management": "update in place",
+    "candidates": "read everything",
+    "decides": "reads everything",
+    "note": "The memory is one report that the policy rewrites every round; nothing is searched, the whole workspace is read."
+  },
+  "tags": {
+    "fidelity": "compressed",
+    "structure": [
+      "flat"
+    ],
+    "write_time": [
+      "summarize",
+      "learned"
+    ],
+    "selection": [
+      "full-context"
+    ],
+    "memory_type": [
+      "working"
+    ],
+    "learning": "mixed",
+    "domain": [
+      "web"
+    ]
+  },
+  "stages": {
+    "ingestion": "Each round the tool response (search results, a goal-directed page summary, or code output) enters the workspace as the only raw observation.",
+    "construction": "The policy writes a structured decision: a think trace, a full new report of all findings so far, and one action (tool call or answer).",
+    "organization": "The workspace always has four parts: question, report, last tool call, last tool response.",
+    "update": "The next workspace is rebuilt from the question, the new report and the latest exchange; earlier rounds and the think trace are discarded.",
+    "retrieval": "",
+    "answer": "The policy answers from the workspace when it judges the information sufficient, or is forced to answer in the last allowed round (released code).",
+    "learning": "Rejection-sampling SFT on 110K synthesized trajectories, then EAPO: GSPO with geometrically discounted rewards (gamma 0.995) over per-round samples and adaptive downsampling."
+  },
+  "summary": "Deep-research agent that replaces a growing context with a per-round rebuilt workspace (question, a report the policy rewrites each round, last exchange), trained with an efficiency-discounted RL objective.",
+  "verified": false,
+  "notes": "Venue: ICLR 2026 poster (OpenReview venueid ICLR.cc/2026/Conference, forum qQ5MZ5Mx7p); arXiv v2 comment says camera-ready for ICLR 2026. Title changed from v1 ('...via Markovian State Reconstruction') to 'Rethinking Long-Horizon Agents with Interaction Scaling' in v2/ICLR. Code: the GitHub repo is a community reproduction; README says the original version cannot be released. Text read from arXiv v2 PDF.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2511.07327v2 (PDF read 2026-09-30)",
+      "code": "https://github.com/Chen-GX/IterResearch/tree/f84fdc7a93b9552c1fd5be31ada51e3ea0d85476/",
+      "code_note": "Only two commits (2026-01-31); the README calls it a reproduction version and says the original cannot be released, with different search, page-reading and summary models. Used here for the prompt, the workspace rebuild and the truncation limits, not as the code behind the paper's numbers."
+    },
+    "headline": [
+      "The memory is one report that the policy rewrites in full every round; everything else from earlier rounds is dropped.",
+      "Nothing is retrieved: the policy always reads the whole workspace (question, report, last call, last response).",
+      "The report's size is never reported; it is bounded only by what the trained policy chooses to write."
+    ],
+    "units": [
+      {
+        "name": "Workspace",
+        "role": "the whole state the policy sees in one round",
+        "made_by": "fixed rebuild rule from the policy's output and the tool response",
+        "fields": [
+          {
+            "name": "question",
+            "what": "the task, unchanged across rounds",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.1.1, Eq. 2"
+          },
+          {
+            "name": "report",
+            "what": "Status Report and Deep Analysis: progress achieved (all facts, sources, uncertainties) and next-steps plan, rewritten by the policy each round",
+            "kept_as": "summarized",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.1.2, App. E.2; code prompts.py L78-L91",
+            "url": "https://github.com/Chen-GX/IterResearch/blob/f84fdc7a93b9552c1fd5be31ada51e3ea0d85476/prompts/prompts.py#L78-L91"
+          },
+          {
+            "name": "last tool call",
+            "what": "the JSON tool call from the previous round",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code run.py L337-L338",
+            "url": "https://github.com/Chen-GX/IterResearch/blob/f84fdc7a93b9552c1fd5be31ada51e3ea0d85476/run.py#L337-L338"
+          },
+          {
+            "name": "last tool response",
+            "what": "search results (top 10 per query), a goal-directed page summary from a helper LLM, or Python output; cut at 32k tokens",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code run.py L339-L352; paper App. C.2",
+            "url": "https://github.com/Chen-GX/IterResearch/blob/f84fdc7a93b9552c1fd5be31ada51e3ea0d85476/run.py#L339-L352"
+          },
+          {
+            "name": "think",
+            "what": "the round's reasoning trace",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "paper §3.1.2; not passed to the next round (code run.py L337-L339)",
+            "url": "https://github.com/Chen-GX/IterResearch/blob/f84fdc7a93b9552c1fd5be31ada51e3ea0d85476/run.py#L337-L339"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Decide",
+        "how": "the policy reads the workspace and writes think, a full new report, and either one tool call or an answer",
+        "src": "paper §3.1.1 Eq. 1, 3; code prompts.py L62-L155",
+        "url": "https://github.com/Chen-GX/IterResearch/blob/f84fdc7a93b9552c1fd5be31ada51e3ea0d85476/prompts/prompts.py#L62-L155"
+      },
+      {
+        "step": "Act",
+        "how": "the tool runs; search and scholar return the top 10 results per query, visit fetches a page (cut at 48k tokens) and has a helper LLM extract evidence and a summary for the stated goal",
+        "params": {
+          "results": "10 per query",
+          "page": "≤48k tokens in"
+        },
+        "src": "paper App. C.2; code tools/search.py L93, tools/visit.py L239-L270",
+        "url": "https://github.com/Chen-GX/IterResearch/blob/f84fdc7a93b9552c1fd5be31ada51e3ea0d85476/tools/visit.py#L239-L270"
+      },
+      {
+        "step": "Rebuild",
+        "how": "a new single user message holds the question, the new report, this tool call and its response; all older messages are discarded",
+        "params": {
+          "tool response": "≤32k tokens"
+        },
+        "src": "paper Eq. 2, 4; code run.py L317-L367, L481",
+        "url": "https://github.com/Chen-GX/IterResearch/blob/f84fdc7a93b9552c1fd5be31ada51e3ea0d85476/run.py#L317-L367"
+      }
+    ],
+    "read": [
+      {
+        "step": "Read workspace",
+        "round": 1,
+        "input": "workspace",
+        "scores": "nothing is scored; the whole workspace is in the prompt",
+        "how": "one policy call over question + report + last call + last response",
+        "src": "paper §3.1.2; code run.py L362-L367",
+        "url": "https://github.com/Chen-GX/IterResearch/blob/f84fdc7a93b9552c1fd5be31ada51e3ea0d85476/run.py#L362-L367"
+      },
+      {
+        "step": "Answer or continue",
+        "round": 1,
+        "how": "the policy emits <answer> when it judges the information sufficient; in the released code the first round must call a tool and the last allowed round must answer",
+        "params": {
+          "Tmax": "32 train; GAIA 32, HLE 64, BC-zh 64, BC 256"
+        },
+        "src": "paper App. C.1, Table 6; code run.py L445-L448, L468-L470",
+        "url": "https://github.com/Chen-GX/IterResearch/blob/f84fdc7a93b9552c1fd5be31ada51e3ea0d85476/run.py#L468-L470"
+      }
+    ],
+    "answer_context": {
+      "sees": "question, latest report, last tool call and last tool response",
+      "format": "one user message: instructions, Current Date, Question, Available Tools, then 'Last Status Report and Deep Analysis' <report>, 'Last Tool Call' <tool_call>, 'Last Tool Response' <tool_response>",
+      "excludes": [
+        "earlier tool calls",
+        "earlier tool responses",
+        "earlier reports",
+        "think traces"
+      ],
+      "includes": [
+        "the report the policy wrote last round",
+        "the raw response of the latest tool call"
+      ],
+      "src": "code prompts.py L136-L152, run.py L317-L367",
+      "url": "https://github.com/Chen-GX/IterResearch/blob/f84fdc7a93b9552c1fd5be31ada51e3ea0d85476/prompts/prompts.py#L136-L152"
+    },
+    "compression": [
+      {
+        "what": "report vs the trajectory it replaces",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported. The paper gives no report lengths; Table 7 reports only generation tokens per question.",
+        "src": "paper §3.1.2, App. C.4",
+        "url": "https://arxiv.org/pdf/2511.07327"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Accuracy vs max turns, BrowseComp (200 subset)",
+        "value": "3.5% at 2 turns → 42.5% at 2048",
+        "src": "paper Fig. 3"
+      },
+      {
+        "label": "Average turns used at 2048 max",
+        "value": "129.5 (figure) / 80.1 (text)",
+        "src": "paper Fig. 3, §4.4"
+      },
+      {
+        "label": "Generation tokens per question (no tool tokens)",
+        "value": "BC 376,349; BC-zh 81,136; HLE 31,426; GAIA 33,198",
+        "src": "paper Table 7"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Which code",
+        "paper": "App. C.3 says all code and training data are provided",
+        "code": "README: a community reproduction; the original version is not released",
+        "src": "README",
+        "url": "https://github.com/Chen-GX/IterResearch/blob/f84fdc7a93b9552c1fd5be31ada51e3ea0d85476/README.md"
+      },
+      {
+        "topic": "Page summarizer",
+        "paper": "Qwen3-30B-A3B summarizes visited pages",
+        "code": "README recommends Qwen3-235B-A22B-Instruct-2507 (any endpoint works)",
+        "src": "paper App. C.2; README",
+        "url": "https://github.com/Chen-GX/IterResearch/blob/f84fdc7a93b9552c1fd5be31ada51e3ea0d85476/README.md"
+      },
+      {
+        "topic": "First and last round",
+        "paper": "the agent may answer or act in any round; forced termination at Tmax",
+        "code": "round 1 must call a tool; the final round uses an answer-only prompt",
+        "src": "code prompts.py L10-L60, L157-L232; run.py L468-L470",
+        "url": "https://github.com/Chen-GX/IterResearch/blob/f84fdc7a93b9552c1fd5be31ada51e3ea0d85476/prompts/prompts.py#L157-L232"
+      },
+      {
+        "topic": "Default budget",
+        "paper": "Tmax 32-256 by benchmark",
+        "code": "MAX_TURN default 25",
+        "src": "config.py L55",
+        "url": "https://github.com/Chen-GX/IterResearch/blob/f84fdc7a93b9552c1fd5be31ada51e3ea0d85476/config.py#L55"
+      }
+    ],
+    "open_questions": [
+      "The report has no length cap and its size is never measured, so how close a 256-round BrowseComp run comes to the 40K window is unknown.",
+      "Table 1 baselines are copied from their papers, so search back-ends, tools and turn budgets differ across rows."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 250",
+        "body": "<text class=\"fig-t\" x=\"83\" y=\"18\" text-anchor=\"middle\">Workspace, round t</text><rect class=\"gi-ev\" x=\"8\" y=\"28\" width=\"150\" height=\"176\" rx=\"10\"/><rect class=\"gi-f\" x=\"16\" y=\"38\" width=\"134\" height=\"26\" rx=\"6\"/><text class=\"fig-t\" x=\"83\" y=\"55\" text-anchor=\"middle\">question</text><rect class=\"gi-hi\" x=\"16\" y=\"70\" width=\"134\" height=\"40\" rx=\"6\"/><text class=\"fig-t\" x=\"24\" y=\"86\" text-anchor=\"start\">report</text><text class=\"fig-s\" x=\"24\" y=\"100\" text-anchor=\"start\">all findings so far</text><rect class=\"gi-f\" x=\"16\" y=\"116\" width=\"134\" height=\"26\" rx=\"6\"/><text class=\"fig-t\" x=\"83\" y=\"133\" text-anchor=\"middle\">last tool call</text><rect class=\"gi-f\" x=\"16\" y=\"148\" width=\"134\" height=\"48\" rx=\"6\"/><text class=\"fig-t\" x=\"24\" y=\"168\" text-anchor=\"start\">last tool response</text><text class=\"fig-s\" x=\"24\" y=\"182\" text-anchor=\"start\">cut at 32k tokens</text><path class=\"gi-a\" d=\"M158.0 116.0 L177.0 116.0\"/><polygon class=\"gi-ah\" points=\"184.0,116.0 177.0,120.0 177.0,112.0\"/><rect class=\"gi-llm\" x=\"184\" y=\"92\" width=\"72\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"220\" y=\"114\" text-anchor=\"middle\">Policy</text><text class=\"fig-s\" x=\"220\" y=\"127\" text-anchor=\"middle\">one LLM call</text><line class=\"gi-a\" x1=\"256\" y1=\"116\" x2=\"268\" y2=\"116\"/><line class=\"gi-a\" x1=\"268\" y1=\"57\" x2=\"268\" y2=\"159\"/><path class=\"gi-a\" d=\"M268.0 57.0 L277.0 57.0\"/><polygon class=\"gi-ah\" points=\"284.0,57.0 277.0,61.0 277.0,53.0\"/><path class=\"gi-a\" d=\"M268.0 108.0 L277.0 108.0\"/><polygon class=\"gi-ah\" points=\"284.0,108.0 277.0,112.0 277.0,104.0\"/><path class=\"gi-a\" d=\"M268.0 159.0 L277.0 159.0\"/><polygon class=\"gi-ah\" points=\"284.0,159.0 277.0,163.0 277.0,155.0\"/><rect class=\"gi-ev d\" x=\"284\" y=\"40\" width=\"128\" height=\"34\" rx=\"6\"/><text class=\"fig-t\" x=\"292\" y=\"54\" text-anchor=\"start\">think</text><text class=\"fig-s\" x=\"292\" y=\"67\" text-anchor=\"start\">not carried over</text><rect class=\"gi-hi\" x=\"284\" y=\"86\" width=\"128\" height=\"44\" rx=\"6\"/><text class=\"fig-t\" x=\"292\" y=\"103\" text-anchor=\"start\">new report</text><text class=\"fig-s\" x=\"292\" y=\"117\" text-anchor=\"start\">rewritten in full</text><rect class=\"gi-f\" x=\"284\" y=\"142\" width=\"128\" height=\"34\" rx=\"6\"/><text class=\"fig-t\" x=\"292\" y=\"156\" text-anchor=\"start\">action</text><text class=\"fig-s\" x=\"292\" y=\"169\" text-anchor=\"start\">tool call or answer</text><path class=\"gi-a\" d=\"M412.0 159.0 L429.0 159.0\"/><polygon class=\"gi-ah\" points=\"436.0,159.0 429.0,163.0 429.0,155.0\"/><rect class=\"gi-f\" x=\"436\" y=\"128\" width=\"116\" height=\"62\" rx=\"8\"/><text class=\"fig-t\" x=\"494\" y=\"148\" text-anchor=\"middle\">Tools</text><text class=\"fig-s\" x=\"494\" y=\"163\" text-anchor=\"middle\">search, scholar,</text><text class=\"fig-s\" x=\"494\" y=\"176\" text-anchor=\"middle\">visit, python</text><line class=\"gi-e d\" x1=\"412\" y1=\"108\" x2=\"424\" y2=\"108\"/><line class=\"gi-e d\" x1=\"424\" y1=\"108\" x2=\"424\" y2=\"218\"/><path class=\"gi-a\" d=\"M494.0 190.0 L494.0 218.0 L83.0 218.0 L83.0 211.0\"/><polygon class=\"gi-ah\" points=\"83.0,204.0 87.0,211.0 79.0,211.0\"/><text class=\"fig-s\" x=\"280\" y=\"242\" text-anchor=\"middle\">next workspace: question + new report + this call + its response; the rest is dropped</text>",
+        "text": [
+          "Each round the policy reads a four-part workspace and writes a think trace, a new report of all findings, and one action.",
+          "The next workspace keeps only the question, the new report and the latest call with its response; everything older is dropped."
+        ],
+        "src": "paper §3.1, Fig. 2; code run.py L317-L367",
+        "url": "https://github.com/Chen-GX/IterResearch/blob/f84fdc7a93b9552c1fd5be31ada51e3ea0d85476/run.py#L317-L367"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 244",
+        "body": "<rect class=\"gi-f\" x=\"6\" y=\"30\" width=\"66\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"39\" y=\"56\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M72.0 52.0 L83.0 52.0\"/><polygon class=\"gi-ah\" points=\"90.0,52.0 83.0,56.0 83.0,48.0\"/><rect class=\"gi-f\" x=\"90\" y=\"30\" width=\"110\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"145\" y=\"50\" text-anchor=\"middle\">Read workspace</text><text class=\"fig-s\" x=\"145\" y=\"63\" text-anchor=\"middle\">q + report + last step</text><path class=\"gi-a\" d=\"M200.0 52.0 L211.0 52.0\"/><polygon class=\"gi-ah\" points=\"218.0,52.0 211.0,56.0 211.0,48.0\"/><rect class=\"gi-llm\" x=\"218\" y=\"30\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"262\" y=\"50\" text-anchor=\"middle\">Policy</text><text class=\"fig-s\" x=\"262\" y=\"63\" text-anchor=\"middle\">think, report, act</text><path class=\"gi-a\" d=\"M306.0 52.0 L319.0 52.0\"/><polygon class=\"gi-ah\" points=\"326.0,52.0 319.0,56.0 319.0,48.0\"/><polygon class=\"gi-llm\" points=\"372,24.0 418,52.0 372,80.0 326,52.0\"/><text class=\"fig-t\" x=\"372\" y=\"56\" text-anchor=\"middle\">Answer?</text><path class=\"gi-a\" d=\"M418.0 52.0 L445.0 52.0\"/><polygon class=\"gi-ah\" points=\"452.0,52.0 445.0,56.0 445.0,48.0\"/><text class=\"fig-yes\" x=\"435\" y=\"46\" text-anchor=\"middle\">Yes</text><rect class=\"gi-hi\" x=\"452\" y=\"30\" width=\"102\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"503\" y=\"50\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"503\" y=\"63\" text-anchor=\"middle\">from the report</text><path class=\"gi-a\" d=\"M372.0 80.0 L372.0 143.0\"/><polygon class=\"gi-ah\" points=\"372.0,150.0 368.0,143.0 376.0,143.0\"/><text class=\"fig-no\" x=\"380\" y=\"118\" text-anchor=\"start\">No: tool call</text><rect class=\"gi-f\" x=\"306\" y=\"150\" width=\"132\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"372\" y=\"170\" text-anchor=\"middle\">Run tool</text><text class=\"fig-s\" x=\"372\" y=\"183\" text-anchor=\"middle\">search, visit, python</text><path class=\"gi-a\" d=\"M306.0 172.0 L279.0 172.0\"/><polygon class=\"gi-ah\" points=\"272.0,172.0 279.0,168.0 279.0,176.0\"/><rect class=\"gi-f\" x=\"142\" y=\"150\" width=\"130\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"207\" y=\"170\" text-anchor=\"middle\">Rebuild workspace</text><text class=\"fig-s\" x=\"207\" y=\"183\" text-anchor=\"middle\">drop older rounds</text><path class=\"gi-a\" d=\"M207.0 150.0 L207.0 112.0 L145.0 112.0 L145.0 81.0\"/><polygon class=\"gi-ah\" points=\"145.0,74.0 149.0,81.0 141.0,81.0\"/><text class=\"fig-s\" x=\"280\" y=\"216\" text-anchor=\"middle\">search: top 10 per query; visit: a helper LLM summarizes the page for a goal</text><text class=\"fig-s\" x=\"280\" y=\"232\" text-anchor=\"middle\">at most Tmax rounds (32 in training, 32-256 at test); the last round must answer</text>",
+        "text": [
+          "There is no search over memory: every round the policy reads the whole workspace and either answers or calls a tool.",
+          "A tool call leads to a rebuilt workspace, until the policy answers or the round limit forces an answer."
+        ],
+        "src": "paper App. C.1 Alg. 1, C.2; code run.py L410-L481",
+        "url": "https://github.com/Chen-GX/IterResearch/blob/f84fdc7a93b9552c1fd5be31ada51e3ea0d85476/run.py#L410-L481"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Workspace parts",
+        "value": "4: question, report, last call, last response",
+        "src": "paper Eq. 2",
+        "section": "construction"
+      },
+      {
+        "label": "Tool response cap",
+        "value": "32k tokens (code); pages cut at 48k before summarizing",
+        "src": "code config.py L64-L67",
+        "section": "construction"
+      },
+      {
+        "label": "Search results",
+        "value": "top 10 per query",
+        "src": "paper App. C.2",
+        "section": "method"
+      },
+      {
+        "label": "Context window",
+        "value": "40,960 tokens (prompt + response)",
+        "src": "paper Tables 4-5",
+        "section": "method"
+      },
+      {
+        "label": "Max rounds",
+        "value": "32 in training; 32-256 at test (BrowseComp 256)",
+        "src": "paper Table 6",
+        "section": "method"
+      },
+      {
+        "label": "Reward discount",
+        "value": "γ = 0.995 per round",
+        "src": "paper App. B.1",
+        "section": "method"
+      },
+      {
+        "label": "Training data",
+        "value": "110K SFT trajectories (3.7 rounds avg); 4,096 RL questions, G = 16",
+        "src": "paper App. C.3, Table 5",
+        "section": "method"
+      },
+      {
+        "label": "Generation tokens per question",
+        "value": "376k BrowseComp; 28-33k on HLE, GAIA, Xbench-DS, SEAL-0",
+        "src": "paper Table 7",
+        "section": "results"
+      },
+      {
+        "label": "Turns per question",
+        "value": "18.04 (EAPO) vs 19.13 (GSPO) vs 16.45 (SFT)",
+        "src": "paper §4.3",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Thinks, rewrites the report, acts",
+        "model": "IterResearch-30B-A3B (Qwen3-30B-A3B, RFT then EAPO RL)",
+        "kind": "llm",
+        "src": "paper §4.1"
+      },
+      {
+        "role": "Web and scholar search",
+        "model": "Google Search / Scholar via SerpAPI, top 10",
+        "kind": "retriever",
+        "src": "paper App. C.2"
+      },
+      {
+        "role": "Summarizes visited pages for a goal",
+        "model": "Qwen3-30B-A3B (Jina Reader fetch)",
+        "kind": "llm",
+        "src": "paper App. C.2"
+      },
+      {
+        "role": "Rebuilds the workspace",
+        "model": "fixed rule",
+        "kind": "rule",
+        "src": "paper Eq. 2; code run.py L317-L367",
+        "url": "https://github.com/Chen-GX/IterResearch/blob/f84fdc7a93b9552c1fd5be31ada51e3ea0d85476/run.py#L317-L367"
+      },
+      {
+        "role": "Reward judge and trajectory synthesis (training only)",
+        "model": "Qwen3-235B-A22B",
+        "kind": "llm",
+        "src": "paper App. C.3"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "HLE",
+        "BC",
+        "BC-zh",
+        "GAIA",
+        "Xbench-DS",
+        "SEAL-0",
+        "Avg"
+      ],
+      "rows": [
+        [
+          "IterResearch, EAPO (full)",
+          "28.8",
+          "37.3",
+          "45.2",
+          "72.8",
+          "71.0",
+          "39.6",
+          "49.1"
+        ],
+        [
+          "IterResearch, GSPO",
+          "28.2",
+          "38.3",
+          "45.6",
+          "70.9",
+          "67.0",
+          "39.6",
+          "48.3"
+        ],
+        [
+          "IterResearch, SFT only",
+          "25.3",
+          "34.9",
+          "40.8",
+          "68.9",
+          "65.0",
+          "37.8",
+          "45.5"
+        ],
+        [
+          "Mono-Agent (growing context, 64K)",
+          "18.7",
+          "25.4",
+          "34.6",
+          "62.1",
+          "55.0",
+          "23.4",
+          "36.5"
+        ],
+        [
+          "Mono-Agent + IterResearch data",
+          "25.4",
+          "30.1",
+          "40.4",
+          "63.1",
+          "62.0",
+          "30.6",
+          "41.9"
+        ]
+      ],
+      "src": "paper Table 2"
+    },
+    "discussion": {
+      "takeaway": "Rebuilding the agent's context each round around a self-written report, instead of appending every step, lets a 30B MoE deep-research agent keep improving with more turns; in the authors' tests it beats open-source agents on six benchmarks and helps frontier models as a prompt.",
+      "claims": [
+        {
+          "claim": "Best open-source deep-research agent on six benchmarks.",
+          "evidence": "Average +14.5pp over the best open-source agent: HLE 28.8, BC 37.3, BC-zh 45.2, GAIA 72.8, Xbench-DS 71.0, SEAL-0 39.6. Table 1, §4.2"
+        },
+        {
+          "claim": "The iterative workspace beats a growing context under the same training data.",
+          "evidence": "Average 49.1 vs 36.5 for Mono-Agent (which had 64K context vs 40K). Table 2, §4.3"
+        },
+        {
+          "claim": "Accuracy keeps rising with more allowed turns.",
+          "evidence": "BrowseComp-200: 3.5% at 2 turns to 42.5% at 2048, trained with Tmax 32. Fig. 3, App. B.3"
+        },
+        {
+          "claim": "Works as a prompting strategy without training.",
+          "evidence": "BrowseComp over ReAct: o3 49.7 → 62.4 (+12.7), DeepSeek-V3.1 30.0 → 49.2 (+19.2). Fig. 4"
+        },
+        {
+          "claim": "The discounted reward makes exploration shorter at similar accuracy.",
+          "evidence": "18.04 vs 19.13 turns (-5.7%), average 49.1 vs 48.3. Table 2, §4.3"
+        }
+      ],
+      "limits": [],
+      "limits_src": "not stated: the paper has no limitations section",
+      "reading": [
+        "Nothing bounds the report except the trained policy; the paper never reports report lengths, so the O(1) workspace claim is untested in numbers.",
+        "The text and Fig. 3 disagree: the text says 5.5% → 50.1% and 80.1 average turns at 2048, the figure and abstract say 3.5% → 42.5% and 129.5 turns; App. B.3 cites 15.2% at Tmax 32 where the figure shows 23.5.",
+        "App. C.3 says Table 1 baseline numbers were taken from the original papers, so tools, search back-ends and turn budgets differ from IterResearch's (which uses Tmax up to 256).",
+        "The Mono-Agent ablation changes paradigm and context length (64K vs 40K) together; it is the fairest comparison in the paper but not a single-variable one.",
+        "The 'last tool response' is often already a summary: Visit returns a helper LLM's goal-directed extract of the page, not the page.",
+        "The released code is a reproduction with different tools, so the reported numbers cannot be traced to code."
+      ]
+    },
+    "abstract": {
+      "text": "IterResearch targets long-horizon deep-research agents, which usually append every search result and thought to one growing context until it fills with noise. Instead, each round the agent works from a small rebuilt workspace: the question, a report it rewrites itself to hold all findings, and only the latest tool call and response. A 30B MoE model is trained for this with rejection-sampling SFT and an RL objective whose rewards are discounted by trajectory length. The authors report large gains over open-source agents on six benchmarks, accuracy that keeps rising up to 2048 turns, and gains for o3 and DeepSeek-V3.1 when the scheme is used only as a prompt.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2511.07327"
+    },
+    "sections": {
+      "Memory architecture": "§3.1",
+      "Results": "§4.2, §4.4, §4.5",
+      "Ablation": "§4.3",
+      "Discussion": "§5 (no limitations section)",
+      "Details": "§3.2, §4.1, App. B-E"
+    }
+  }
+}

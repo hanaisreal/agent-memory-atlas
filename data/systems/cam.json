@@ -1,0 +1,679 @@
+{
+  "id": "cam",
+  "name": "CAM",
+  "paper": {
+    "title": "CAM: A Constructivist View of Agentic Memory for LLM-Based Reading Comprehension",
+    "arxiv": "2510.05520",
+    "url": "https://arxiv.org/abs/2510.05520",
+    "venue": "NeurIPS 2025",
+    "venue_short": "NeurIPS",
+    "track": "main",
+    "year": 2025,
+    "code": "https://github.com/rui9812/CAM"
+  },
+  "design": {
+    "construction": {
+      "unit": "text chunk (256 or 512 tokens) as a graph node; LLM summary node per cluster at each higher level",
+      "kept_as": "raw chunks kept verbatim + LLM summaries of overlapping chunk clusters",
+      "processing": "link chunks by embedding similarity mixed with position; copy nodes that bridge separate neighbour groups; label propagation clusters; LLM summarises each cluster; recurse",
+      "trigger": "offline-batch",
+      "writer": "GPT-4o-mini (summaries); text-embedding-3-small (edges)"
+    },
+    "organization": {
+      "structure": "multi-level graph: chunk graph at level 0, cluster-summary graphs above, a node may belong to several clusters",
+      "stores": "one composed graph of all levels + one embedding matrix",
+      "index": "dense embedding of every node at every level"
+    },
+    "management": {
+      "operations": "new batch: add edges for new chunks, redo replicas and labels only for affected nodes, re-summarise changed clusters, propagate upward (paper; not in released code)",
+      "conflicts": null,
+      "forgetting": null,
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "question as is",
+      "candidates": "cosine top-s over all nodes of all levels (s=5 in paper, 10 in code default), then same-level neighbours and child nodes of kept nodes",
+      "selection": "LLM keeps the helpful nodes each turn; repeat until the pool stops changing or 5 turns",
+      "budget": "no cap: every node kept in any turn"
+    },
+    "use": {
+      "context": "all kept nodes (summaries and raw chunks, adjacent chunks joined) as numbered passages",
+      "reasoning": "up to 5 LLM selection calls, then one answer call"
+    },
+    "control": {
+      "construction": "fixed-rule",
+      "management": "fixed-rule",
+      "retrieval": "prompted-llm"
+    }
+  },
+  "classify": {
+    "structure": "hierarchy",
+    "index": "vector",
+    "management": "consolidate",
+    "candidates": "graph walk",
+    "decides": "LLM decides",
+    "note": "Candidates start from a dense top-s over all levels, then grow along same-level edges and down to child nodes; an LLM picks which nodes to keep at every turn."
+  },
+  "tags": {
+    "fidelity": "verbatim+derived",
+    "structure": [
+      "graph",
+      "tree"
+    ],
+    "write_time": [
+      "link",
+      "summarize",
+      "consolidate"
+    ],
+    "selection": [
+      "dense",
+      "graph-expansion",
+      "planner"
+    ],
+    "memory_type": [
+      "semantic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "long-document"
+    ]
+  },
+  "stages": {
+    "ingestion": "Documents are split into chunks of 256 or 512 tokens and each chunk is embedded (text-embedding-3-small).",
+    "construction": "Chunks form a level-0 graph: each chunk links to at most 10 others whose score (weighted cosine similarity plus a Gaussian bonus for nearby positions) passes a threshold. Each node is copied once per connected group of its neighbours, label propagation clusters the copies, and an LLM summarises every cluster into a node of the next level.",
+    "organization": "Summary nodes form their own graph (linked when clusters overlap or when their members are linked) and are clustered and summarised again, giving a hierarchy where one node can feed several parents.",
+    "update": "For a new batch of chunks the paper only recomputes the copies and labels of affected nodes and re-summarises clusters that changed, level by level. The released code builds the whole hierarchy in one pass.",
+    "retrieval": "Prune-and-Grow: cosine top-s over nodes of all levels, an LLM keeps the helpful ones, their same-level neighbours and children join the pool, and the LLM picks again, until the pool stops changing or 5 turns pass.",
+    "answer": "The answer model reads every node kept in any turn (summaries plus raw chunks, neighbouring chunks joined) as numbered passages.",
+    "learning": ""
+  },
+  "summary": "Reading memory built by incremental overlapping clustering: chunks are linked by meaning and position, clustered with node copies so a chunk can feed several LLM summaries, stacked into levels, and read by an LLM that grows its selection along the graph.",
+  "verified": false,
+  "notes": "Venue: the arXiv PDF footer says NeurIPS 2025 (39th Conference on Neural Information Processing Systems). Paper text read from arXiv v1 (2025-10-07). Code: https://github.com/rui9812/CAM at 79f0c7d (2025-10-08), two commits both named 'First Commit'. DESIGN: §4.1-4.2, §5.1, App. E. trigger=offline-batch because Table 2 runs are offline (§5, 'offline setting'); the online batch mode is only in §5.3 and is not in the released code. control.construction=fixed-rule because the graph, clustering and hierarchy are rule-driven; the LLM only writes summary text. classify.candidates='graph walk' (close call with 'dense'): the dense top-s only seeds the pool.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2510.05520 v1 (PDF read 2026-09-30)",
+      "code": "https://github.com/rui9812/CAM/tree/79f0c7dbab4a8939bcb793489a3a187d8c232733/",
+      "code_note": "Official repository linked in §5.1. Commit 79f0c7d (2025-10-08) is the latest and one day after arXiv v1. It holds the offline builder and the three task scripts; the incremental (online batch) update of §4.1.2-4.1.3 and §5.3 is not included."
+    },
+    "headline": [
+      "Memory is a stack of graphs: raw chunks at the bottom, LLM summaries of overlapping chunk clusters above; a chunk can feed several summaries.",
+      "Reading is Prune-and-Grow: an LLM keeps useful nodes from a dense top-s, the pool grows to their neighbours and children, and the LLM picks again for up to 5 turns.",
+      "The released code only builds offline, so the paper's batch-online results (Fig. 3) cannot be rerun from it."
+    ],
+    "sections": {
+      "Memory architecture": "§3, §4.1",
+      "Results": "§5.2, §5.3",
+      "Ablation": "§5.4",
+      "Discussion": "§6",
+      "Details": "§4.2, §5.1, App. C, E, F, G"
+    },
+    "abstract": {
+      "text": "CAM borrows Piaget's constructivist theory to state three properties a reading agent's memory should have: structured schemata, flexible assimilation and dynamic accommodation. It builds memory by incremental overlapping clustering: text chunks are linked by semantic similarity and position, nodes are copied so they can belong to several clusters, and each cluster is summarised by an LLM into a higher level, with new batches updating only the affected parts. At question time an LLM starts from the most similar nodes and grows its selection along the memory graph. The authors report gains over RAPTOR, GraphRAG, HippoRAG, MemTree and others on six long-text QA, summarisation and claim-verification sets, and faster batch insertion than rebuilding offline.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2510.05520"
+    },
+    "units": [
+      {
+        "name": "Chunk node (level 0)",
+        "role": "one piece of the source document",
+        "made_by": "fixed-size chunker and embedding model",
+        "fields": [
+          {
+            "name": "text",
+            "what": "the raw chunk (256 or 512 tokens)",
+            "kept_as": "verbatim",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "code preprocess_chunks.py L21-L50; paper App. E",
+            "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/preprocess_chunks.py#L21-L50"
+          },
+          {
+            "name": "embedding",
+            "what": "embedding of the raw chunk text; drives edges and the question match",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code preprocess_chunks.py L37-L39",
+            "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/preprocess_chunks.py#L37-L39"
+          },
+          {
+            "name": "position",
+            "what": "chunk index in its document; nearby chunks get a similarity bonus (zero across documents)",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper Eq. 2, App. E; code constructivist_memory.py L138-L148",
+            "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/constructivist_memory.py#L138-L148"
+          },
+          {
+            "name": "same-level edges",
+            "what": "links to at most 10 other chunks whose mixed score passes θ",
+            "kept_as": "derived",
+            "used_for": [
+              "scene routing"
+            ],
+            "src": "code constructivist_memory.py L154-L169",
+            "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/constructivist_memory.py#L154-L169"
+          },
+          {
+            "name": "gist",
+            "what": "optional LLM gist of the chunk; the QA script reads the raw text, the summarisation script's default reads this field",
+            "kept_as": "summarized",
+            "used_for": [],
+            "src": "code preprocess_chunks.py L25-L27; tasks/query_based_summarization.py L247",
+            "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/preprocess_chunks.py#L25-L27"
+          },
+          {
+            "name": "entities",
+            "what": "up to five LLM-extracted entities; used only by the fine-grained variant",
+            "kept_as": "extracted",
+            "used_for": [],
+            "src": "code preprocess_chunks.py L29-L35; paper §5.4",
+            "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/preprocess_chunks.py#L29-L35"
+          }
+        ]
+      },
+      {
+        "name": "Summary node (level 1 and up)",
+        "role": "an abstraction of one cluster of lower-level nodes",
+        "made_by": "GPT-4o-mini summarising the cluster members' text",
+        "fields": [
+          {
+            "name": "text",
+            "what": "LLM summary of the member nodes' text, in narrative order",
+            "kept_as": "summarized",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "code constructivist_memory.py L243-L250; prompts.py L20-L31",
+            "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/constructivist_memory.py#L243-L250"
+          },
+          {
+            "name": "embedding",
+            "what": "embedding of the summary",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code constructivist_memory.py L249",
+            "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/constructivist_memory.py#L249"
+          },
+          {
+            "name": "children",
+            "what": "ids of the lower-level members (a lower node may appear under several parents)",
+            "kept_as": "derived",
+            "used_for": [
+              "scene routing"
+            ],
+            "src": "code constructivist_memory.py L286-L307, L355-L362",
+            "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/constructivist_memory.py#L286-L307"
+          },
+          {
+            "name": "same-level edges",
+            "what": "link two summaries when their clusters share a member or when any members are linked",
+            "kept_as": "derived",
+            "used_for": [
+              "scene routing"
+            ],
+            "src": "code constructivist_memory.py L228-L241",
+            "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/constructivist_memory.py#L228-L241"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Chunk and embed",
+        "how": "split each document into chunks and embed the raw text",
+        "params": {
+          "chunk": "256 or 512 tokens",
+          "embedding": "text-embedding-3-small (paper); text-embedding-3-large (code default)"
+        },
+        "src": "paper App. E; code preprocess_chunks.py L37-L39",
+        "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/preprocess_chunks.py#L37-L39"
+      },
+      {
+        "step": "Link chunks",
+        "how": "score every pair as α·cosine + (1−α)·exp(−(i−j)²/2σ²); each chunk links to its top-k partners with score ≥ θ",
+        "params": {
+          "k": "10",
+          "α": "0.5 / 0.7 / 0.9 (code default 0.6)",
+          "σ": "1.0 / 1.5 / 2.0",
+          "θ": "0.5 / 0.7 (code default 0.6)"
+        },
+        "src": "paper §4.1.1, Eq. 2, App. E; code L124-L169",
+        "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/constructivist_memory.py#L124-L169"
+      },
+      {
+        "step": "Split roles",
+        "how": "for each node, take its neighbours without it; each connected group of neighbours gets its own copy of the node, and edges are rewired between copies",
+        "src": "paper §4.1.2; code L185-L226",
+        "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/constructivist_memory.py#L185-L226"
+      },
+      {
+        "step": "Cluster",
+        "how": "label propagation on the graph of copies; map copies back to nodes, so clusters overlap; clusters over the cap are cut into consecutive slices",
+        "params": {
+          "cap": "12 nodes (code)"
+        },
+        "src": "paper §4.1.3; code L171-L183, L282-L293",
+        "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/constructivist_memory.py#L282-L293"
+      },
+      {
+        "step": "Summarise",
+        "how": "GPT-4o-mini (temperature 0) writes a summary of each cluster's member texts; the summaries become the next level's nodes, linked by overlap or member edges",
+        "src": "code L228-L250, L304-L322; prompts.py L20-L31",
+        "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/constructivist_memory.py#L304-L322"
+      },
+      {
+        "step": "Recurse",
+        "how": "repeat split, cluster and summarise on the new level until the number of clusters no longer falls or 10 levels are reached; then merge all levels into one graph and one embedding matrix",
+        "params": {
+          "max levels": "10 (code)"
+        },
+        "src": "code L281-L331, L333-L387",
+        "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/constructivist_memory.py#L281-L331"
+      },
+      {
+        "step": "Online batch (paper only)",
+        "how": "a new batch adds edges, redoes copies only for new nodes and their neighbours, reruns label propagation from the affected copies (spreading while labels change), and re-summarises changed clusters level by level",
+        "note": "Not in the released code, which always rebuilds from all chunks.",
+        "src": "paper §4.1.2-4.1.3, §5.3",
+        "url": "https://arxiv.org/pdf/2510.05520"
+      }
+    ],
+    "read": [
+      {
+        "step": "Seed",
+        "round": 1,
+        "input": "question",
+        "scores": "embedding of every node at every level (raw chunks and summaries)",
+        "how": "cosine similarity between the question embedding and all node embeddings; keep the top-s",
+        "params": {
+          "s": "5 (paper App. E); 10 (code default)"
+        },
+        "src": "paper §4.2; code question_answering.py L203-L208, L260",
+        "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/tasks/question_answering.py#L203-L208"
+      },
+      {
+        "step": "Prune",
+        "round": 1,
+        "input": "question",
+        "scores": "node text shown as 'Passage i: …'",
+        "how": "GPT-4o-mini returns the list of helpful passage numbers; those nodes join the evidence",
+        "src": "code question_answering.py L96-L113; prompts.py L115-L130",
+        "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/tasks/question_answering.py#L96-L113"
+      },
+      {
+        "step": "Grow",
+        "round": 2,
+        "how": "the next pool is the kept nodes plus their same-level neighbours and their children one level down",
+        "src": "paper §4.2; code question_answering.py L163-L177",
+        "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/tasks/question_answering.py#L163-L177"
+      },
+      {
+        "step": "Repeat",
+        "round": 2,
+        "how": "prune and grow again until the pool equals the previous one or the turn limit is hit; up to 2 retries on unparsable output",
+        "params": {
+          "turns": "5",
+          "retries": "2"
+        },
+        "src": "code question_answering.py L136-L177, L262-L263",
+        "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/tasks/question_answering.py#L136-L177"
+      },
+      {
+        "step": "Assemble",
+        "round": 0,
+        "how": "all nodes kept in any turn, sorted by id; consecutive level-0 chunks are joined into one passage; if nothing was kept, the seed nodes are used",
+        "src": "code question_answering.py L179-L185, L215-L248",
+        "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/tasks/question_answering.py#L179-L185"
+      }
+    ],
+    "answer_context": {
+      "sees": "every node the LLM kept in any turn: summaries and raw chunks",
+      "format": "\"Passage i: {text}\" lines under the question, in a fixed answer prompt (multiple-choice, generative, claim or summary variant)",
+      "includes": [
+        "raw chunk text, consecutive chunks joined",
+        "LLM summaries from any level"
+      ],
+      "excludes": [
+        "levels and graph links",
+        "similarity scores",
+        "entities",
+        "gists (QA script)"
+      ],
+      "note": "No size cap: the context grows with the number of kept nodes.",
+      "src": "code question_answering.py L185-L200; prompts.py L34-L99",
+      "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/tasks/question_answering.py#L185-L200"
+    },
+    "compression": [
+      {
+        "what": "answer context vs one NovelQA novel",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported. The paper gives no token counts for the retrieved context; novels average over 200K tokens (App. C).",
+        "src": "paper App. C",
+        "url": "https://arxiv.org/pdf/2510.05520"
+      },
+      {
+        "what": "summary vs its cluster",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported. The prompt asks for a moderately long summary; clusters hold up to 12 nodes in the code.",
+        "src": "code prompts.py L20-L31",
+        "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/tasks/tools/prompts.py#L20-L31"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "CAM NovelQA ACC-L",
+        "value": "52.3 (best baseline RAPTOR 47.8)",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "CAM QMSum ACC-L",
+        "value": "57.6 (GraphRAG 53.9)",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "CAM MultiHop-RAG EM / F1",
+        "value": "72.8 / 77.5 (RAPTOR 69.4 / 73.6)",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "Batch insertion time at 500 chunks",
+        "value": "CAM < 0.3h; RAPTOR 1.2h and GraphRAG 1.8h rebuilding offline",
+        "src": "paper Fig. 3a"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Seed size",
+        "paper": "s = 5",
+        "code": "top_k default 10",
+        "src": "question_answering.py L260",
+        "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/tasks/question_answering.py#L260"
+      },
+      {
+        "topic": "Embedding model",
+        "paper": "text-embedding-3-small",
+        "code": "text-embedding-3-large default in every script",
+        "src": "constructivist_memory.py L30",
+        "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/constructivist_memory.py#L30"
+      },
+      {
+        "topic": "Online batch update",
+        "paper": "local re-clustering of affected nodes (§4.1.2-4.1.3)",
+        "code": "one-pass build over all chunks; no incremental path",
+        "src": "constructivist_memory.py L269-L331",
+        "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/constructivist_memory.py#L269-L331"
+      },
+      {
+        "topic": "LLM judge",
+        "paper": "GPT-4o",
+        "code": "same client as the reader (gpt-4o-mini default)",
+        "src": "question_answering.py L24-L37, L370-L377",
+        "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/tasks/question_answering.py#L24-L37"
+      }
+    ],
+    "open_questions": [
+      "How much of the gain comes from the LLM selection loop rather than from the memory structure? Baselines' read budgets are not stated, and CAM's context has no cap.",
+      "The per-dataset α, σ, θ and chunk size behind Table 2 are not given; the code defaults (0.6, 1.0, 0.6) lie outside the reported grid for α and θ."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 250",
+        "body": "<text class=\"fig-t\" x=\"42\" y=\"16\" text-anchor=\"middle\">Document</text><rect class=\"gi-ev\" x=\"12\" y=\"28\" width=\"60\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"19\" y1=\"35.0\" x2=\"60\" y2=\"35.0\"/><rect class=\"gi-ev\" x=\"12\" y=\"46\" width=\"60\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"19\" y1=\"53.0\" x2=\"60\" y2=\"53.0\"/><rect class=\"gi-ev\" x=\"12\" y=\"64\" width=\"60\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"19\" y1=\"71.0\" x2=\"60\" y2=\"71.0\"/><rect class=\"gi-ev\" x=\"12\" y=\"82\" width=\"60\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"19\" y1=\"89.0\" x2=\"60\" y2=\"89.0\"/><rect class=\"gi-ev\" x=\"12\" y=\"100\" width=\"60\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"19\" y1=\"107.0\" x2=\"60\" y2=\"107.0\"/><rect class=\"gi-ev\" x=\"12\" y=\"118\" width=\"60\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"19\" y1=\"125.0\" x2=\"60\" y2=\"125.0\"/><text class=\"fig-s\" x=\"42\" y=\"150\" text-anchor=\"middle\">256- or 512-</text><text class=\"fig-s\" x=\"42\" y=\"162\" text-anchor=\"middle\">token chunks</text><path class=\"gi-a\" d=\"M78.0 76.0 L109.0 76.0\"/><polygon class=\"gi-ah\" points=\"116.0,76.0 109.0,80.0 109.0,72.0\"/><text class=\"fig-s\" x=\"97\" y=\"68\" text-anchor=\"middle\">embed</text><text class=\"fig-t\" x=\"186\" y=\"16\" text-anchor=\"middle\">Chunk graph (level 0)</text><line class=\"gi-e\" x1=\"136\" y1=\"40\" x2=\"166\" y2=\"32\"/><line class=\"gi-e\" x1=\"166\" y1=\"32\" x2=\"198\" y2=\"46\"/><line class=\"gi-e\" x1=\"198\" y1=\"46\" x2=\"234\" y2=\"36\"/><line class=\"gi-e\" x1=\"136\" y1=\"40\" x2=\"148\" y2=\"76\"/><line class=\"gi-e\" x1=\"166\" y1=\"32\" x2=\"148\" y2=\"76\"/><line class=\"gi-e\" x1=\"148\" y1=\"76\" x2=\"184\" y2=\"84\"/><line class=\"gi-e\" x1=\"198\" y1=\"46\" x2=\"184\" y2=\"84\"/><line class=\"gi-e\" x1=\"184\" y1=\"84\" x2=\"222\" y2=\"74\"/><line class=\"gi-e\" x1=\"234\" y1=\"36\" x2=\"222\" y2=\"74\"/><line class=\"gi-e\" x1=\"148\" y1=\"76\" x2=\"138\" y2=\"114\"/><line class=\"gi-e\" x1=\"138\" y1=\"114\" x2=\"172\" y2=\"120\"/><line class=\"gi-e\" x1=\"184\" y1=\"84\" x2=\"172\" y2=\"120\"/><line class=\"gi-e\" x1=\"172\" y1=\"120\" x2=\"208\" y2=\"112\"/><line class=\"gi-e\" x1=\"222\" y1=\"74\" x2=\"208\" y2=\"112\"/><line class=\"gi-e\" x1=\"208\" y1=\"112\" x2=\"240\" y2=\"108\"/><line class=\"gi-e\" x1=\"222\" y1=\"74\" x2=\"240\" y2=\"108\"/><circle class=\"gi-n\" cx=\"136\" cy=\"40\" r=\"5\"/><circle class=\"gi-n\" cx=\"166\" cy=\"32\" r=\"5\"/><circle class=\"gi-n\" cx=\"198\" cy=\"46\" r=\"5\"/><circle class=\"gi-n\" cx=\"234\" cy=\"36\" r=\"5\"/><circle class=\"gi-n\" cx=\"148\" cy=\"76\" r=\"5\"/><circle class=\"gi-n\" cx=\"184\" cy=\"84\" r=\"5\"/><circle class=\"gi-n\" cx=\"222\" cy=\"74\" r=\"5\"/><circle class=\"gi-n\" cx=\"138\" cy=\"114\" r=\"5\"/><circle class=\"gi-n\" cx=\"172\" cy=\"120\" r=\"5\"/><circle class=\"gi-n\" cx=\"208\" cy=\"112\" r=\"5\"/><circle class=\"gi-n\" cx=\"240\" cy=\"108\" r=\"5\"/><text class=\"fig-s\" x=\"186\" y=\"150\" text-anchor=\"middle\">link each chunk to ≤10 others</text><text class=\"fig-s\" x=\"186\" y=\"162\" text-anchor=\"middle\">if α·cosine + (1−α)·nearness ≥ θ</text><path class=\"gi-a\" d=\"M254.0 76.0 L279.0 76.0\"/><polygon class=\"gi-ah\" points=\"286.0,76.0 279.0,80.0 279.0,72.0\"/><text class=\"fig-t\" x=\"344\" y=\"16\" text-anchor=\"middle\">Split roles</text><line class=\"gi-e\" x1=\"300\" y1=\"50\" x2=\"306\" y2=\"100\"/><line class=\"gi-e\" x1=\"388\" y1=\"48\" x2=\"382\" y2=\"102\"/><line class=\"gi-e\" x1=\"300\" y1=\"50\" x2=\"330\" y2=\"76\"/><line class=\"gi-e\" x1=\"306\" y1=\"100\" x2=\"330\" y2=\"76\"/><line class=\"gi-e\" x1=\"388\" y1=\"48\" x2=\"358\" y2=\"76\"/><line class=\"gi-e\" x1=\"382\" y1=\"102\" x2=\"358\" y2=\"76\"/><line class=\"gi-e d\" x1=\"330\" y1=\"76\" x2=\"358\" y2=\"76\"/><circle class=\"gi-n\" cx=\"300\" cy=\"50\" r=\"5\"/><circle class=\"gi-n\" cx=\"306\" cy=\"100\" r=\"5\"/><circle class=\"gi-n\" cx=\"388\" cy=\"48\" r=\"5\"/><circle class=\"gi-n\" cx=\"382\" cy=\"102\" r=\"5\"/><circle class=\"gi-hi\" cx=\"330\" cy=\"76\" r=\"6\"/><circle class=\"gi-hi\" cx=\"358\" cy=\"76\" r=\"6\"/><text class=\"fig-s\" x=\"344\" y=\"128\" text-anchor=\"middle\">copies</text><text class=\"fig-s\" x=\"344\" y=\"150\" text-anchor=\"middle\">a chunk between two</text><text class=\"fig-s\" x=\"344\" y=\"162\" text-anchor=\"middle\">groups is copied once</text><text class=\"fig-s\" x=\"344\" y=\"174\" text-anchor=\"middle\">per group</text><path class=\"gi-a\" d=\"M400.0 76.0 L419.0 76.0\"/><polygon class=\"gi-ah\" points=\"426.0,76.0 419.0,80.0 419.0,72.0\"/><text class=\"fig-t\" x=\"490\" y=\"16\" text-anchor=\"middle\">Summary level</text><path class=\"gi-h\" d=\"M432 104 C 430 84, 488 82, 494 100 C 500 120, 454 128, 440 122 C 432 118, 432 112, 432 104 Z\"/><path class=\"gi-h\" d=\"M472 106 C 470 86, 548 84, 552 102 C 556 122, 500 130, 484 124 C 474 120, 472 114, 472 106 Z\"/><circle class=\"gi-n\" cx=\"446\" cy=\"104\" r=\"5\"/><circle class=\"gi-n\" cx=\"464\" cy=\"96\" r=\"5\"/><circle class=\"gi-n\" cx=\"482\" cy=\"108\" r=\"5\"/><circle class=\"gi-n\" cx=\"504\" cy=\"100\" r=\"5\"/><circle class=\"gi-n\" cx=\"526\" cy=\"108\" r=\"5\"/><circle class=\"gi-n\" cx=\"540\" cy=\"98\" r=\"5\"/><circle class=\"gi-hi\" cx=\"460\" cy=\"44\" r=\"7\"/><circle class=\"gi-hi\" cx=\"522\" cy=\"44\" r=\"7\"/><path class=\"gi-a d\" d=\"M460.0 90.0 L460.0 60.0\"/><polygon class=\"gi-ah\" points=\"460.0,53.0 464.0,60.0 456.0,60.0\"/><path class=\"gi-a d\" d=\"M518.0 92.0 L521.3 60.0\"/><polygon class=\"gi-ah\" points=\"522.0,53.0 525.3,60.4 517.3,59.6\"/><rect class=\"gi-llm\" x=\"475\" y=\"60\" width=\"32\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"491\" y=\"70\" text-anchor=\"middle\">LLM</text><text class=\"fig-s\" x=\"490\" y=\"150\" text-anchor=\"middle\">label propagation →</text><text class=\"fig-s\" x=\"490\" y=\"162\" text-anchor=\"middle\">overlapping clusters;</text><text class=\"fig-s\" x=\"490\" y=\"174\" text-anchor=\"middle\">LLM summarises each</text><rect class=\"gi-l\" x=\"6\" y=\"192\" width=\"548\" height=\"52\" rx=\"8\"/><text class=\"fig-s\" x=\"280\" y=\"210\" text-anchor=\"middle\">Summaries become the next level's nodes; repeat until the number of clusters stops falling.</text><text class=\"fig-s\" x=\"280\" y=\"224\" text-anchor=\"middle\">Paper: a new batch only touches the chunks it links to and the clusters above them.</text><text class=\"fig-s\" x=\"280\" y=\"238\" text-anchor=\"middle\">Released code: builds every level in one pass over all chunks; clusters capped at 12 nodes.</text>",
+        "text": [
+          "Chunks are linked when their meaning and position are close. A chunk that sits between two groups is copied once per group, so after clustering it can feed more than one LLM summary.",
+          "Summaries form the next level and are clustered again. The paper updates only affected parts for a new batch; the released code rebuilds all levels."
+        ],
+        "src": "paper §4.1, Eq. 2, App. E; code constructivist_memory.py L124-L331",
+        "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/constructivist_memory.py#L124-L331"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 232",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"40\" width=\"60\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"34.0\" y=\"66.0\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M64.0 62.0 L71.0 62.0\"/><polygon class=\"gi-ah\" points=\"78.0,62.0 71.0,66.0 71.0,58.0\"/><rect class=\"gi-v fig-soft\" x=\"78\" y=\"40\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"122.0\" y=\"60.0\" text-anchor=\"middle\">Top 5 nodes</text><text class=\"fig-s\" x=\"122.0\" y=\"73.0\" text-anchor=\"middle\">cosine, all levels</text><text class=\"fig-s\" x=\"122\" y=\"97\" text-anchor=\"middle\">code default: 10</text><path class=\"gi-a\" d=\"M166.0 62.0 L173.0 62.0\"/><polygon class=\"gi-ah\" points=\"180.0,62.0 173.0,66.0 173.0,58.0\"/><rect class=\"gi-llm\" x=\"180\" y=\"40\" width=\"90\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"225.0\" y=\"60.0\" text-anchor=\"middle\">LLM keeps</text><text class=\"fig-s\" x=\"225.0\" y=\"73.0\" text-anchor=\"middle\">helpful ones</text><path class=\"gi-a\" d=\"M270.0 62.0 L277.0 62.0\"/><polygon class=\"gi-ah\" points=\"284.0,62.0 277.0,66.0 277.0,58.0\"/><rect class=\"gi-f\" x=\"284\" y=\"40\" width=\"104\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"336.0\" y=\"60.0\" text-anchor=\"middle\">Grow</text><text class=\"fig-s\" x=\"336.0\" y=\"73.0\" text-anchor=\"middle\">neighbours + children</text><path class=\"gi-a\" d=\"M388.0 62.0 L389.0 62.0\"/><polygon class=\"gi-ah\" points=\"396.0,62.0 389.0,66.0 389.0,58.0\"/><polygon class=\"gi-llm\" points=\"442,36.0 488,62.0 442,88.0 396,62.0\"/><text class=\"fig-t\" x=\"442\" y=\"61.0\" text-anchor=\"middle\">New nodes?</text><text class=\"fig-s\" x=\"442\" y=\"73.0\" text-anchor=\"middle\">≤ 5 turns</text><path class=\"gi-a\" d=\"M442 36.0 L442 14 L225 14\"/><path class=\"gi-a\" d=\"M225.0 14.0 L225.0 33.0\"/><polygon class=\"gi-ah\" points=\"225.0,40.0 221.0,33.0 229.0,33.0\"/><text class=\"fig-yes\" x=\"330\" y=\"10\" text-anchor=\"middle\">Yes: pick again from the grown pool</text><path class=\"gi-a\" d=\"M442.0 88.0 L442.0 133.0\"/><polygon class=\"gi-ah\" points=\"442.0,140.0 438.0,133.0 446.0,133.0\"/><text class=\"fig-no\" x=\"450\" y=\"118\" text-anchor=\"start\">No, or 5 turns</text><text class=\"fig-s\" x=\"90\" y=\"132\" text-anchor=\"middle\">one index over every node</text><rect class=\"gi-l\" x=\"20\" y=\"140\" width=\"140\" height=\"22\" rx=\"4\"/><circle class=\"gi-hi\" cx=\"50\" cy=\"151\" r=\"4\"/><circle class=\"gi-hi\" cx=\"90\" cy=\"151\" r=\"4\"/><circle class=\"gi-hi\" cx=\"130\" cy=\"151\" r=\"4\"/><rect class=\"gi-l\" x=\"20\" y=\"170\" width=\"140\" height=\"22\" rx=\"4\"/><circle class=\"gi-n\" cx=\"36\" cy=\"181\" r=\"4\"/><circle class=\"gi-n\" cx=\"60\" cy=\"181\" r=\"4\"/><circle class=\"gi-n\" cx=\"84\" cy=\"181\" r=\"4\"/><circle class=\"gi-n\" cx=\"108\" cy=\"181\" r=\"4\"/><circle class=\"gi-n\" cx=\"132\" cy=\"181\" r=\"4\"/><line class=\"gi-e\" x1=\"36\" y1=\"181\" x2=\"60\" y2=\"181\"/><line class=\"gi-e\" x1=\"84\" y1=\"181\" x2=\"108\" y2=\"181\"/><line class=\"gi-e d\" x1=\"50\" y1=\"155\" x2=\"36\" y2=\"177\"/><line class=\"gi-e d\" x1=\"50\" y1=\"155\" x2=\"60\" y2=\"177\"/><line class=\"gi-e d\" x1=\"90\" y1=\"155\" x2=\"84\" y2=\"177\"/><line class=\"gi-e d\" x1=\"130\" y1=\"155\" x2=\"132\" y2=\"177\"/><text class=\"fig-s\" x=\"168\" y=\"155\" text-anchor=\"start\">summaries</text><text class=\"fig-s\" x=\"168\" y=\"185\" text-anchor=\"start\">chunks</text><text class=\"fig-s\" x=\"90\" y=\"208\" text-anchor=\"middle\">edges = same-level neighbours;</text><text class=\"fig-s\" x=\"90\" y=\"220\" text-anchor=\"middle\">dashed = children</text><rect class=\"gi-ev\" x=\"262\" y=\"140\" width=\"190\" height=\"64\" rx=\"8\"/><text class=\"fig-t\" x=\"357\" y=\"158\" text-anchor=\"middle\">Every node ever kept</text><text class=\"fig-s\" x=\"357\" y=\"173\" text-anchor=\"middle\">summaries + raw chunks</text><text class=\"fig-s\" x=\"357\" y=\"186\" text-anchor=\"middle\">neighbouring chunks joined</text><text class=\"fig-s\" x=\"357\" y=\"199\" text-anchor=\"middle\">no size cap</text><path class=\"gi-a\" d=\"M452.0 172.0 L459.0 172.0\"/><polygon class=\"gi-ah\" points=\"466.0,172.0 459.0,176.0 459.0,168.0\"/><rect class=\"gi-hi\" x=\"466\" y=\"150\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"510.0\" y=\"170.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"510.0\" y=\"183.0\" text-anchor=\"middle\">GPT-4o-mini</text>",
+        "text": [
+          "The question is matched against every node at every level; an LLM keeps the useful ones and the pool grows to their neighbours and children.",
+          "After at most 5 rounds, every node the LLM kept goes to the answer model as passages, with neighbouring raw chunks joined."
+        ],
+        "src": "paper §4.2, App. E; code question_answering.py L115-L248",
+        "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/tasks/question_answering.py#L115-L248"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Chunk size",
+        "value": "256 or 512 tokens",
+        "src": "paper App. E",
+        "section": "construction"
+      },
+      {
+        "label": "Links per chunk",
+        "value": "≤ 10, score ≥ θ (0.5 or 0.7)",
+        "src": "paper App. E",
+        "section": "construction"
+      },
+      {
+        "label": "Score mix α / position decay σ",
+        "value": "α 0.5-0.9 · σ 1.0-2.0",
+        "src": "paper App. E",
+        "section": "construction"
+      },
+      {
+        "label": "Cluster size cap",
+        "value": "12 nodes (code)",
+        "src": "code constructivist_memory.py L27",
+        "section": "construction"
+      },
+      {
+        "label": "Seed nodes",
+        "value": "5 (paper) · 10 (code default)",
+        "src": "paper App. E; code L260",
+        "section": "method"
+      },
+      {
+        "label": "Selection turns",
+        "value": "≤ 5",
+        "src": "code question_answering.py L262",
+        "section": "method"
+      },
+      {
+        "label": "Batch insertion, 500 chunks",
+        "value": "< 0.3h vs 1.2h RAPTOR, 1.8h GraphRAG (offline rebuild)",
+        "src": "paper Fig. 3a",
+        "section": "results"
+      },
+      {
+        "label": "Speed vs offline rebuild",
+        "value": "about 4× faster than RAPTOR and GraphRAG",
+        "src": "paper §5.3",
+        "section": "results"
+      },
+      {
+        "label": "Knowledge-graph variant",
+        "value": "> 3× the compute for +1.2 ACC-L on NovelQA",
+        "src": "paper §5.4, Table 3",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Embed chunks, summaries and question",
+        "model": "text-embedding-3-small (paper); text-embedding-3-large (code default)",
+        "kind": "retriever",
+        "src": "paper §5.1; code constructivist_memory.py L30",
+        "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/constructivist_memory.py#L30"
+      },
+      {
+        "role": "Link and cluster",
+        "model": "similarity threshold + ego-network copies + label propagation (networkx)",
+        "kind": "rule",
+        "src": "paper §4.1; code L154-L226, L283",
+        "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/constructivist_memory.py#L283"
+      },
+      {
+        "role": "Write summaries",
+        "model": "GPT-4o-mini, temperature 0",
+        "kind": "llm",
+        "src": "paper App. E; code L243-L250",
+        "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/constructivist_memory.py#L243-L250"
+      },
+      {
+        "role": "Keep helpful nodes",
+        "model": "GPT-4o-mini",
+        "kind": "llm",
+        "src": "paper §4.2; code question_answering.py L96-L113",
+        "url": "https://github.com/rui9812/CAM/blob/79f0c7dbab4a8939bcb793489a3a187d8c232733/prototype/tasks/question_answering.py#L96-L113"
+      },
+      {
+        "role": "Answer",
+        "model": "GPT-4o-mini (also Llama-3.1-8B, Qwen2.5-7B in Table 3)",
+        "kind": "llm",
+        "src": "paper §5.1, Table 3"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "NovelQA ACC-L",
+        "QMSum ACC-L",
+        "MH-RAG EM",
+        "ODSum-Story ACC-L"
+      ],
+      "rows": [
+        [
+          "Full CAM (GPT-4o-mini, emb-3-small)",
+          "52.3",
+          "57.6",
+          "72.8",
+          "54.6"
+        ],
+        [
+          "hierarchical traversal instead of Prune-and-Grow",
+          "46.5",
+          "55.2",
+          "68.3",
+          "49.5"
+        ],
+        [
+          "global retrieval instead of Prune-and-Grow",
+          "50.3",
+          "56.3",
+          "70.5",
+          "50.8"
+        ],
+        [
+          "without hierarchy (chunk graph only)",
+          "46.7",
+          "46.6",
+          "68.5",
+          "49.3"
+        ],
+        [
+          "without flexibility (no node copies)",
+          "50.3",
+          "51.5",
+          "70.3",
+          "51.2"
+        ],
+        [
+          "with knowledge-graph level 0",
+          "53.5",
+          "57.2",
+          "72.0",
+          "54.8"
+        ],
+        [
+          "Llama-3.1-8B-Instruct backbone",
+          "49.5",
+          "54.4",
+          "70.3",
+          "52.5"
+        ],
+        [
+          "Qwen2.5-7B-Instruct backbone",
+          "50.6",
+          "55.0",
+          "70.9",
+          "53.2"
+        ],
+        [
+          "text-embedding-3-large",
+          "53.0",
+          "59.2",
+          "73.2",
+          "56.4"
+        ],
+        [
+          "E5-Mistral-7B-Instruct",
+          "54.3",
+          "58.7",
+          "73.5",
+          "55.7"
+        ]
+      ],
+      "src": "paper Table 3"
+    },
+    "discussion": {
+      "takeaway": "Build reading memory as overlapping clusters stacked into summary levels, and let an LLM grow its evidence along that graph. In the paper this beats tree, graph and flat memories on six long-text tasks and lets new batches be added without a full rebuild.",
+      "claims": [
+        {
+          "claim": "Memory for reading agents should be structured, flexible (one unit feeds several abstractions) and dynamic (local updates).",
+          "evidence": "§3, Table 1"
+        },
+        {
+          "claim": "CAM is best on all six datasets.",
+          "evidence": "Average +3.0% over the best baselines (RAPTOR, GraphRAG), e.g. NovelQA ACC-L 52.3 vs 47.8, ODSum-Meeting 50.7 vs 45.8. Table 2, §5.2"
+        },
+        {
+          "claim": "Letting a node join several clusters matters.",
+          "evidence": "RAPTOR (soft clusters) beats MemTree (strict tree) by 2.1% on average; removing node copies drops QMSum ACC-L 57.6 → 51.5. §5.2, Table 3"
+        },
+        {
+          "claim": "Prune-and-Grow beats both tree traversal and flat global retrieval over the same memory.",
+          "evidence": "NovelQA ACC-L 52.3 vs 46.5 and 50.3. Table 3"
+        },
+        {
+          "claim": "Batch insertion is fast and stable.",
+          "evidence": "Under 0.3h per 500-chunk batch vs 1.2h (RAPTOR) and 1.8h (GraphRAG) rebuilds; ACC-L stays roughly flat across batch sizes. Fig. 3, §5.3"
+        },
+        {
+          "claim": "Knowledge-graph extraction is not worth it on narratives but helps entity-rich QA.",
+          "evidence": "Table 3 row 8 (> 3× cost, small change); Table 7: 2Wiki EM 61.4 → 65.8 with it. §5.4, App. G"
+        }
+      ],
+      "limits": [
+        "Only tested on long-text reading comprehension.",
+        "No self-questioning or reflection.",
+        "Summary hallucinations can propagate to higher levels.",
+        "Assumes source texts are internally consistent.",
+        "The clustering algorithm is one of several possible implementations.",
+        "Prompts and hyperparameters are fixed by hand; nothing is learned from feedback."
+      ],
+      "limits_src": "paper §6, App. E",
+      "reading": [
+        "The released code has no incremental path: it rebuilds all levels from all chunks, so the online-batch timing and stability results (Fig. 3) cannot be checked against it.",
+        "Code defaults differ from the paper: 10 seed nodes instead of 5, text-embedding-3-large instead of -small, and α = θ = 0.6, outside the reported grids. The per-dataset settings used for Table 2 are not given.",
+        "The answer context is every node kept in any of up to 5 turns, with no size cap, and no token counts are reported; the paper does not state the baselines' retrieval budgets, so context size is not controlled.",
+        "The paper names GPT-4o as ACC-L judge; the code's judge function uses the same client as the reader (gpt-4o-mini by default).",
+        "Clusters larger than 12 are cut into consecutive slices of the member list, not by structure.",
+        "The summarisation script reads the 'gist' field by default, which summary nodes do not have (their text is stored as 'text'); the flags behind the QMSum and ODSum runs are not stated.",
+        "All baselines were rerun by the authors with GPT-4o-mini and text-embedding-3-small; FullContext has no multi-document numbers."
+      ]
+    }
+  }
+}

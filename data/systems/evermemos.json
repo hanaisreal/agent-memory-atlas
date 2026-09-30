@@ -354,7 +354,11 @@
       ],
       "note": "Chat mode adds the user profile and time-valid foresight; it is shown only as a case study.",
       "src": "code evermemos_adapter.py L798-L815",
-      "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos_adapter.py#L798-L815"
+      "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos_adapter.py#L798-L815",
+      "includes": [
+        "10 episodes, each an LLM rewrite of one dialogue segment",
+        "the episode's LLM-written title (subject)"
+      ]
     },
     "compression": [
       {
@@ -449,6 +453,483 @@
       "Is the w/o MemScene gain (89.16 → 93.05) from narrative grouping or from pulling unmatched sibling MemCells into the rerank pool? Scene summaries never reach the answer, and the ablation cannot separate the two.",
       "On LongMemEval scenes average 1.36 MemCells, so top-10 scenes → rerank is close to top-10 MemCells → rerank.",
       "No run pairs rewritten-episode retrieval with raw-dialogue answering; w/o MemCell changes the retrieval unit and the answer context at once."
-    ]
+    ],
+    "glance": [
+      {
+        "q": "What is one memory item?",
+        "a": "A MemCell: one topic segment of the dialogue, rewritten by an LLM into a third-person episode, plus atomic facts and time-bounded foresight.",
+        "src": "paper §3.2",
+        "url": "https://arxiv.org/pdf/2601.02163"
+      },
+      {
+        "q": "Is the dialogue summarised?",
+        "a": "Rewritten rather than cut to a fixed ratio: the prompt asks for a narrative of similar or shorter length. The raw turns are stored but never read.",
+        "src": "code episode_mem_prompts.py L50",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/src/memory_layer/prompts/en/episode_mem_prompts.py#L50"
+      },
+      {
+        "q": "How is memory organised?",
+        "a": "MemCells are clustered into MemScenes by embedding similarity (τ 0.70 on LoCoMo) and a maximum time gap (7 days).",
+        "src": "paper Table 6",
+        "url": "https://arxiv.org/pdf/2601.02163"
+      },
+      {
+        "q": "Is there reranking?",
+        "a": "Yes. Qwen3-Reranker-4B scores the question against the episode text only and keeps 10.",
+        "src": "code stage3 L82-L130",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/stage3_memory_retrivel.py#L82-L130"
+      },
+      {
+        "q": "Is memory reconstructed at question time?",
+        "a": "Yes, when an LLM check finds the 10 episodes insufficient (31% of LoCoMo questions): it writes 3 new queries, searches all MemCells without scenes, and reranks up to 40 candidates again.",
+        "src": "paper App. A.1; code L290-L356",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/scene_retrieval.py#L290-L356"
+      },
+      {
+        "q": "What does the answer model read?",
+        "a": "Always 10 rewritten episodes, as \"subject: episode\", whether or not reconstruction ran. The original dialogue, atomic facts, profile and foresight are not included.",
+        "src": "code evermemos_adapter.py L798-L815",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos_adapter.py#L798-L815"
+      }
+    ],
+    "funnel": [
+      {
+        "round": 1,
+        "steps": [
+          {
+            "n": "top 50 + 50",
+            "what": "MemCells matched (dense + BM25)"
+          },
+          {
+            "n": "10",
+            "what": "MemScenes chosen"
+          },
+          {
+            "n": "all their MemCells",
+            "what": "candidates, e.g. 31 in the paper's trace"
+          },
+          {
+            "n": "10",
+            "what": "episodes kept by the reranker"
+          }
+        ],
+        "src": "code config.py L42, scene_retrieval.py L160-L263; paper App. A.1, C.2",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/scene_retrieval.py#L160-L263"
+      },
+      {
+        "round": 2,
+        "steps": [
+          {
+            "n": "3 queries",
+            "what": "written by the LLM"
+          },
+          {
+            "n": "top 40",
+            "what": "new candidates from all MemCells"
+          },
+          {
+            "n": "≤ 40",
+            "what": "round-1 10 kept first, filled with new ones"
+          },
+          {
+            "n": "10",
+            "what": "episodes kept by the reranker"
+          }
+        ],
+        "src": "code config.py L43, scene_retrieval.py L290-L356",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/scene_retrieval.py#L290-L356"
+      }
+    ],
+    "flow": [
+      {
+        "n": 1,
+        "round": 1,
+        "title": "Find matching MemCells",
+        "actor": "retriever",
+        "method": "bi-encoder (dense) + lexical (BM25), fused by RRF",
+        "model": "Qwen3-Embedding-4B; BM25",
+        "in": "question",
+        "out": "up to 100 MemCells, one ranked list",
+        "sees": "Question vs each MemCell's atomic facts, subject and the first 200 characters of its episode (the paper says atomic facts only). Question and MemCell are embedded separately and compared by similarity; they never see each other.",
+        "params": {
+          "dense": "top 50",
+          "BM25": "top 50",
+          "RRF k": "40"
+        },
+        "src": "scene_retrieval.py L150-L157; stage2 L90-L160; config.py L57-L59",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/scene_retrieval.py#L150-L157",
+        "short": "Match MemCells",
+        "count": "question → 100"
+      },
+      {
+        "n": 2,
+        "round": 1,
+        "title": "Pick 10 MemScenes",
+        "actor": "rule",
+        "method": "rule: a scene scores the best score among its MemCells (MaxSim)",
+        "in": "ranked MemCells",
+        "out": "10 MemScenes",
+        "sees": "Walks the ranked list from the top, noting each MemCell's scene, until 10 different scenes are covered. Scene summaries and centroids are not compared with the question.",
+        "params": {
+          "N": "10 scenes"
+        },
+        "src": "scene_retrieval.py L160-L195; paper §3.4",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/scene_retrieval.py#L160-L195",
+        "short": "Pick 10 scenes",
+        "count": "100 → 10 scenes"
+      },
+      {
+        "n": 3,
+        "round": 1,
+        "title": "Gather every MemCell in those scenes",
+        "actor": "rule",
+        "method": "rule: expand each scene to all its members",
+        "in": "10 MemScenes",
+        "out": "their MemCells, e.g. 31 in the paper's trace",
+        "sees": "Every member joins, including MemCells that did not match the question. All start with the same score (1.0): the step-1 scores are dropped.",
+        "params": {},
+        "src": "scene_retrieval.py L198-L206; paper App. C.2",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/scene_retrieval.py#L198-L206",
+        "short": "Take all their MemCells",
+        "count": "10 scenes → ~31"
+      },
+      {
+        "n": 4,
+        "round": 1,
+        "title": "Rerank and keep 10",
+        "actor": "cross",
+        "method": "cross-encoder, pointwise",
+        "model": "Qwen3-Reranker-4B",
+        "in": "~31 MemCells",
+        "out": "10 episodes",
+        "sees": "One input per candidate: an instruction, the question and one episode text, read together. The model answers \"yes\" or \"no\" and the probability of \"yes\" is the score. Candidates never see each other (batches of 10 are only for speed). Subject, date and atomic facts are not shown. If fewer than 30% of batches succeed, the original order is used instead.",
+        "params": {
+          "K": "10",
+          "batch": "10",
+          "instruction": "\"contains specific facts, entities or details that directly answer the question\""
+        },
+        "src": "stage3 L82-L217; rerank_vllm.py L60-L80; config.py L73",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/src/agentic_layer/rerank_vllm.py#L60-L80",
+        "short": "Rerank",
+        "count": "~31 → 10"
+      },
+      {
+        "n": 5,
+        "round": 1,
+        "title": "Is this enough to answer?",
+        "actor": "llm",
+        "decision": true,
+        "method": "LLM judgement, temperature 0",
+        "model": "GPT-4.1-mini (default in the evaluation config)",
+        "in": "10 episodes",
+        "out": "sufficient, or a list of what is missing",
+        "sees": "The 10 episodes as Title / Date / Content (content cut at 500 characters) and the question. Returns sufficient or not, the key information found and the information still missing.",
+        "yes": "69% of LoCoMo questions: answer with these 10 (step 10).",
+        "no": "31% of LoCoMo questions: reconstruct (steps 6-9).",
+        "src": "scene_retrieval.py L247-L276; agentic_utils.py L184-L241; paper App. A.1",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/scene_retrieval.py#L247-L276",
+        "short": "Enough to answer?",
+        "count": "10 → yes / no"
+      },
+      {
+        "n": 6,
+        "round": 2,
+        "title": "Write new queries",
+        "actor": "llm",
+        "method": "LLM generation, temperature 0.4",
+        "model": "GPT-4.1-mini",
+        "in": "question, round-1 episodes, missing information",
+        "out": "1-3 new queries (3 asked for)",
+        "sees": "The original question, the 10 round-1 episodes, the key information found and the missing information. It writes queries aimed at what is missing.",
+        "params": {
+          "queries": "3"
+        },
+        "src": "scene_retrieval.py L283-L297; agentic_utils.py L377-L440",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/scene_retrieval.py#L283-L297",
+        "short": "Write new queries",
+        "count": "→ 3 queries"
+      },
+      {
+        "n": 7,
+        "round": 2,
+        "title": "Search all MemCells again",
+        "actor": "retriever",
+        "method": "bi-encoder (dense) + lexical (BM25) per query, fused by RRF, then the queries fused by RRF",
+        "model": "Qwen3-Embedding-4B; BM25",
+        "in": "new queries",
+        "out": "top 40 MemCells",
+        "sees": "Each new query searches every MemCell, not only the 10 scenes: scenes are not used in this round.",
+        "params": {
+          "per query": "50 + 50",
+          "kept": "40"
+        },
+        "src": "scene_retrieval.py L299-L331",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/scene_retrieval.py#L299-L331",
+        "short": "Search all MemCells",
+        "count": "3 queries → 40"
+      },
+      {
+        "n": 8,
+        "round": 2,
+        "title": "Merge with round 1",
+        "actor": "rule",
+        "method": "rule: round-1 results first, then new ones not already there",
+        "in": "10 + 40",
+        "out": "up to 40 candidates",
+        "sees": "The round-1 10 are kept, then filled with new candidates up to 40.",
+        "params": {},
+        "src": "scene_retrieval.py L333-L338",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/scene_retrieval.py#L333-L338",
+        "short": "Merge with round 1",
+        "count": "10 + 40 → ≤40"
+      },
+      {
+        "n": 9,
+        "round": 2,
+        "title": "Rerank again and keep 10",
+        "actor": "cross",
+        "method": "cross-encoder, pointwise (same as step 4)",
+        "model": "Qwen3-Reranker-4B",
+        "in": "up to 40",
+        "out": "10 episodes",
+        "sees": "Scored against the original question, not the new queries. There is no second sufficiency check: this is the last round.",
+        "params": {
+          "K": "10"
+        },
+        "src": "scene_retrieval.py L340-L356",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/scene_retrieval.py#L340-L356",
+        "short": "Rerank again",
+        "count": "≤40 → 10"
+      },
+      {
+        "n": 10,
+        "round": 0,
+        "title": "Answer",
+        "actor": "llm",
+        "method": "LLM generation",
+        "model": "the evaluated answer model (GPT-4.1-mini or GPT-4o-mini in the paper)",
+        "in": "10 episodes",
+        "out": "answer",
+        "sees": "The 10 episodes as \"subject: episode\" under one header. No original dialogue, atomic facts, dates as a field, profile or foresight.",
+        "params": {},
+        "src": "evermemos_adapter.py L765-L815",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos_adapter.py#L765-L815",
+        "short": "Answer",
+        "count": "10 episodes → answer"
+      }
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 230",
+        "body": "<text class=\"fig-t\" x=\"58\" y=\"16\" text-anchor=\"middle\">Dialogue</text><rect class=\"gi-ev\" x=\"14\" y=\"26\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"22\" y1=\"35\" x2=\"70\" y2=\"35\"/><rect class=\"gi-ev\" x=\"34\" y=\"50\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"42\" y1=\"59\" x2=\"90\" y2=\"59\"/><rect class=\"gi-ev\" x=\"14\" y=\"74\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"22\" y1=\"83\" x2=\"70\" y2=\"83\"/><rect class=\"gi-ev\" x=\"34\" y=\"106\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"42\" y1=\"115\" x2=\"90\" y2=\"115\"/><rect class=\"gi-ev\" x=\"14\" y=\"130\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"22\" y1=\"139\" x2=\"70\" y2=\"139\"/><rect class=\"gi-ev\" x=\"34\" y=\"162\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"42\" y1=\"171\" x2=\"90\" y2=\"171\"/><rect class=\"gi-ev\" x=\"14\" y=\"186\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"22\" y1=\"195\" x2=\"70\" y2=\"195\"/><line class=\"gi-e d\" x1=\"6\" y1=\"98\" x2=\"116\" y2=\"98\"/><line class=\"gi-e d\" x1=\"6\" y1=\"155\" x2=\"116\" y2=\"155\"/><text class=\"fig-s\" x=\"60\" y=\"222\" text-anchor=\"middle\">cut where the topic shifts</text><path class=\"gi-a\" d=\"M120.0 110.0 L159.0 110.0\"/><polygon class=\"gi-ah\" points=\"166.0,110.0 159.0,106.0 159.0,114.0\"/><rect class=\"gi-llm\" x=\"126\" y=\"92\" width=\"32\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"142\" y=\"102\" text-anchor=\"middle\">LLM</text><rect class=\"gi-ev\" x=\"170\" y=\"26\" width=\"178\" height=\"178\" rx=\"10\"/><text class=\"fig-t\" x=\"259\" y=\"44\" text-anchor=\"middle\">MemCell</text><rect class=\"gi-hi\" x=\"180\" y=\"54\" width=\"158\" height=\"40\" rx=\"6\"/><text class=\"fig-t\" x=\"188\" y=\"68\" text-anchor=\"start\">episode</text><text class=\"fig-s\" x=\"188\" y=\"82\" text-anchor=\"start\">rewritten, third person</text><text class=\"fig-s\" x=\"330\" y=\"82\" text-anchor=\"end\">→ read</text><rect class=\"gi-f\" x=\"180\" y=\"100\" width=\"158\" height=\"30\" rx=\"6\"/><text class=\"fig-t\" x=\"188\" y=\"113\" text-anchor=\"start\">atomic facts</text><text class=\"fig-s\" x=\"188\" y=\"125\" text-anchor=\"start\">short facts for search</text><rect class=\"gi-r\" x=\"292\" y=\"108\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"306\" y=\"108\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"320\" y=\"108\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-f\" x=\"180\" y=\"136\" width=\"158\" height=\"28\" rx=\"6\"/><text class=\"fig-t\" x=\"188\" y=\"149\" text-anchor=\"start\">foresight</text><text class=\"fig-s\" x=\"188\" y=\"160\" text-anchor=\"start\">future plans, with an end date</text><rect class=\"gi-ev d\" x=\"180\" y=\"170\" width=\"158\" height=\"26\" rx=\"6\"/><text class=\"fig-s\" x=\"188\" y=\"187\" text-anchor=\"start\">original turns: kept, never read</text><path class=\"gi-a\" d=\"M352.0 110.0 L385.0 110.0\"/><polygon class=\"gi-ah\" points=\"392.0,110.0 385.0,106.0 385.0,114.0\"/><text class=\"fig-s\" x=\"372\" y=\"100\" text-anchor=\"middle\">embed</text><text class=\"fig-t\" x=\"470\" y=\"16\" text-anchor=\"middle\">MemScenes</text><path class=\"gi-h\" d=\"M404 48 C 400 24, 470 20, 482 40 C 494 62, 440 76, 418 70 C 406 66, 404 58, 404 48 Z\"/><circle class=\"gi-n\" cx=\"424\" cy=\"46\" r=\"6\"/><circle class=\"gi-n\" cx=\"446\" cy=\"38\" r=\"6\"/><circle class=\"gi-n\" cx=\"462\" cy=\"54\" r=\"6\"/><path class=\"gi-h\" d=\"M470 108 C 468 84, 540 82, 548 102 C 556 124, 500 136, 484 130 C 474 126, 470 118, 470 108 Z\"/><circle class=\"gi-n\" cx=\"492\" cy=\"106\" r=\"6\"/><circle class=\"gi-n\" cx=\"516\" cy=\"100\" r=\"6\"/><path class=\"gi-h\" d=\"M404 150 C 402 132, 452 130, 458 146 C 464 162, 426 170, 414 166 C 406 162, 404 156, 404 150 Z\"/><circle class=\"gi-n\" cx=\"428\" cy=\"150\" r=\"6\"/><circle class=\"gi-hi\" cx=\"410\" cy=\"110\" r=\"7\"/><path class=\"gi-a d\" d=\"M417.0 105.0 L435.7 81.5\"/><polygon class=\"gi-ah\" points=\"440.0,76.0 432.5,79.0 438.8,84.0\"/><text class=\"fig-s\" x=\"398\" y=\"128\" text-anchor=\"start\">new</text><text class=\"fig-s\" x=\"476\" y=\"196\" text-anchor=\"middle\">joins the closest scene if</text><text class=\"fig-s\" x=\"476\" y=\"209\" text-anchor=\"middle\">similarity &gt; 0.70 and ≤ 7 days apart;</text><text class=\"fig-s\" x=\"476\" y=\"222\" text-anchor=\"middle\">otherwise starts a new scene</text>",
+        "text": [
+          "An LLM cuts the dialogue at topic shifts and rewrites each piece as a short episode, with atomic facts and future plans; together they form a MemCell.",
+          "Similar MemCells close in time are grouped into MemScenes. Only the episode later reaches the answer model."
+        ],
+        "src": "paper §3.2-3.3, Table 6; code episode_mem_prompts.py, config.py L19-L20",
+        "url": "https://arxiv.org/pdf/2601.02163"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 262",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"34\" width=\"58\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"33.0\" y=\"60.0\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M62.0 56.0 L71.0 56.0\"/><polygon class=\"gi-ah\" points=\"78.0,56.0 71.0,52.0 71.0,60.0\"/><rect class=\"gi-v fig-soft\" x=\"78\" y=\"34\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"122.0\" y=\"54.0\" text-anchor=\"middle\">Search</text><text class=\"fig-s\" x=\"122.0\" y=\"67.0\" text-anchor=\"middle\">MemCells</text><text class=\"fig-s\" x=\"122\" y=\"90\" text-anchor=\"middle\">dense + BM25</text><path class=\"gi-a\" d=\"M166.0 56.0 L175.0 56.0\"/><polygon class=\"gi-ah\" points=\"182.0,56.0 175.0,52.0 175.0,60.0\"/><rect class=\"gi-f\" x=\"182\" y=\"34\" width=\"76\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"220.0\" y=\"54.0\" text-anchor=\"middle\">10 scenes</text><text class=\"fig-s\" x=\"220.0\" y=\"67.0\" text-anchor=\"middle\">best match</text><path class=\"gi-a\" d=\"M258.0 56.0 L267.0 56.0\"/><polygon class=\"gi-ah\" points=\"274.0,56.0 267.0,52.0 267.0,60.0\"/><rect class=\"gi-f\" x=\"274\" y=\"34\" width=\"72\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"310.0\" y=\"54.0\" text-anchor=\"middle\">~31</text><text class=\"fig-s\" x=\"310.0\" y=\"67.0\" text-anchor=\"middle\">their MemCells</text><path class=\"gi-a\" d=\"M346.0 56.0 L355.0 56.0\"/><polygon class=\"gi-ah\" points=\"362.0,56.0 355.0,52.0 355.0,60.0\"/><rect class=\"fig-cross\" x=\"362\" y=\"34\" width=\"84\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"404.0\" y=\"54.0\" text-anchor=\"middle\">Rerank → 10</text><text class=\"fig-s\" x=\"404.0\" y=\"67.0\" text-anchor=\"middle\">cross-encoder</text><path class=\"gi-a\" d=\"M446.0 56.0 L459.0 56.0\"/><polygon class=\"gi-ah\" points=\"466.0,56.0 459.0,52.0 459.0,60.0\"/><polygon class=\"gi-llm\" points=\"508,30 550,56 508,82 466,56\"/><text class=\"fig-t\" x=\"508\" y=\"55\" text-anchor=\"middle\">Enough?</text><text class=\"fig-s\" x=\"508\" y=\"67\" text-anchor=\"middle\">LLM</text><path class=\"gi-a\" d=\"M508.0 82.0 L508.0 189.0\"/><polygon class=\"gi-ah\" points=\"508.0,196.0 512.0,189.0 504.0,189.0\"/><text class=\"fig-yes\" x=\"516\" y=\"120\" text-anchor=\"start\">Yes 69%</text><rect class=\"gi-hi\" x=\"462\" y=\"196\" width=\"92\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"508.0\" y=\"218.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"508.0\" y=\"231.0\" text-anchor=\"middle\">10 episodes</text><path class=\"gi-a\" d=\"M478 74 L478 120 L14 120 L14 150\"/><path class=\"gi-a\" d=\"M14.0 150.0 L14.0 153.0\"/><polygon class=\"gi-ah\" points=\"14.0,160.0 18.0,153.0 10.0,153.0\"/><text class=\"fig-no\" x=\"468\" y=\"114\" text-anchor=\"end\">No 31%</text><rect class=\"gi-llm\" x=\"4\" y=\"162\" width=\"82\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"45.0\" y=\"182.0\" text-anchor=\"middle\">New queries</text><text class=\"fig-s\" x=\"45.0\" y=\"195.0\" text-anchor=\"middle\">LLM writes 3</text><path class=\"gi-a\" d=\"M86.0 184.0 L95.0 184.0\"/><polygon class=\"gi-ah\" points=\"102.0,184.0 95.0,180.0 95.0,188.0\"/><rect class=\"gi-v fig-soft\" x=\"102\" y=\"162\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"150.0\" y=\"182.0\" text-anchor=\"middle\">Search all</text><text class=\"fig-s\" x=\"150.0\" y=\"195.0\" text-anchor=\"middle\">no scenes</text><path class=\"gi-a\" d=\"M198.0 184.0 L207.0 184.0\"/><polygon class=\"gi-ah\" points=\"214.0,184.0 207.0,180.0 207.0,188.0\"/><rect class=\"gi-f\" x=\"214\" y=\"162\" width=\"84\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"256.0\" y=\"182.0\" text-anchor=\"middle\">≤ 40</text><text class=\"fig-s\" x=\"256.0\" y=\"195.0\" text-anchor=\"middle\">+ round-1 ten</text><path class=\"gi-a\" d=\"M298.0 184.0 L307.0 184.0\"/><polygon class=\"gi-ah\" points=\"314.0,184.0 307.0,180.0 307.0,188.0\"/><rect class=\"fig-cross\" x=\"314\" y=\"162\" width=\"92\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"360.0\" y=\"182.0\" text-anchor=\"middle\">Rerank → 10</text><text class=\"fig-s\" x=\"360.0\" y=\"195.0\" text-anchor=\"middle\">same reranker</text><path class=\"gi-a\" d=\"M406 184 L440 184 L440 220\"/><path class=\"gi-a\" d=\"M440.0 220.0 L455.0 220.0\"/><polygon class=\"gi-ah\" points=\"462.0,220.0 455.0,216.0 455.0,224.0\"/><text class=\"fig-s\" x=\"206\" y=\"222\" text-anchor=\"middle\">round 2 runs once; the final ranking uses the original question</text>",
+        "text": [
+          "The question is matched against MemCells; the 10 scenes holding the best matches are opened and a cross-encoder reranker keeps 10 episodes.",
+          "If an LLM judges them not enough (31% of LoCoMo questions), it writes new queries, searches all MemCells and reranks again. The answer model always reads 10 episodes."
+        ],
+        "src": "code scene_retrieval.py L150-L356; rerank_vllm.py L60-L80; paper App. A.1",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/scene_retrieval.py#L150-L356"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "MemCells per conversation",
+        "value": "70.2 LoCoMo · 109.5 LongMemEval",
+        "src": "paper Table 5",
+        "section": "construction"
+      },
+      {
+        "label": "MemCells per scene",
+        "value": "2.45 · 1.36",
+        "src": "paper Table 5",
+        "section": "construction"
+      },
+      {
+        "label": "Joins a scene if",
+        "value": "similarity > 0.70 · 0.50, gap ≤ 7 · 30 days",
+        "src": "paper Table 6",
+        "section": "construction"
+      },
+      {
+        "label": "Search per query",
+        "value": "dense 50 + BM25 50, RRF k 40",
+        "src": "code config.py L57-L59",
+        "section": "method"
+      },
+      {
+        "label": "Scenes opened",
+        "value": "10",
+        "src": "paper App. A.1",
+        "section": "method"
+      },
+      {
+        "label": "Episodes to the answer model",
+        "value": "10, in both rounds",
+        "src": "code config.py L42-L43",
+        "section": "method"
+      },
+      {
+        "label": "Round 2 happens for",
+        "value": "31.0% of LoCoMo questions",
+        "src": "paper App. A.1",
+        "section": "method"
+      },
+      {
+        "label": "Round 2 candidates",
+        "value": "up to 40",
+        "src": "code scene_retrieval.py L325-L338",
+        "section": "method"
+      },
+      {
+        "label": "Answer context",
+        "value": "2.3k tokens = 26% of a LoCoMo conversation · 2.8k = 2.4% on LongMemEval",
+        "src": "paper Tables 1-2, §4.1",
+        "section": "results"
+      },
+      {
+        "label": "Tokens per question",
+        "value": "~6.7k (search + answer)",
+        "src": "paper Table 8",
+        "section": "results"
+      },
+      {
+        "label": "Tokens to build memory",
+        "value": "9.42M for all of LoCoMo",
+        "src": "paper Table 8",
+        "section": "construction"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "LoCoMo",
+        "LongMemEval"
+      ],
+      "rows": [
+        [
+          "Full system",
+          "93.05",
+          "83.00"
+        ],
+        [
+          "without MemScene",
+          "89.16",
+          "79.60"
+        ],
+        [
+          "without MemCell (raw dialogue)",
+          "81.82",
+          "71.20"
+        ],
+        [
+          "no memory",
+          "0.52",
+          "5.00"
+        ]
+      ],
+      "src": "paper Fig. 4 (GPT-4.1-mini)"
+    },
+    "components": [
+      {
+        "role": "Cuts, rewrites and extracts",
+        "model": "backbone LLM (GPT-4.1-mini or GPT-4o-mini)",
+        "kind": "llm",
+        "src": "paper §4.1"
+      },
+      {
+        "role": "Dense search",
+        "model": "Qwen3-Embedding-4B",
+        "kind": "retriever",
+        "src": "paper App. A.1"
+      },
+      {
+        "role": "Lexical search",
+        "model": "BM25",
+        "kind": "retriever",
+        "src": "paper App. A.1"
+      },
+      {
+        "role": "Rerank",
+        "model": "Qwen3-Reranker-4B, cross-encoder, pointwise",
+        "kind": "cross",
+        "src": "paper App. A.1; code rerank_vllm.py L60-L80",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/src/agentic_layer/rerank_vllm.py#L60-L80"
+      },
+      {
+        "role": "Enough? and new queries",
+        "model": "GPT-4.1-mini (evaluation config default)",
+        "kind": "llm",
+        "src": "code config.py L78-L88",
+        "url": "https://github.com/EverMind-AI/EverMemOS/blob/99aa0cad21d83a9ca66b9a0f445b8e616a17c458/evaluation/src/adapters/evermemos/config.py#L78-L88"
+      },
+      {
+        "role": "Answer",
+        "model": "GPT-4.1-mini or GPT-4o-mini",
+        "kind": "llm",
+        "src": "paper Table 1"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Store memory as rewritten episodes grouped by theme, and read it with a rerank-then-check loop. In its own paper this gives the best LoCoMo and LongMemEval scores, with the largest gains on multi-hop and temporal questions.",
+      "claims": [
+        {
+          "claim": "Memory should be a lifecycle (form episodes, consolidate them into themes and a profile, reconstruct at question time), not a store of isolated records.",
+          "evidence": "§1, Conclusion"
+        },
+        {
+          "claim": "State of the art on memory-augmented reasoning.",
+          "evidence": "LoCoMo +9.2% (GPT-4.1-mini) and +7.0% (GPT-4o-mini) over Zep; LongMemEval +6.7% over MemOS. Table 1-2, §4.2"
+        },
+        {
+          "claim": "Grouping MemCells into scenes helps questions that need scattered evidence.",
+          "evidence": "LoCoMo multi-hop +19.7%, temporal +10.0%; LongMemEval knowledge update +20.6%. §4.2"
+        },
+        {
+          "claim": "Every part contributes.",
+          "evidence": "Without MemScene 89.16, without MemCell 81.82, full 93.05 on LoCoMo. Fig. 4"
+        },
+        {
+          "claim": "The consolidated user profile adds signal beyond episodes.",
+          "evidence": "PersonaMem-v2: 53.25 with profile vs 43.93 episodes only. Table 4, §4.5"
+        }
+      ],
+      "limits": [
+        "Tested on text conversations only.",
+        "LLM calls in construction and retrieval add latency and cost over single-pass baselines.",
+        "Current benchmarks cannot stress-test very long timelines."
+      ],
+      "limits_src": "paper, Limitations",
+      "reading": [
+        "Scene summaries and the profile never reach the answer model in the scored runs, so the MemScene gain may come from widening the rerank pool rather than from narrative grouping; the ablation cannot tell these apart.",
+        "Round 2 (31% of questions) searches without scenes, and the paper's own trace example finds its answer there.",
+        "On LongMemEval a scene holds 1.36 MemCells on average, so the hierarchy is nearly flat.",
+        "Scene thresholds are set per dataset (0.70 and 7 days on LoCoMo, 0.50 and 30 days on LongMemEval).",
+        "Other papers report 85.5 to 94.5 for EverMemOS on LoCoMo; the answer model and judge differ, so the headline 93.05 is one setting."
+      ]
+    },
+    "abstract": {
+      "text": "EverMemOS treats long-term memory for LLM agents as a lifecycle rather than a pile of stored snippets. Dialogue is cut into topic segments and rewritten as MemCells (an episode, atomic facts and time-bounded plans), which are grouped into thematic MemScenes that also update a user profile. At question time the system opens the scenes that hold the best-matching MemCells, reranks their episodes, and searches again when an LLM judges the evidence insufficient. The authors report state-of-the-art results on LoCoMo, LongMemEval and PersonaMem-v2.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2601.02163"
+    },
+    "sections": {
+      "Memory architecture": "§3",
+      "Results": "§4.2, §4.5",
+      "Ablation": "§4.3",
+      "Discussion": "§5, Limitations",
+      "Details": "§3, §4.1, App. A"
+    }
   }
 }

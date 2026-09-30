@@ -1,0 +1,667 @@
+{
+  "id": "wise",
+  "name": "WISE",
+  "paper": {
+    "title": "WISE: Rethinking the Knowledge Memory for Lifelong Model Editing of Large Language Models",
+    "arxiv": "2405.14768",
+    "url": "https://arxiv.org/abs/2405.14768",
+    "venue": "NeurIPS 2024",
+    "venue_short": "NeurIPS",
+    "track": "main",
+    "year": 2024,
+    "code": "https://github.com/zjunlp/EasyEdit"
+  },
+  "design": {
+    "construction": {
+      "unit": "one edit (prompt, target) written as weight changes in a copy of one FFN value matrix",
+      "kept_as": "parametric: gradient updates to a random 20% of the copy's entries",
+      "processing": "each edit plus 10 model-written prefix variants is trained by SGD into the current shard's masked subspace, with an LM loss and a margin loss on the routing score",
+      "trigger": "other",
+      "writer": "SGD on the side-memory copy (no LLM writes text)"
+    },
+    "organization": {
+      "structure": "main memory (original FFN value matrix) + one side memory (edited copy of layer 27's down_proj for LLaMA-2-7B); WISE-Retrieve keeps several side memories",
+      "stores": "side memory weights; per-shard random masks; routing threshold ε",
+      "index": "none; routing by an activation score computed inside the layer"
+    },
+    "management": {
+      "operations": "edits split into shards of 500 (k = 2) with different random masks; every 1,000 edits the shard copies are merged into one side memory by Ties-Merge",
+      "conflicts": "random masks keep shards nearly disjoint; Ties sign election and disjoint mean resolve the overlapping entries",
+      "forgetting": null,
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "the input's activations at the side-memory layer",
+      "candidates": "main memory vs side memory (vs each stored side memory in WISE-Retrieve)",
+      "selection": "side memory if its activation score exceeds ε (smallest edit score; × 0.88 in code), else main memory; WISE-Retrieve takes the highest-scoring side memory",
+      "budget": "one FFN matrix per forward pass"
+    },
+    "use": {
+      "context": "no retrieved text; the routed matrix computes layer 27's FFN output",
+      "reasoning": "ordinary forward pass / generation"
+    },
+    "control": {
+      "construction": "fixed-rule",
+      "management": "fixed-rule",
+      "retrieval": "learned-sft"
+    }
+  },
+  "classify": {
+    "structure": "typed stores",
+    "index": "none",
+    "management": "consolidate",
+    "candidates": "read everything",
+    "decides": "top-k rule",
+    "note": "Parametric memory: a main (pretrained) and a side (edited) weight matrix. Every query is scored against the side memory and a threshold rule (top-1 for WISE-Retrieve) picks which matrix computes the layer; the threshold's separation is trained in by a margin loss."
+  },
+  "tags": {
+    "fidelity": "compressed",
+    "structure": [
+      "parametric",
+      "typed-stores"
+    ],
+    "write_time": [
+      "learned",
+      "consolidate"
+    ],
+    "selection": [
+      "model-reads"
+    ],
+    "memory_type": [
+      "semantic"
+    ],
+    "learning": "sft",
+    "domain": [
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "Edits arrive one at a time as (prompt, target) pairs; each is expanded with 10 short prefixes that the unedited model generates.",
+    "construction": "Each edit is trained by SGD into a copy of one FFN value matrix (layer 27 down_proj for LLaMA-2-7B and Mistral-7B), with gradients masked to a random 20% of entries and a margin loss that pushes the routing score up for the edit and down for an unrelated prompt.",
+    "organization": "The original matrix is the main memory and the edited copy the side memory. Edits are grouped into shards (500 edits in the released config), each with its own random mask; WISE-Retrieve keeps several side memories.",
+    "update": "After every 1,000 edits the shard copies' weight changes are merged into one side memory with Ties-Merge (trim, sign election, disjoint mean).",
+    "retrieval": "At inference the layer measures how much the side memory changes its output; above threshold ε the side memory's output is used, otherwise the original one. WISE-Retrieve scores each stored side memory and uses the highest.",
+    "answer": "The model generates as usual with the routed FFN output; nothing textual is retrieved.",
+    "learning": ""
+  },
+  "summary": "Lifelong model editing in a side copy of one FFN matrix: edits are trained into random parameter subspaces, merged with Ties-Merge, and an activation-score router picks the side or the original matrix for each query.",
+  "verified": false,
+  "notes": "VENUE: NeurIPS 2024 main track; the camera-ready PDF (arXiv v3) carries the NeurIPS 2024 footer and the paper is listed in the NeurIPS 2024 proceedings (proceedings.neurips.cc hash 60960ad78868fce5c165295fbd895060). CODE: the paper's footnote points to EasyEdit; pinned to commit f8c59dac (2024-10-31), the last change to easyeditor/models/wise before arXiv v3 (2024-12-19). This is a model-editing paper: the memory is weights, so retrieval-side fields describe the router, not a search. TAGS: learning=sft because every edit is written by supervised gradient steps (LM loss + margin loss); fidelity=compressed because edits exist only as weight changes; control.retrieval=learned-sft because the router's separation is trained by the margin loss at edit time (the threshold itself is a fixed rule). Pre-edit accuracy (Table 3): ZsRE 0.36 (LLaMA) / 0.39 (Mistral); Hallucination PPL 27.4 / 19.4; Temporal 0.56 (GPT-J).",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2405.14768v3 (PDF read 2026-09-30)",
+      "code": "https://github.com/zjunlp/EasyEdit/tree/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/",
+      "code_note": "WISE lives in EasyEdit (easyeditor/models/wise, first added 2024-06-01 in 2c3528c1). Commit f8c59dac (2024-10-31) is the last change to that folder before paper v3 (2024-12-19), so it is the closest code to the camera-ready; the paper's runs may have used earlier code. Settings quoted are from hparams/WISE/llama-7b.yaml and examples/run_wise_editing.py at that commit."
+    },
+    "headline": [
+      "The memory is weights: edits are trained into a copy of one FFN matrix and no text is stored or searched.",
+      "A threshold on how much the side matrix changes the layer's output decides, per query, whether the edits apply; a margin loss during editing makes that separation.",
+      "Main tables use WISE-Merge (one side memory); the released llama-7b config defaults to WISE-Retrieve (retrieve: True)."
+    ],
+    "units": [
+      {
+        "name": "Side memory",
+        "role": "copy of the FFN value (down_proj) matrix of one mid-to-late layer that holds all edits",
+        "made_by": "SGD with masked gradients, then Ties-Merge",
+        "fields": [
+          {
+            "name": "weights",
+            "what": "11008 × 4096 matrix for LLaMA-2-7B, initialised from the original; each shard trains a random 20% of entries",
+            "kept_as": "derived",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper §2.3.1, App. B.7; code WISE.py L360-L398",
+            "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/easyeditor/models/wise/WISE.py#L360-L398"
+          },
+          {
+            "name": "random masks",
+            "what": "one binary mask per shard with 20% ones; a new mask every 500 edits",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "code WISE.py L125-L126, L442-L446 (used only while writing)",
+            "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/easyeditor/models/wise/WISE.py#L442-L446"
+          },
+          {
+            "name": "threshold ε",
+            "what": "smallest activation score among the edits written so far (code multiplies it by act_ratio 0.88 at inference)",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §2.3.1; code WISE.py L438-L440, L487",
+            "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/easyeditor/models/wise/WISE.py#L438-L440"
+          }
+        ]
+      },
+      {
+        "name": "Main memory",
+        "role": "the original FFN matrix, never changed",
+        "made_by": "pretraining",
+        "fields": [
+          {
+            "name": "original weights",
+            "what": "kept intact; used when the routing score is below ε",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper Eq. 6; code WISE.py L475-L507",
+            "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/easyeditor/models/wise/WISE.py#L475-L507"
+          }
+        ]
+      },
+      {
+        "name": "Edit history (WISE-Retrieve with replay only)",
+        "role": "tokenised past edits kept for the optional replay loss of App. B.3",
+        "made_by": "the editor, as edits arrive",
+        "fields": [
+          {
+            "name": "past edit tokens",
+            "what": "stored per merge group; replayed to keep newer side memories quiet on older edits",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "paper App. B.3; code WISE.py L115-L118, L148-L183 (off by default: replay False)",
+            "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/easyeditor/models/wise/WISE.py#L148-L183"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Augment",
+        "how": "prefix each edit with short texts the unedited model generates, so the edit holds in other contexts",
+        "params": {
+          "prefixes": "10 of length 10 (paper); code: 5 of 5 tokens + 5 of 10 tokens, plus the bare prompt"
+        },
+        "src": "paper §3.1; code utils.py L186-L210, wise_main.py L19",
+        "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/easyeditor/models/wise/utils.py#L186-L210"
+      },
+      {
+        "step": "Pick subspace",
+        "how": "draw a new random gradient mask at the start of each shard",
+        "params": {
+          "ρ": "0.2",
+          "edits per shard": "500 (save_freq)"
+        },
+        "src": "paper §2.3.2, Table 10; code WISE.py L125-L126, llama-7b.yaml",
+        "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/easyeditor/models/wise/WISE.py#L125-L126"
+      },
+      {
+        "step": "Train",
+        "how": "SGD on the side copy: LM loss on the target tokens plus a margin loss (edit score > β, unrelated score < α, gap > γ); gradients outside the mask are zeroed and entries are clamped to ±1.0 of the original",
+        "params": {
+          "α, β, γ": "5, 20, 10",
+          "lr": "1.0",
+          "steps": "≤ 70 with early stop"
+        },
+        "src": "paper Eq. 5, 7, Table 10; code WISE.py L114-L203, L254-L282",
+        "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/easyeditor/models/wise/WISE.py#L114-L203"
+      },
+      {
+        "step": "Unrelated prompt",
+        "how": "the margin loss's unrelated example is one NQ question from the ZsRE train split, appended to each edit batch",
+        "src": "code utils.py L94, examples/run_wise_editing.py L50-L51",
+        "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/examples/run_wise_editing.py#L50-L51"
+      },
+      {
+        "step": "Record threshold",
+        "how": "after each edit, store its mean activation score; ε is the minimum so far",
+        "src": "paper §2.3.1, Alg. 1; code WISE.py L438-L440, utils.py L163-L184",
+        "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/easyeditor/models/wise/utils.py#L163-L184"
+      },
+      {
+        "step": "Merge",
+        "how": "every 1,000 edits the shard copies' changes from the original are merged by Ties (keep top 53% by magnitude, elect sign, disjoint mean), each weighted 1/k",
+        "params": {
+          "k": "2",
+          "λ": "0.5",
+          "density": "0.53 (code only)"
+        },
+        "out": "one side memory, 0.64% extra parameters",
+        "src": "paper Eq. 8, Table 10, App. B.7; code WISE.py L403-L436, llama-7b.yaml",
+        "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/easyeditor/models/wise/WISE.py#L403-L436"
+      },
+      {
+        "step": "Keep (Retrieve)",
+        "how": "WISE-Retrieve stores each merged side memory separately, with its own threshold, instead of merging all into one",
+        "src": "paper §2.3.2, Alg. 1; code WISE.py L415-L430",
+        "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/easyeditor/models/wise/WISE.py#L415-L430"
+      }
+    ],
+    "read": [
+      {
+        "step": "Forward",
+        "round": 1,
+        "input": "query",
+        "how": "the query runs through layers 0-26 unchanged",
+        "src": "paper Fig. 2"
+      },
+      {
+        "step": "Score",
+        "round": 1,
+        "input": "query",
+        "scores": "layer-27 output with the side matrix vs with the original",
+        "how": "per token, L2 distance between σ(output) under the two matrices; mean over tokens (max token when over 100 tokens)",
+        "src": "paper Eq. 3; code WISE.py L30-L42, L475-L507",
+        "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/easyeditor/models/wise/WISE.py#L30-L42"
+      },
+      {
+        "step": "Route",
+        "round": 1,
+        "how": "score > ε: use the side memory's output; else the original output",
+        "params": {
+          "ε": "smallest edit score × 0.88 (code)"
+        },
+        "src": "paper Eq. 6; code WISE.py L487-L507",
+        "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/easyeditor/models/wise/WISE.py#L487-L507"
+      },
+      {
+        "step": "Pick side memory (Retrieve)",
+        "round": 1,
+        "how": "score each stored side memory; the highest one that also beats its own threshold wins",
+        "src": "paper Alg. 2; code WISE.py L508-L514",
+        "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/easyeditor/models/wise/WISE.py#L508-L514"
+      },
+      {
+        "step": "Generate",
+        "round": 0,
+        "how": "layers 28-31 and decoding as usual",
+        "src": "paper Fig. 2"
+      }
+    ],
+    "answer_context": {
+      "sees": "the query only; the edits act inside layer 27",
+      "format": "no memory text: layer 27's FFN output comes from the side or the main matrix",
+      "excludes": [
+        "any stored text of the edits",
+        "edit paraphrases"
+      ],
+      "includes": [
+        "the query",
+        "one routed FFN matrix"
+      ],
+      "src": "paper Eq. 6; code WISE.py L475-L515",
+      "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/easyeditor/models/wise/WISE.py#L475-L515"
+    },
+    "compression": [
+      {
+        "what": "side memory vs the whole LLaMA-2-7B",
+        "kept": 0.18,
+        "of": 28,
+        "unit": "GB",
+        "basis": "App. B.7: 11008 × 4096 × 4 bytes = 0.18 GB against 7B × 4 = 28 GB (0.64%)",
+        "src": "paper App. B.7",
+        "url": "https://arxiv.org/pdf/2405.14768"
+      },
+      {
+        "what": "edits per trained subspace",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not a ratio. §3.3 states that 20% of one FFN matrix holds at least 500 edits.",
+        "src": "paper §3.3",
+        "url": "https://arxiv.org/pdf/2405.14768"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "WISE, ZsRE T=1000, LLaMA-2-7B (Rel/Gen/Loc/Avg)",
+        "value": "0.77 / 0.72 / 1.00 / 0.83",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "Same, Mistral-7B",
+        "value": "0.70 / 0.67 / 1.00 / 0.79",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "Without routing loss, T=1000",
+        "value": "Loc 0.72, Avg 0.78",
+        "src": "paper Table 7"
+      },
+      {
+        "label": "WISE-Retrieve routing accuracy at 3K edits",
+        "value": "~60%; ~88% with replay",
+        "src": "paper App. B.3"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Routing score",
+        "paper": "‖A(x)·(W′ − W)‖₂ on the FFN activation",
+        "code": "L2 distance between σ(layer output) with W′ and with W, averaged over tokens (max over tokens beyond 100)",
+        "src": "WISE.py L30-L42",
+        "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/easyeditor/models/wise/WISE.py#L30-L42"
+      },
+      {
+        "topic": "Threshold",
+        "paper": "ε = smallest edit score",
+        "code": "ε × act_ratio 0.88",
+        "src": "WISE.py L487, L499; llama-7b.yaml",
+        "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/easyeditor/models/wise/WISE.py#L487-L507"
+      },
+      {
+        "topic": "Random prefixes",
+        "paper": "10 sequences of length 10",
+        "code": "5 of 5 tokens and 5 of 10 tokens, from seeds 'I', 'You', 'Because', 'Yes', 'Q: ', plus the bare prompt",
+        "src": "utils.py L186-L210; wise_main.py L19",
+        "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/easyeditor/models/wise/utils.py#L186-L210"
+      },
+      {
+        "topic": "Default mode",
+        "paper": "WISE-Merge by default",
+        "code": "llama-7b.yaml sets retrieve: True (WISE-Retrieve); the docs say to set False for Merge",
+        "src": "hparams/WISE/llama-7b.yaml",
+        "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/hparams/WISE/llama-7b.yaml"
+      },
+      {
+        "topic": "Unstated settings",
+        "paper": "not given",
+        "code": "Ties density 0.53, weight clamp ±1.0, ≤ 70 SGD steps, weight decay 1e-5",
+        "src": "llama-7b.yaml; WISE.py L130-L134, L224-L230",
+        "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/hparams/WISE/llama-7b.yaml"
+      }
+    ],
+    "open_questions": [
+      "How much of Loc. 1.00 comes from the router having been trained against NQ-style unrelated prompts? The locality test prompts are also NQ questions, and no run uses unrelated prompts from another distribution.",
+      "Generalization depends on paraphrases crossing ε; routing rates for paraphrases vs edit prompts are shown only as a plot (Fig. 3), not as numbers.",
+      "Rel. and Gen. average over all T edits at the end, so whether the first shard fades relative to the last is not reported."
+    ],
+    "glance": [
+      {
+        "q": "What is one memory item?",
+        "a": "No item as such: an edit becomes changes to about 20% of the entries of a copied FFN matrix, shared with the other edits of its shard of 500.",
+        "src": "paper §2.3.2; code llama-7b.yaml",
+        "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/hparams/WISE/llama-7b.yaml"
+      },
+      {
+        "q": "Is the edit text stored?",
+        "a": "No. Only weights are kept (plus past edit tokens if the optional replay of App. B.3 is on).",
+        "src": "code WISE.py L396-L436",
+        "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/easyeditor/models/wise/WISE.py#L396-L436"
+      },
+      {
+        "q": "How is memory organised?",
+        "a": "An untouched main matrix and an edited side matrix; shards are merged with Ties every 1,000 edits. WISE-Retrieve keeps several side matrices.",
+        "src": "paper §2.3",
+        "url": "https://arxiv.org/pdf/2405.14768"
+      },
+      {
+        "q": "Is there reranking?",
+        "a": "No. One threshold on the activation score picks side or main memory (WISE-Retrieve: the highest-scoring side memory).",
+        "src": "paper Eq. 6, Alg. 2",
+        "url": "https://arxiv.org/pdf/2405.14768"
+      },
+      {
+        "q": "Is memory reconstructed at question time?",
+        "a": "No. Routing happens inside the forward pass, each time layer 27 runs.",
+        "src": "code WISE.py L475-L515",
+        "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/easyeditor/models/wise/WISE.py#L475-L515"
+      },
+      {
+        "q": "What does the model read?",
+        "a": "Only the query. At layer 27 the FFN output is computed with the side matrix or the original one.",
+        "src": "paper Eq. 6",
+        "url": "https://arxiv.org/pdf/2405.14768"
+      }
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 240",
+        "body": "<text class=\"fig-t\" x=\"56\" y=\"16\" text-anchor=\"middle\">Edit stream</text><rect class=\"gi-ev\" x=\"12\" y=\"26\" width=\"86\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"20\" y1=\"34.0\" x2=\"78\" y2=\"34.0\"/><rect class=\"gi-ev\" x=\"12\" y=\"44\" width=\"86\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"20\" y1=\"52.0\" x2=\"78\" y2=\"52.0\"/><rect class=\"gi-ev\" x=\"12\" y=\"62\" width=\"86\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"20\" y1=\"70.0\" x2=\"78\" y2=\"70.0\"/><text class=\"fig-s\" x=\"56\" y=\"94\" text-anchor=\"middle\">shard 1: edits 1–500</text><line class=\"gi-e d\" x1=\"6\" y1=\"104\" x2=\"108\" y2=\"104\"/><rect class=\"gi-ev\" x=\"12\" y=\"114\" width=\"86\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"20\" y1=\"122.0\" x2=\"78\" y2=\"122.0\"/><rect class=\"gi-ev\" x=\"12\" y=\"132\" width=\"86\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"20\" y1=\"140.0\" x2=\"78\" y2=\"140.0\"/><rect class=\"gi-ev\" x=\"12\" y=\"150\" width=\"86\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"20\" y1=\"158.0\" x2=\"78\" y2=\"158.0\"/><text class=\"fig-s\" x=\"56\" y=\"182\" text-anchor=\"middle\">shard 2: edits 501–1000</text><text class=\"fig-s\" x=\"56\" y=\"208\" text-anchor=\"middle\">+10 model-written</text><text class=\"fig-s\" x=\"56\" y=\"221\" text-anchor=\"middle\">prefixes per edit</text><path class=\"gi-a\" d=\"M104.0 52.0 L183.0 52.0\"/><polygon class=\"gi-ah\" points=\"190.0,52.0 183.0,56.0 183.0,48.0\"/><text class=\"fig-s\" x=\"147\" y=\"44\" text-anchor=\"middle\">SGD, ≤ 70 steps</text><text class=\"fig-s\" x=\"147\" y=\"66\" text-anchor=\"middle\">LM loss + margin</text><path class=\"gi-a\" d=\"M104.0 140.0 L183.0 140.0\"/><polygon class=\"gi-ah\" points=\"190.0,140.0 183.0,144.0 183.0,136.0\"/><text class=\"fig-s\" x=\"147\" y=\"132\" text-anchor=\"middle\">SGD, ≤ 70 steps</text><text class=\"fig-s\" x=\"147\" y=\"154\" text-anchor=\"middle\">LM loss + margin</text><text class=\"fig-t\" x=\"236\" y=\"16\" text-anchor=\"middle\">Copies of W_v</text><rect class=\"gi-w\" x=\"196\" y=\"28\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-v\" x=\"210\" y=\"28\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"224\" y=\"28\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"238\" y=\"28\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"252\" y=\"28\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"266\" y=\"28\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"196\" y=\"42\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-hi\" x=\"210\" y=\"42\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"224\" y=\"42\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"238\" y=\"42\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"252\" y=\"42\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"266\" y=\"42\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"196\" y=\"56\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-v\" x=\"210\" y=\"56\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"224\" y=\"56\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"238\" y=\"56\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-v\" x=\"252\" y=\"56\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"266\" y=\"56\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"196\" y=\"70\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-v\" x=\"210\" y=\"70\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"224\" y=\"70\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"238\" y=\"70\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"252\" y=\"70\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"266\" y=\"70\" width=\"12\" height=\"12\" rx=\"1.5\"/><text class=\"fig-s\" x=\"237\" y=\"98\" text-anchor=\"middle\">mask 1: 20% of entries</text><rect class=\"gi-w\" x=\"196\" y=\"116\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"210\" y=\"116\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"224\" y=\"116\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-v\" x=\"238\" y=\"116\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"252\" y=\"116\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"266\" y=\"116\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"196\" y=\"130\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-hi\" x=\"210\" y=\"130\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"224\" y=\"130\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"238\" y=\"130\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-v\" x=\"252\" y=\"130\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"266\" y=\"130\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"196\" y=\"144\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"210\" y=\"144\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-v\" x=\"224\" y=\"144\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"238\" y=\"144\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"252\" y=\"144\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-v\" x=\"266\" y=\"144\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"196\" y=\"158\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"210\" y=\"158\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"224\" y=\"158\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"238\" y=\"158\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"252\" y=\"158\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"266\" y=\"158\" width=\"12\" height=\"12\" rx=\"1.5\"/><text class=\"fig-s\" x=\"237\" y=\"186\" text-anchor=\"middle\">mask 2: 20% of entries</text><text class=\"fig-s\" x=\"237\" y=\"208\" text-anchor=\"middle\">overlap (amber)</text><text class=\"fig-s\" x=\"237\" y=\"221\" text-anchor=\"middle\">anchors the merge</text><path class=\"gi-a\" d=\"M284.0 56.0 L320.7 87.4\"/><polygon class=\"gi-ah\" points=\"326.0,92.0 318.1,90.5 323.3,84.4\"/><path class=\"gi-a\" d=\"M284.0 144.0 L320.4 116.2\"/><polygon class=\"gi-ah\" points=\"326.0,112.0 322.9,119.4 318.0,113.1\"/><rect class=\"gi-f\" x=\"326\" y=\"80\" width=\"84\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"368.0\" y=\"100.0\" text-anchor=\"middle\">Ties merge</text><text class=\"fig-s\" x=\"368.0\" y=\"113.0\" text-anchor=\"middle\">every 1,000 edits</text><path class=\"gi-a\" d=\"M410.0 102.0 L439.0 102.0\"/><polygon class=\"gi-ah\" points=\"446.0,102.0 439.0,106.0 439.0,98.0\"/><text class=\"fig-t\" x=\"500\" y=\"60\" text-anchor=\"middle\">Side memory W_v′</text><rect class=\"gi-w\" x=\"454\" y=\"74\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-v\" x=\"468\" y=\"74\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"482\" y=\"74\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-v\" x=\"496\" y=\"74\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"510\" y=\"74\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"524\" y=\"74\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"454\" y=\"88\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-hi\" x=\"468\" y=\"88\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"482\" y=\"88\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"496\" y=\"88\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-v\" x=\"510\" y=\"88\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"524\" y=\"88\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"454\" y=\"102\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-v\" x=\"468\" y=\"102\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-v\" x=\"482\" y=\"102\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"496\" y=\"102\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-v\" x=\"510\" y=\"102\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-v\" x=\"524\" y=\"102\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"454\" y=\"116\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-v\" x=\"468\" y=\"116\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"482\" y=\"116\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"496\" y=\"116\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"510\" y=\"116\" width=\"12\" height=\"12\" rx=\"1.5\"/><rect class=\"gi-w\" x=\"524\" y=\"116\" width=\"12\" height=\"12\" rx=\"1.5\"/><text class=\"fig-s\" x=\"495\" y=\"144\" text-anchor=\"middle\">copy of layer 27 FFN</text><text class=\"fig-s\" x=\"495\" y=\"157\" text-anchor=\"middle\">+0.64% parameters</text><text class=\"fig-s\" x=\"495\" y=\"196\" text-anchor=\"middle\">router threshold ε:</text><text class=\"fig-s\" x=\"495\" y=\"209\" text-anchor=\"middle\">smallest edit score</text><text class=\"fig-s\" x=\"495\" y=\"222\" text-anchor=\"middle\">(× 0.88 in code)</text>",
+        "text": [
+          "Each edit, padded with model-written prefixes, is trained by SGD into a copy of one FFN matrix; each shard of 500 edits may only change its own random 20% of entries.",
+          "Every 1,000 edits the shard copies are merged with Ties into one side memory, and the smallest edit score becomes the routing threshold."
+        ],
+        "src": "paper §2.3, Eq. 5-8, Table 10; code WISE.py L114-L223, L403-L446, llama-7b.yaml",
+        "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/easyeditor/models/wise/WISE.py#L114-L223"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 236",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"40\" width=\"58\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"33.0\" y=\"66.0\" text-anchor=\"middle\">Query</text><path class=\"gi-a\" d=\"M62.0 62.0 L71.0 62.0\"/><polygon class=\"gi-ah\" points=\"78.0,62.0 71.0,66.0 71.0,58.0\"/><rect class=\"gi-l\" x=\"78\" y=\"40\" width=\"66\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"111.0\" y=\"60.0\" text-anchor=\"middle\">Layers</text><text class=\"fig-s\" x=\"111.0\" y=\"73.0\" text-anchor=\"middle\">0–26</text><path class=\"gi-a\" d=\"M144.0 62.0 L153.0 62.0\"/><polygon class=\"gi-ah\" points=\"160.0,62.0 153.0,66.0 153.0,58.0\"/><rect class=\"gi-f\" x=\"160\" y=\"40\" width=\"92\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"206.0\" y=\"60.0\" text-anchor=\"middle\">Score Δact</text><text class=\"fig-s\" x=\"206.0\" y=\"73.0\" text-anchor=\"middle\">side vs main output</text><path class=\"gi-a\" d=\"M252.0 62.0 L261.0 62.0\"/><polygon class=\"gi-ah\" points=\"268.0,62.0 261.0,66.0 261.0,58.0\"/><polygon class=\"gi-f\" points=\"312,32 356,62 312,92 268,62\"/><text class=\"fig-t\" x=\"312\" y=\"60\" text-anchor=\"middle\">Δact &gt; ε?</text><text class=\"fig-s\" x=\"312\" y=\"73\" text-anchor=\"middle\">rule</text><path class=\"gi-a\" d=\"M340 51 L340 36\"/><path class=\"gi-a\" d=\"M340.0 36.0 L371.0 36.0\"/><polygon class=\"gi-ah\" points=\"378.0,36.0 371.0,40.0 371.0,32.0\"/><text class=\"fig-yes\" x=\"348\" y=\"28\" text-anchor=\"start\">Yes</text><path class=\"gi-a\" d=\"M340 73 L340 104\"/><path class=\"gi-a\" d=\"M340.0 104.0 L371.0 104.0\"/><polygon class=\"gi-ah\" points=\"378.0,104.0 371.0,108.0 371.0,100.0\"/><text class=\"fig-no\" x=\"348\" y=\"122\" text-anchor=\"start\">No</text><rect class=\"gi-v fig-soft\" x=\"378\" y=\"16\" width=\"98\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"427.0\" y=\"34.0\" text-anchor=\"middle\">Side memory W′</text><text class=\"fig-s\" x=\"427.0\" y=\"47.0\" text-anchor=\"middle\">holds the edits</text><rect class=\"gi-w fig-soft\" x=\"378\" y=\"84\" width=\"98\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"427.0\" y=\"102.0\" text-anchor=\"middle\">Main memory W</text><text class=\"fig-s\" x=\"427.0\" y=\"115.0\" text-anchor=\"middle\">original weights</text><path class=\"gi-a\" d=\"M476 36 L500 36\"/><path class=\"gi-a\" d=\"M500.0 36.0 L500.0 49.0\"/><polygon class=\"gi-ah\" points=\"500.0,56.0 496.0,49.0 504.0,49.0\"/><path class=\"gi-a\" d=\"M476 104 L500 104\"/><path class=\"gi-a\" d=\"M500.0 104.0 L500.0 89.0\"/><polygon class=\"gi-ah\" points=\"500.0,82.0 504.0,89.0 496.0,89.0\"/><rect class=\"gi-l\" x=\"482\" y=\"56\" width=\"72\" height=\"26\" rx=\"6\"/><text class=\"fig-t\" x=\"518.0\" y=\"73.0\" text-anchor=\"middle\">Layers 28–31</text><path class=\"gi-a\" d=\"M521.0 82.0 L521.0 133.0\"/><polygon class=\"gi-ah\" points=\"521.0,140.0 517.0,133.0 525.0,133.0\"/><rect class=\"gi-hi\" x=\"488\" y=\"140\" width=\"66\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"521.0\" y=\"164.0\" text-anchor=\"middle\">Answer</text><line class=\"gi-e d\" x1=\"6\" y1=\"142\" x2=\"470\" y2=\"142\"/><text class=\"fig-t\" x=\"8\" y=\"162\" text-anchor=\"start\">WISE-Retrieve (several side memories):</text><rect class=\"gi-v fig-soft\" x=\"14\" y=\"176\" width=\"50\" height=\"30\" rx=\"8\"/><text class=\"fig-t\" x=\"39.0\" y=\"195.0\" text-anchor=\"middle\">W′1</text><rect class=\"gi-v fig-soft\" x=\"74\" y=\"176\" width=\"50\" height=\"30\" rx=\"8\"/><text class=\"fig-t\" x=\"99.0\" y=\"195.0\" text-anchor=\"middle\">W′2</text><rect class=\"gi-v fig-soft\" x=\"134\" y=\"176\" width=\"50\" height=\"30\" rx=\"8\"/><text class=\"fig-t\" x=\"159.0\" y=\"195.0\" text-anchor=\"middle\">W′3</text><text class=\"fig-s\" x=\"40\" y=\"222\" text-anchor=\"start\">one score each</text><path class=\"gi-a\" d=\"M186.0 191.0 L207.0 191.0\"/><polygon class=\"gi-ah\" points=\"214.0,191.0 207.0,195.0 207.0,187.0\"/><rect class=\"gi-f\" x=\"214\" y=\"172\" width=\"96\" height=\"38\" rx=\"8\"/><text class=\"fig-t\" x=\"262.0\" y=\"189.0\" text-anchor=\"middle\">Pick the max</text><text class=\"fig-s\" x=\"262.0\" y=\"202.0\" text-anchor=\"middle\">if above its own ε</text><path class=\"gi-a\" d=\"M310.0 191.0 L331.0 191.0\"/><polygon class=\"gi-ah\" points=\"338.0,191.0 331.0,195.0 331.0,187.0\"/><text class=\"fig-s\" x=\"344\" y=\"188\" text-anchor=\"start\">else main memory</text><text class=\"fig-s\" x=\"344\" y=\"202\" text-anchor=\"start\">time +7% after 3K edits</text>",
+        "text": [
+          "At layer 27 the model measures how much the side memory would change its output; above the threshold the edited matrix is used, otherwise the original.",
+          "WISE-Retrieve scores several side memories and uses the highest one; nothing is searched outside the forward pass."
+        ],
+        "src": "paper Eq. 3, 6, Alg. 2; code WISE.py L475-L515",
+        "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/easyeditor/models/wise/WISE.py#L475-L515"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Side-memory layer",
+        "value": "27 down_proj (LLaMA-2-7B, Mistral-7B) · 21 c_fc (GPT-J)",
+        "src": "paper App. A.3",
+        "section": "construction"
+      },
+      {
+        "label": "Mask ratio · shards",
+        "value": "ρ 0.2 · k 2 (500 edits each)",
+        "src": "paper Table 10; code llama-7b.yaml",
+        "section": "construction"
+      },
+      {
+        "label": "Margin thresholds α, β, γ",
+        "value": "5 · 20 · 10",
+        "src": "paper Table 10",
+        "section": "construction"
+      },
+      {
+        "label": "Merge",
+        "value": "Ties, weights 0.5, every 1,000 edits",
+        "src": "paper Table 10; code llama-7b.yaml",
+        "section": "construction"
+      },
+      {
+        "label": "Capacity",
+        "value": "20% of one FFN matrix holds ≥ 500 edits",
+        "src": "paper §3.3",
+        "section": "construction"
+      },
+      {
+        "label": "Routing threshold ε",
+        "value": "smallest edit score (× 0.88 in code)",
+        "src": "paper §2.3.1; code WISE.py L487",
+        "section": "method"
+      },
+      {
+        "label": "Unrelated prompts' score",
+        "value": "< 10 ZsRE · < 20 Hallucination",
+        "src": "paper Fig. 3",
+        "section": "method"
+      },
+      {
+        "label": "WISE-Retrieve routing at 3K edits",
+        "value": "~60% correct · ~88% with replay",
+        "src": "paper App. B.3",
+        "section": "method"
+      },
+      {
+        "label": "Extra memory",
+        "value": "0.64% parameters (0.18 GB) · +4% GPU memory",
+        "src": "paper App. B.7",
+        "section": "results"
+      },
+      {
+        "label": "Inference time",
+        "value": "+3% (Merge) · +7% after 3K edits (Retrieve)",
+        "src": "paper §3.3, Fig. 6",
+        "section": "results"
+      },
+      {
+        "label": "Editing time",
+        "value": "~4 h for 1K ZsRE edits · ~6 h Hallucination (A800)",
+        "src": "paper App. A.3",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Model being edited",
+        "model": "LLaMA-2-7B, Mistral-7B, GPT-J-6B",
+        "kind": "llm",
+        "src": "paper §3.1"
+      },
+      {
+        "role": "Writes edits",
+        "model": "SGD on a masked copy of one FFN matrix",
+        "kind": "rule",
+        "src": "paper Eq. 7; code WISE.py L114-L203",
+        "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/easyeditor/models/wise/WISE.py#L114-L203"
+      },
+      {
+        "role": "Merges shards",
+        "model": "Ties-Merge (MergeKit-style GTA)",
+        "kind": "rule",
+        "src": "paper Eq. 8; code WISE.py L16-L25, L403-L436",
+        "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/easyeditor/models/wise/WISE.py#L403-L436"
+      },
+      {
+        "role": "Routes queries",
+        "model": "activation-score threshold at layer 27, separation trained by the margin loss",
+        "kind": "rule",
+        "src": "paper Eq. 5-6; code WISE.py L475-L515",
+        "url": "https://github.com/zjunlp/EasyEdit/blob/f8c59dac9fbc473ea59fa61f07c2cb7988b9c4ea/easyeditor/models/wise/WISE.py#L475-L515"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "Rel.",
+        "Gen.",
+        "Loc.",
+        "Avg."
+      ],
+      "rows": [
+        [
+          "WISE-Merge, T=1000",
+          "0.77",
+          "0.72",
+          "1.00",
+          "0.83"
+        ],
+        [
+          "without routing loss La, T=1000",
+          "0.84",
+          "0.79",
+          "0.72",
+          "0.78"
+        ],
+        [
+          "WISE-Merge, T=3000",
+          "0.58",
+          "0.56",
+          "1.00",
+          "0.71"
+        ],
+        [
+          "WISE-Retrieve, T=3000",
+          "0.61",
+          "0.58",
+          "1.00",
+          "0.73"
+        ],
+        [
+          "WISE-Retrieve, oracle routing, T=3000",
+          "0.75",
+          "0.70",
+          "1.00",
+          "0.82"
+        ],
+        [
+          "Ties merge, T=100",
+          "0.85",
+          "0.81",
+          "0.94",
+          "0.87"
+        ],
+        [
+          "Sign-only merge, T=100",
+          "0.80",
+          "0.76",
+          "0.97",
+          "0.84"
+        ],
+        [
+          "Linear merge, T=100",
+          "0.63",
+          "0.61",
+          "0.93",
+          "0.72"
+        ],
+        [
+          "Dare_Ties merge, T=100",
+          "0.67",
+          "0.63",
+          "0.83",
+          "0.71"
+        ]
+      ],
+      "src": "paper Tables 2, 6, 7, 11 (ZsRE, LLaMA-2-7B). Table 11 is a separate 100-edit run merging 2 MLPs of 50 edits each, so its Ties row differs from Table 2. Without random prefixes Rel./Gen. fall by 0.15/0.17 at T=1000 (Fig. 12)."
+    },
+    "discussion": {
+      "takeaway": "Keep edits in a separate, mergeable copy of one mid-to-late FFN matrix and route to it by activation. In its own experiments this holds reliability, generalization and locality together over 1,000 sequential ZsRE edits, where earlier editors give up one of the three.",
+      "claims": [
+        {
+          "claim": "Editing weights directly or retrieving activations cannot give reliability, generalization and locality together in lifelong editing (an 'impossible triangle').",
+          "evidence": "Fig. 1; Table 2 at T=1000 (LLaMA): ROME/MEMIT locality 0.00/0.02, GRACE generalization 0.08."
+        },
+        {
+          "claim": "WISE leads after long edit sequences.",
+          "evidence": "ZsRE T=1000 average 0.83 (LLaMA) and 0.79 (Mistral) vs 0.67 and 0.68 for the next best (GRACE; MEMIT-MASS). Table 2, §3.2."
+        },
+        {
+          "claim": "It also corrects hallucinations best.",
+          "evidence": "SelfCheckGPT T=600: perplexity 3.12 (LLaMA) and 5.21 (Mistral) with Loc. ≥ 0.93. The closest method that keeps locality is MEMIT-MASS (13.47 / 7.28); FT-EWC reaches 4.56 / 5.46 but with Loc. 0.24 / 0.25. Table 4."
+        },
+        {
+          "claim": "Edits generalise out of distribution.",
+          "evidence": "Temporal, GPT-J, T=75: OOD Gen. 0.37 vs 0.28 for GRACE; average 0.78. Table 5."
+        },
+        {
+          "claim": "The router is what keeps locality.",
+          "evidence": "Without the routing loss Loc. drops from 1.00 to 0.72 at T=1000. Table 7."
+        },
+        {
+          "claim": "Mid-to-late layers are the right place for the side memory.",
+          "evidence": "Layer 26 gives ~0.80 Rel./Gen. with Loc. 1.00; layers 0, 1 and 31 fail (Loc. as low as 0.096). Fig. 4, §3.3."
+        },
+        {
+          "claim": "It scales to 3,000 edits at small cost.",
+          "evidence": "WISE-Retrieve average 0.73 vs 0.66 GRACE and 0.53 MEMIT-MASS (Table 6); +0.64% parameters, +3% inference time for Merge (App. B.7, Fig. 6)."
+        }
+      ],
+      "limits": [
+        "Routing among several side memories falls short of an oracle (0.73 vs 0.82 average at 3K edits).",
+        "WISE-Retrieve's inference time grows with the number of edits (about 7% after 3K).",
+        "Editing can be misused to insert harmful content; the side memory can be discarded to undo edits."
+      ],
+      "limits_src": "paper §5 (Limitations and Broader Impacts)",
+      "reading": [
+        "Locality is tested on NQ questions, and the released script trains the router's 'unrelated' side on NQ questions from the ZsRE train split, so test-time unrelated prompts come from the distribution the router learned to ignore (examples/run_wise_editing.py L50-L51).",
+        "Scores are EasyEdit's default 'token em': the share of target tokens predicted correctly with the gold prefix given (evaluate_utils.py L80-L152), not exact match of a generated answer as Eq. 9 reads.",
+        "The code's routing score and threshold differ from the paper (σ of the layer output, token mean, ε × 0.88); the figures follow the code.",
+        "Random-prefix augmentation is applied to every baseline (§3.1) and several baselines were re-tuned for LLaMA/Mistral (App. A.3), so baseline numbers are this paper's runs, not those papers' own settings.",
+        "The Hallucination set was cut to prompts of at most 254 tokens (906 of GRACE's 1,392; 600 test), and it has no generalization metric.",
+        "Table 11's Ties row (0.87 at 100 edits) comes from a different merge schedule (every 50 edits) than the main runs."
+      ]
+    },
+    "abstract": {
+      "text": "WISE targets lifelong model editing, where an LLM receives thousands of factual corrections one after another. The authors argue that editing the weights directly breaks unrelated knowledge while retrieval-style activation patches fail to generalise to paraphrases. WISE keeps edits in a side copy of one FFN matrix, trains a router that sends a query to the side or the original matrix, writes groups of edits into random parameter subspaces and merges them with Ties-Merge. On ZsRE, hallucination correction and an out-of-distribution temporal set with LLaMA-2, Mistral and GPT-J it reports the best balance of reliability, generalization and locality.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2405.14768"
+    },
+    "sections": {
+      "Memory architecture": "§2.2-2.3",
+      "Results": "§3.2",
+      "Ablation": "§3.3, App. B.2, B.5, B.6",
+      "Discussion": "§5",
+      "Details": "§3.1, App. A, Alg. 1-2"
+    }
+  }
+}

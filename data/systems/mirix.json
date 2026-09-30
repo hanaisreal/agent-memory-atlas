@@ -94,5 +94,356 @@
   },
   "summary": "Multi-agent memory with six typed stores (core, episodic, semantic, procedural, resource, knowledge vault) coordinated by a meta memory manager, with topic-based active retrieval.",
   "verified": false,
-  "notes": "AXES-CHECK: consistent with the paper; retrieval is 'topic search per store' (top-10 per store) plus agent-chosen embedding/BM25/string-match tool calls. Some stores keep verbatim content (Resource Memory, Knowledge Vault), so fidelity tagged mixed. No peer-reviewed venue found (arXiv preprint as of 2026-09). Also evaluated on the multimodal ScreenshotVQA (not recorded as it is not a conversational-memory benchmark).\nDESIGN: Sec 3.1-3.3, 4.1.2. Corrected prefill: 'meta-manager routing' kept in construction.processing but made concrete; kept_as changed from 'rewritten' because Resource Memory and Knowledge Vault store verbatim content. conflicts/forgetting null: no contradiction handling or deletion policy described (only Core Memory compaction)."
+  "notes": "AXES-CHECK: consistent with the paper; retrieval is 'topic search per store' (top-10 per store) plus agent-chosen embedding/BM25/string-match tool calls. Some stores keep verbatim content (Resource Memory, Knowledge Vault), so fidelity tagged mixed. No peer-reviewed venue found (arXiv preprint as of 2026-09). Also evaluated on the multimodal ScreenshotVQA (not recorded as it is not a conversational-memory benchmark).\nDESIGN: Sec 3.1-3.3, 4.1.2. Corrected prefill: 'meta-manager routing' kept in construction.processing but made concrete; kept_as changed from 'rewritten' because Resource Memory and Knowledge Vault store verbatim content. conflicts/forgetting null: no contradiction handling or deletion policy described (only Core Memory compaction).",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2507.07957v1 (PDF read 2026-09-30)",
+      "code": "https://github.com/Mirix-AI/MIRIX/tree/7b143c502f8dadd91be16d819d78b66c0caa5c9f/",
+      "code_note": "Branch public_evaluation, which the paper names as its evaluation code (§4.1.2, footnote 3). Commit 7b143c50 (2025-07-12, 'finish public_evaluations') is the first commit on that branch after paper v1 (2025-07-10). Later commits on the branch (to 33e4bde5, 2025-08-20) change the run scripts and a sqlite fix, not the memory or retrieval code read here."
+    },
+    "sections": {
+      "Memory architecture": "§3.1-3.3",
+      "Results": "§4.2-4.3",
+      "Discussion": "§4.3, §6",
+      "Details": "§2.1, §4.1, App. A"
+    },
+    "abstract": {
+      "text": "MIRIX splits an agent's long-term memory into six typed stores: core facts about the user and agent, time-stamped episodes, semantic knowledge, procedures, resources such as documents, and a vault for exact sensitive values. A meta memory manager decides which stores new input concerns, and one LLM manager per store writes and edits its entries in parallel. Before answering, the chat agent writes a short topic, retrieves the best matches from each store into its prompt, and can search further with tools. The authors report 85.38 on LoCoMo with gpt-4.1-mini and higher accuracy than retrieval and long-context baselines on ScreenshotVQA, a new benchmark of one to four weeks of screenshots.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2507.07957"
+    },
+    "units": [
+      {
+        "name": "Core memory",
+        "role": "short always-visible profile of the user and the agent",
+        "made_by": "Core Memory Manager (LLM) via append, replace and rewrite calls",
+        "fields": [
+          {
+            "name": "human block",
+            "what": "enduring facts about the user; rewritten to about half when a block passes 90% of its 5,000-character limit",
+            "kept_as": "extracted",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.1; code core_memory_agent.txt L10, constants.py L156-L158",
+            "url": "https://github.com/Mirix-AI/MIRIX/blob/7b143c502f8dadd91be16d819d78b66c0caa5c9f/mirix/prompts/system/core_memory_agent.txt#L10"
+          },
+          {
+            "name": "persona block",
+            "what": "the agent's identity and tone; the evaluation overwrites it with a be-concise persona before questions",
+            "kept_as": "rewritten",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.1; code public_evaluations/agent.py L86-L87",
+            "url": "https://github.com/Mirix-AI/MIRIX/blob/7b143c502f8dadd91be16d819d78b66c0caa5c9f/public_evaluations/agent.py#L86-L87"
+          }
+        ]
+      },
+      {
+        "name": "Episodic event",
+        "role": "one time-stamped event, the main store for LoCoMo",
+        "made_by": "Episodic Memory Manager (LLM), one insert, merge or replace call per write",
+        "fields": [
+          {
+            "name": "summary",
+            "what": "one-line LLM summary of the event",
+            "kept_as": "summarized",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.1; code agent.py L1176-L1200",
+            "url": "https://github.com/Mirix-AI/MIRIX/blob/7b143c502f8dadd91be16d819d78b66c0caa5c9f/mirix/agent/agent.py#L1176-L1200"
+          },
+          {
+            "name": "details",
+            "what": "longer LLM description of the event; prompt asks to record as much as possible",
+            "kept_as": "rewritten",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "code episodic_memory_agent.txt L16; details embedding searched in agent.py L1190; text returned only by search_in_memory (base.py L104-L115)",
+            "url": "https://github.com/Mirix-AI/MIRIX/blob/7b143c502f8dadd91be16d819d78b66c0caa5c9f/mirix/functions/function_sets/base.py#L104-L115"
+          },
+          {
+            "name": "occurred_at",
+            "what": "event time; the 10 most recent events are always shown",
+            "kept_as": "extracted",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code agent.py L1176-L1186",
+            "url": "https://github.com/Mirix-AI/MIRIX/blob/7b143c502f8dadd91be16d819d78b66c0caa5c9f/mirix/agent/agent.py#L1176-L1186"
+          },
+          {
+            "name": "tree_path",
+            "what": "LLM category path such as personal > travel",
+            "kept_as": "extracted",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code episodic_memory_agent.txt L18; shown as Path in agent.py L1182",
+            "url": "https://github.com/Mirix-AI/MIRIX/blob/7b143c502f8dadd91be16d819d78b66c0caa5c9f/mirix/prompts/system/episodic_memory_agent.txt#L18"
+          },
+          {
+            "name": "event_type, actor",
+            "what": "category of the event and who produced it",
+            "kept_as": "extracted",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.1; returned only by search_in_memory (base.py L113)",
+            "url": "https://github.com/Mirix-AI/MIRIX/blob/7b143c502f8dadd91be16d819d78b66c0caa5c9f/mirix/functions/function_sets/base.py#L113"
+          }
+        ]
+      },
+      {
+        "name": "Semantic item",
+        "role": "knowledge about a person, place or concept",
+        "made_by": "Semantic Memory Manager (LLM)",
+        "fields": [
+          {
+            "name": "name, summary",
+            "what": "entity name and a one-sentence description",
+            "kept_as": "extracted",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.1; code agent.py L1230-L1243",
+            "url": "https://github.com/Mirix-AI/MIRIX/blob/7b143c502f8dadd91be16d819d78b66c0caa5c9f/mirix/agent/agent.py#L1230-L1243"
+          },
+          {
+            "name": "details",
+            "what": "longer LLM description; its embedding is matched against the topic",
+            "kept_as": "rewritten",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "code agent.py L1232; base.py L153-L164",
+            "url": "https://github.com/Mirix-AI/MIRIX/blob/7b143c502f8dadd91be16d819d78b66c0caa5c9f/mirix/agent/agent.py#L1232"
+          }
+        ]
+      },
+      {
+        "name": "Procedural, resource and vault entries",
+        "role": "how-to steps, documents and exact values; little used on LoCoMo text",
+        "made_by": "their own managers (LLM)",
+        "fields": [
+          {
+            "name": "procedure summary, steps",
+            "what": "goal description and a list of steps",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper §3.1; code agent.py L1216-L1228",
+            "url": "https://github.com/Mirix-AI/MIRIX/blob/7b143c502f8dadd91be16d819d78b66c0caa5c9f/mirix/agent/agent.py#L1216-L1228"
+          },
+          {
+            "name": "resource title, summary",
+            "what": "name and overview of a shared document or file",
+            "kept_as": "summarized",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "code agent.py L1202-L1214",
+            "url": "https://github.com/Mirix-AI/MIRIX/blob/7b143c502f8dadd91be16d819d78b66c0caa5c9f/mirix/agent/agent.py#L1202-L1214"
+          },
+          {
+            "name": "resource content",
+            "what": "full or excerpted text; not embedding-searchable, only BM25 or string match via the tool",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code base.py L96-L97, L117-L127",
+            "url": "https://github.com/Mirix-AI/MIRIX/blob/7b143c502f8dadd91be16d819d78b66c0caa5c9f/mirix/functions/function_sets/base.py#L96-L127"
+          },
+          {
+            "name": "vault caption, secret_value",
+            "what": "exact values such as addresses or keys; high-sensitivity entries excluded from automatic retrieval. Retrieved each turn but left out of the prompt template",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.1; code agent.py L1164-L1174, L1263-L1301; base.py L141-L151",
+            "url": "https://github.com/Mirix-AI/MIRIX/blob/7b143c502f8dadd91be16d819d78b66c0caa5c9f/mirix/agent/agent.py#L1263-L1301"
+          }
+        ]
+      },
+      {
+        "name": "Source conversation",
+        "role": "the LoCoMo session as sent to the memory managers",
+        "made_by": "evaluation script, one session per write call",
+        "fields": [
+          {
+            "name": "session text",
+            "what": "raw turns with the session date, plus instructions to turn relative dates into absolute ones; kept only in the memory agents' message logs",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "code conversation_creator.py L100-L137; chat agent's conversation_search reads only its own messages (base.py L38-L78)",
+            "url": "https://github.com/Mirix-AI/MIRIX/blob/7b143c502f8dadd91be16d819d78b66c0caa5c9f/public_evaluations/conversation_creator.py#L100-L137"
+          }
+        ]
+      }
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 262",
+        "body": "<text class=\"fig-t\" x=\"52\" y=\"50\" text-anchor=\"middle\">LoCoMo session</text><rect class=\"gi-ev\" x=\"14\" y=\"60\" width=\"70\" height=\"16\" rx=\"6\"/><line class=\"gi-t\" x1=\"22\" y1=\"68\" x2=\"70\" y2=\"68\"/><rect class=\"gi-ev\" x=\"22\" y=\"82\" width=\"70\" height=\"16\" rx=\"6\"/><line class=\"gi-t\" x1=\"30\" y1=\"90\" x2=\"78\" y2=\"90\"/><rect class=\"gi-ev\" x=\"14\" y=\"104\" width=\"70\" height=\"16\" rx=\"6\"/><line class=\"gi-t\" x1=\"22\" y1=\"112\" x2=\"70\" y2=\"112\"/><rect class=\"gi-ev\" x=\"22\" y=\"126\" width=\"70\" height=\"16\" rx=\"6\"/><line class=\"gi-t\" x1=\"30\" y1=\"134\" x2=\"78\" y2=\"134\"/><rect class=\"gi-ev\" x=\"14\" y=\"148\" width=\"70\" height=\"16\" rx=\"6\"/><line class=\"gi-t\" x1=\"22\" y1=\"156\" x2=\"70\" y2=\"156\"/><text class=\"fig-s\" x=\"52\" y=\"182\" text-anchor=\"middle\">one whole session</text><text class=\"fig-s\" x=\"52\" y=\"195\" text-anchor=\"middle\">per write call,</text><text class=\"fig-s\" x=\"52\" y=\"208\" text-anchor=\"middle\">with date rules</text><path class=\"gi-a\" d=\"M96.0 112.0 L111.0 112.0\"/><polygon class=\"gi-ah\" points=\"118.0,112.0 111.0,116.0 111.0,108.0\"/><rect class=\"gi-llm\" x=\"118\" y=\"84\" width=\"90\" height=\"56\" rx=\"8\"/><text class=\"fig-t\" x=\"163.0\" y=\"110.0\" text-anchor=\"middle\">Meta</text><text class=\"fig-s\" x=\"163.0\" y=\"123.0\" text-anchor=\"middle\">memory manager</text><text class=\"fig-s\" x=\"163\" y=\"62\" text-anchor=\"middle\">also reads the</text><text class=\"fig-s\" x=\"163\" y=\"75\" text-anchor=\"middle\">topic-matched hits</text><text class=\"fig-s\" x=\"163\" y=\"154\" text-anchor=\"middle\">LLM picks</text><text class=\"fig-s\" x=\"163\" y=\"167\" text-anchor=\"middle\">which stores</text><path class=\"gi-a\" d=\"M208.0 112.0 L248.8 32.2\"/><polygon class=\"gi-ah\" points=\"252.0,26.0 252.4,34.1 245.3,30.4\"/><rect class=\"gi-ev\" x=\"254\" y=\"12\" width=\"298\" height=\"28\" rx=\"7\"/><rect class=\"gi-llm\" x=\"260\" y=\"19\" width=\"28\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"274\" y=\"29\" text-anchor=\"middle\">LLM</text><text class=\"fig-t\" x=\"296\" y=\"30\" text-anchor=\"start\">Core</text><text class=\"fig-s\" x=\"546\" y=\"30\" text-anchor=\"end\">persona, human; rewrite at 90%</text><path class=\"gi-a\" d=\"M208.0 112.0 L247.5 65.3\"/><polygon class=\"gi-ah\" points=\"252.0,60.0 250.5,67.9 244.4,62.8\"/><rect class=\"gi-hi\" x=\"254\" y=\"46\" width=\"298\" height=\"28\" rx=\"7\"/><rect class=\"gi-llm\" x=\"260\" y=\"53\" width=\"28\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"274\" y=\"63\" text-anchor=\"middle\">LLM</text><text class=\"fig-t\" x=\"296\" y=\"64\" text-anchor=\"start\">Episodic</text><text class=\"fig-s\" x=\"546\" y=\"64\" text-anchor=\"end\">time · summary · details · path</text><path class=\"gi-a\" d=\"M208.0 112.0 L245.5 96.7\"/><polygon class=\"gi-ah\" points=\"252.0,94.0 247.0,100.4 244.0,92.9\"/><rect class=\"gi-ev\" x=\"254\" y=\"80\" width=\"298\" height=\"28\" rx=\"7\"/><rect class=\"gi-llm\" x=\"260\" y=\"87\" width=\"28\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"274\" y=\"97\" text-anchor=\"middle\">LLM</text><text class=\"fig-t\" x=\"296\" y=\"98\" text-anchor=\"start\">Semantic</text><text class=\"fig-s\" x=\"546\" y=\"98\" text-anchor=\"end\">name · summary · details</text><path class=\"gi-a\" d=\"M208.0 112.0 L245.4 125.6\"/><polygon class=\"gi-ah\" points=\"252.0,128.0 244.1,129.4 246.8,121.8\"/><rect class=\"gi-ev\" x=\"254\" y=\"114\" width=\"298\" height=\"28\" rx=\"7\"/><rect class=\"gi-llm\" x=\"260\" y=\"121\" width=\"28\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"274\" y=\"131\" text-anchor=\"middle\">LLM</text><text class=\"fig-t\" x=\"296\" y=\"132\" text-anchor=\"start\">Procedural</text><text class=\"fig-s\" x=\"546\" y=\"132\" text-anchor=\"end\">type · summary · steps</text><path class=\"gi-a\" d=\"M208.0 112.0 L247.4 156.7\"/><polygon class=\"gi-ah\" points=\"252.0,162.0 244.4,159.4 250.4,154.1\"/><rect class=\"gi-ev\" x=\"254\" y=\"148\" width=\"298\" height=\"28\" rx=\"7\"/><rect class=\"gi-llm\" x=\"260\" y=\"155\" width=\"28\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"274\" y=\"165\" text-anchor=\"middle\">LLM</text><text class=\"fig-t\" x=\"296\" y=\"166\" text-anchor=\"start\">Resource</text><text class=\"fig-s\" x=\"546\" y=\"166\" text-anchor=\"end\">title · summary · full text</text><path class=\"gi-a\" d=\"M208.0 112.0 L248.8 189.8\"/><polygon class=\"gi-ah\" points=\"252.0,196.0 245.2,191.7 252.3,187.9\"/><rect class=\"gi-ev\" x=\"254\" y=\"182\" width=\"298\" height=\"28\" rx=\"7\"/><rect class=\"gi-llm\" x=\"260\" y=\"189\" width=\"28\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"274\" y=\"199\" text-anchor=\"middle\">LLM</text><text class=\"fig-t\" x=\"296\" y=\"200\" text-anchor=\"start\">Vault</text><text class=\"fig-s\" x=\"546\" y=\"200\" text-anchor=\"end\">caption · secret, verbatim</text><text class=\"fig-s\" x=\"404\" y=\"228\" text-anchor=\"middle\">six managers run in parallel; each makes one tool call</text><text class=\"fig-s\" x=\"404\" y=\"241\" text-anchor=\"middle\">(insert, merge or update) into its own sqlite table;</text><text class=\"fig-s\" x=\"404\" y=\"254\" text-anchor=\"middle\">summary and details are embedded for search</text>",
+        "text": [
+          "Each LoCoMo session goes to a meta memory manager, which picks the stores it concerns; the managers of those stores then write in parallel, one tool call each.",
+          "Episodic events keep an LLM summary and longer details, both embedded; only the resource and vault stores keep text verbatim."
+        ],
+        "src": "paper §3.1, §3.3, Fig. 6; code conversation_creator.py L100-L137, memory_tools.py L419-L522, episodic_memory_agent.txt L32-L51",
+        "url": "https://github.com/Mirix-AI/MIRIX/blob/7b143c502f8dadd91be16d819d78b66c0caa5c9f/mirix/functions/function_sets/memory_tools.py#L419-L522"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 238",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"30\" width=\"56\" height=\"46\" rx=\"8\"/><text class=\"fig-t\" x=\"32.0\" y=\"57.0\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M60.0 53.0 L67.0 53.0\"/><polygon class=\"gi-ah\" points=\"74.0,53.0 67.0,57.0 67.0,49.0\"/><rect class=\"gi-llm\" x=\"74\" y=\"30\" width=\"66\" height=\"46\" rx=\"8\"/><text class=\"fig-t\" x=\"107.0\" y=\"51.0\" text-anchor=\"middle\">Topic</text><text class=\"fig-s\" x=\"107.0\" y=\"64.0\" text-anchor=\"middle\">LLM writes</text><path class=\"gi-a\" d=\"M140.0 53.0 L147.0 53.0\"/><polygon class=\"gi-ah\" points=\"154.0,53.0 147.0,57.0 147.0,49.0\"/><rect class=\"gi-v fig-soft\" x=\"154\" y=\"30\" width=\"90\" height=\"46\" rx=\"8\"/><text class=\"fig-t\" x=\"199.0\" y=\"51.0\" text-anchor=\"middle\">Search</text><text class=\"fig-s\" x=\"199.0\" y=\"64.0\" text-anchor=\"middle\">top 10 per store</text><text class=\"fig-s\" x=\"199\" y=\"90\" text-anchor=\"middle\">embedding match</text><path class=\"gi-a\" d=\"M244.0 53.0 L251.0 53.0\"/><polygon class=\"gi-ah\" points=\"258.0,53.0 251.0,57.0 251.0,49.0\"/><rect class=\"gi-f\" x=\"258\" y=\"30\" width=\"100\" height=\"46\" rx=\"8\"/><text class=\"fig-t\" x=\"308.0\" y=\"51.0\" text-anchor=\"middle\">System prompt</text><text class=\"fig-s\" x=\"308.0\" y=\"64.0\" text-anchor=\"middle\">summaries only</text><path class=\"gi-a\" d=\"M358.0 53.0 L367.0 53.0\"/><polygon class=\"gi-ah\" points=\"374.0,53.0 367.0,57.0 367.0,49.0\"/><rect class=\"gi-llm\" x=\"374\" y=\"30\" width=\"92\" height=\"46\" rx=\"8\"/><text class=\"fig-t\" x=\"420.0\" y=\"51.0\" text-anchor=\"middle\">Chat Agent</text><text class=\"fig-s\" x=\"420.0\" y=\"64.0\" text-anchor=\"middle\">gpt-4.1-mini</text><path class=\"gi-a\" d=\"M420.0 76.0 L420.0 109.0\"/><polygon class=\"gi-ah\" points=\"420.0,116.0 416.0,109.0 424.0,109.0\"/><polygon class=\"gi-llm\" points=\"420,116 464,146 420,176 376,146\"/><text class=\"fig-t\" x=\"420\" y=\"145\" text-anchor=\"middle\">More?</text><text class=\"fig-s\" x=\"420\" y=\"157\" text-anchor=\"middle\">LLM</text><path class=\"gi-a\" d=\"M464.0 146.0 L475.0 146.0\"/><polygon class=\"gi-ah\" points=\"482.0,146.0 475.0,150.0 475.0,142.0\"/><text class=\"fig-yes\" x=\"473\" y=\"136\" text-anchor=\"middle\">No</text><rect class=\"gi-hi\" x=\"482\" y=\"124\" width=\"74\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"519.0\" y=\"144.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"519.0\" y=\"157.0\" text-anchor=\"middle\">send_message</text><path class=\"gi-a\" d=\"M376.0 146.0 L365.0 146.0\"/><polygon class=\"gi-ah\" points=\"358.0,146.0 365.0,142.0 365.0,150.0\"/><text class=\"fig-no\" x=\"367\" y=\"136\" text-anchor=\"middle\">Yes</text><rect class=\"gi-v fig-soft\" x=\"244\" y=\"124\" width=\"114\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"301.0\" y=\"144.0\" text-anchor=\"middle\">Search tool</text><text class=\"fig-s\" x=\"301.0\" y=\"157.0\" text-anchor=\"middle\">top 10, with details</text><path class=\"gi-a\" d=\"M244.0 146.0 L233.0 146.0\"/><polygon class=\"gi-ah\" points=\"226.0,146.0 233.0,142.0 233.0,150.0\"/><rect class=\"gi-f\" x=\"122\" y=\"124\" width=\"104\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"174.0\" y=\"144.0\" text-anchor=\"middle\">Into context</text><text class=\"fig-s\" x=\"174.0\" y=\"157.0\" text-anchor=\"middle\">≤ 10 steps</text><path class=\"gi-a\" d=\"M174 124 L174 102 L396 102\"/><path class=\"gi-a\" d=\"M396.0 102.0 L396.0 83.0\"/><polygon class=\"gi-ah\" points=\"396.0,76.0 400.0,83.0 392.0,83.0\"/><text class=\"fig-s\" x=\"301\" y=\"182\" text-anchor=\"middle\">agent picks store, field, method</text><text class=\"fig-s\" x=\"6\" y=\"204\" text-anchor=\"start\">Prompt holds: full core memory; 10 most recent + 10 topic-matched episodic events;</text><text class=\"fig-s\" x=\"6\" y=\"217\" text-anchor=\"start\">10 semantic, 10 resource, 10 procedural items. Vault items are retrieved but not shown.</text><text class=\"fig-s\" x=\"6\" y=\"230\" text-anchor=\"start\">Details and full texts appear only if the agent calls the search tool.</text>",
+        "text": [
+          "The chat agent first writes a topic; its embedding pulls the top 10 entries of each store into the system prompt as one-line summaries.",
+          "The agent may then call a search tool on a chosen store, field and method, which returns full details, before it answers."
+        ],
+        "src": "paper §3.2, Fig. 5, Fig. 7; code agent.py L959-L1029, L1121-L1301; base.py L81-L168; constants.py L35-L36",
+        "url": "https://github.com/Mirix-AI/MIRIX/blob/7b143c502f8dadd91be16d819d78b66c0caa5c9f/mirix/agent/agent.py#L1121-L1301"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Stores",
+        "value": "6, each with its own LLM manager, plus a meta manager and a chat agent (8 agents)",
+        "src": "paper §1, §3.3",
+        "section": "construction"
+      },
+      {
+        "label": "Input per write call on LoCoMo",
+        "value": "one whole session",
+        "src": "code conversation_creator.py L100-L137",
+        "section": "construction"
+      },
+      {
+        "label": "Input per write call in the app",
+        "value": "20 unique screenshots, about every 60 s",
+        "src": "paper §2.1",
+        "section": "construction"
+      },
+      {
+        "label": "Core block rewrite",
+        "value": "above 90% full, down to about 45%; block limit 5,000 characters",
+        "src": "paper §3.1; code core_memory_agent.txt L10, constants.py L156-L158",
+        "section": "construction"
+      },
+      {
+        "label": "Topic retrieval",
+        "value": "top 10 per store (episodic: 10 recent + 10 matched)",
+        "src": "paper §3.2; code constants.py L36, agent.py L1176-L1200",
+        "section": "method"
+      },
+      {
+        "label": "Search method on LoCoMo",
+        "value": "embedding only, text-embedding-3-small",
+        "src": "code agent.py L1145-L1146, agent_wrapper.py L69; public_evaluations README",
+        "section": "method"
+      },
+      {
+        "label": "Tool search",
+        "value": "top 10 per call; up to 10 chained steps",
+        "src": "code base.py L110, constants.py L35",
+        "section": "method"
+      },
+      {
+        "label": "Storage, ScreenshotVQA",
+        "value": "15.89 MB vs 15.07 GB (SigLIP) and 236.70 MB (Gemini)",
+        "src": "paper Table 1",
+        "section": "results"
+      },
+      {
+        "label": "Screenshot upload latency",
+        "value": "under 5 s (Gemini streaming) vs about 50 s",
+        "src": "paper §2.1",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Writes topics, routes and writes memory (all eight agents)",
+        "model": "gpt-4.1-mini on LoCoMo; gemini-2.5-flash-preview-04-17 on ScreenshotVQA",
+        "kind": "llm",
+        "src": "paper §4.1.2; code configs/mirix_gpt4.yaml",
+        "url": "https://github.com/Mirix-AI/MIRIX/blob/7b143c502f8dadd91be16d819d78b66c0caa5c9f/configs/mirix_gpt4.yaml"
+      },
+      {
+        "role": "Topic and tool search",
+        "model": "text-embedding-3-small, cosine over summary or details embeddings",
+        "kind": "retriever",
+        "src": "code agent_wrapper.py L69, agent.py L1145-L1154",
+        "url": "https://github.com/Mirix-AI/MIRIX/blob/7b143c502f8dadd91be16d819d78b66c0caa5c9f/mirix/agent/agent_wrapper.py#L69"
+      },
+      {
+        "role": "Other tool search methods",
+        "model": "BM25 and string match (offered to the agent; the LoCoMo run hard-codes embedding for topic retrieval)",
+        "kind": "rule",
+        "src": "paper §3.2; code agent.py L1145",
+        "url": "https://github.com/Mirix-AI/MIRIX/blob/7b143c502f8dadd91be16d819d78b66c0caa5c9f/mirix/agent/agent.py#L1145"
+      },
+      {
+        "role": "Answer",
+        "model": "Chat Agent, gpt-4.1-mini",
+        "kind": "llm",
+        "src": "paper §4.1.2"
+      },
+      {
+        "role": "Judge",
+        "model": "GPT-4.1 per the paper; the released script calls gpt-4o-mini",
+        "kind": "llm",
+        "src": "paper §4.1.2; code metrics/llm_judge.py L43-L59",
+        "url": "https://github.com/Mirix-AI/MIRIX/blob/7b143c502f8dadd91be16d819d78b66c0caa5c9f/public_evaluations/metrics/llm_judge.py#L43-L59"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Route memory into typed stores, each kept by its own LLM manager, and put topic-matched summaries from every store into the prompt before answering. With gpt-4.1-mini this reaches 85.38 on LoCoMo, close to full context (87.52).",
+      "claims": [
+        {
+          "claim": "State of the art on LoCoMo among memory systems.",
+          "evidence": "85.38 overall vs Zep 79.09, LangMem 78.05, Mem0 62.47 and RAG-500 51.62, all with gpt-4.1-mini; full context 87.52. Table 2"
+        },
+        {
+          "claim": "Largest gains on multi-hop questions, because events are stored already consolidated.",
+          "evidence": "Multi-hop 83.70 vs full context 77.70 and Zep 69.16. Table 2, §4.3"
+        },
+        {
+          "claim": "Much better and far smaller than retrieval and long-context baselines on screenshots.",
+          "evidence": "ScreenshotVQA accuracy 0.5950 vs SigLIP@50 0.4410 (+35%) and Gemini 0.1166 (+410%); storage 15.89 MB vs 15.07 GB and 236.70 MB. Table 1, §4.2"
+        },
+        {
+          "claim": "Runs are stable enough that MIRIX stays best across repeats.",
+          "evidence": "Three runs 83.98, 87.34, 84.82 overall. Table 3, App. A"
+        }
+      ],
+      "limits": [
+        "Open-domain questions gain least; the authors attribute this to relying on retrieval, which lacks a global view of the conversation.",
+        "Some single-hop misses come from ambiguous questions where the stored consolidated event replaces an earlier plan.",
+        "Harder real-world benchmarks are left for future work."
+      ],
+      "limits_src": "paper §4.3, §6 (no Limitations section)",
+      "reading": [
+        "There is no ablation: the six-store split, the meta router and topic retrieval are never removed, so the gain over baselines cannot be assigned to any one of them.",
+        "In the evaluation code the prompt holds only one-line summaries (10 recent and 10 topic-matched episodes, 10 each from semantic, resource and procedural memory); details reach the answer only through a search tool call. The paper does not report how often the agent calls it.",
+        "The knowledge vault is retrieved every turn but the prompt template has no slot for it, so 'top-10 from each of the six components' (§3.2) holds for five stores in the code.",
+        "Memory is written one whole LoCoMo session at a time, with instructions to convert relative dates to absolute ones before storing; baselines were run with their own pipelines.",
+        "The paper names GPT-4.1 as judge, while the released llm_judge.py at this commit calls gpt-4o-mini with Mem0's prompt.",
+        "MIRIX and full context are averaged over 3 runs, the baselines run once; the LangMem gpt-4.1-mini row differs between Table 2 (78.05) and Table 3 (79.22).",
+        "The text says MIRIX beats all baselines on multi-hop by over 24 points, but Table 2 shows +14.5 over Zep (69.16) and +6.0 over full context; it also gives 26,000 tokens per LoCoMo conversation (§4.1.1) where the Table 2 caption says 9k."
+      ]
+    }
+  }
 }

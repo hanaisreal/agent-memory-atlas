@@ -1,0 +1,590 @@
+{
+  "id": "simgrag",
+  "name": "SimGRAG",
+  "paper": {
+    "title": "SimGRAG: Leveraging Similar Subgraphs for Knowledge Graphs Driven Retrieval-Augmented Generation",
+    "arxiv": "2412.15272",
+    "url": "https://aclanthology.org/2025.findings-acl.163/",
+    "venue": "Findings of ACL 2025",
+    "venue_short": "ACL",
+    "track": "findings",
+    "year": 2025,
+    "code": "https://github.com/YZ-Cai/SimGRAG"
+  },
+  "design": {
+    "construction": {
+      "unit": "KG triple of an existing knowledge graph; one embedding per entity name, relation name and (DBpedia) entity type",
+      "kept_as": "verbatim triples; 768-d Nomic embeddings of the names",
+      "processing": "no LLM: names embedded with nomic-embed-text-v1 into Milvus HNSW indexes; triples stored as an adjacency list in both directions",
+      "trigger": "offline-batch",
+      "writer": "Nomic embedding model (nomic-embed-text-v1)"
+    },
+    "organization": {
+      "structure": "existing KG (MetaQA, PathQuestions, WorldCup2014 KGs; DBpedia for FactKG)",
+      "stores": "adjacency list; vector indexes of entities, relations and (DBpedia) types",
+      "index": "Milvus HNSW over name embeddings, L2 distance (M 64, efConstruction 512)"
+    },
+    "management": {
+      "operations": "none; the KG is fixed",
+      "conflicts": null,
+      "forgetting": null,
+      "timing": "none"
+    },
+    "retrieval": {
+      "query": "an LLM (12-shot) rewrites the query as a small pattern graph of triples, with UNKNOWN placeholders for missing entities or relations",
+      "candidates": "nearest KG entities per pattern node and nearest relations per pattern relation (16 / 16 on MetaQA; 16,384 / 512 on DBpedia), then DFS matching of subgraphs with the pattern's shape",
+      "selection": "top-k subgraphs by Graph Semantic Distance (sum of L2 distances of matched nodes and relations), with lower-bound pruning",
+      "budget": "k = 3 subgraphs"
+    },
+    "use": {
+      "context": "the k subgraphs as triple lists labelled graph [1..k], after 12 worked examples",
+      "reasoning": "single LLM call (Llama 3 70B, 4-bit, Ollama)"
+    },
+    "control": {
+      "construction": "fixed-rule",
+      "management": "none",
+      "retrieval": "prompted-llm"
+    }
+  },
+  "classify": {
+    "structure": "graph",
+    "index": "vector",
+    "management": "not stated",
+    "candidates": "graph walk",
+    "decides": "top-k rule",
+    "note": "Dense search only shortlists candidate entities and relations; subgraphs are then found by structural matching over the KG, and the 3 with the smallest summed distance are kept. The KG itself is never changed."
+  },
+  "tags": {
+    "fidelity": "verbatim",
+    "structure": [
+      "graph"
+    ],
+    "write_time": [
+      "none"
+    ],
+    "selection": [
+      "dense",
+      "graph-expansion",
+      "planner"
+    ],
+    "memory_type": [
+      "semantic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "An existing KG is loaded as it is: MetaQA's movie KG (43k entities, 269k edges), PathQuestions, WorldCup2014, or DBpedia (9.9M entities, 42.9M edges) for FactKG.",
+    "construction": "Every entity name and relation name, and for DBpedia every entity type, is embedded with the 768-d Nomic model and indexed in Milvus HNSW; no LLM is involved.",
+    "organization": "Triples are held as an adjacency list in both directions, so edge direction is ignored when matching; DBpedia entities are also grouped by type.",
+    "update": "",
+    "retrieval": "An LLM turns the query into a pattern graph; each known pattern node and relation gets its nearest KG entities and relations by L2 distance; a DFS finds KG subgraphs with the pattern's shape and keeps the 3 with the smallest Graph Semantic Distance, pruning branches whose lower bound is already worse.",
+    "answer": "The 3 subgraphs are pasted as triple lists after the query with 12 examples, and the LLM answers (KGQA) or says True or False (FactKG).",
+    "learning": ""
+  },
+  "summary": "Aligns a query with a knowledge graph through a pattern: an LLM drafts the query as a small graph, and the retriever returns the KG subgraphs of the same shape whose entity and relation names are closest in embedding distance.",
+  "verified": false,
+  "notes": "Venue: Findings of ACL 2025, pages 3139-3158, verified from the ACL Anthology PDF footer (2025.findings-acl.163); arXiv 2412.15272 (comment 'accepted by ACL 2025 (Findings)') confirmed with the arXiv API and linked from the official README.\nDESIGN: §4 (query-to-pattern, pattern-to-subgraph, GSD, unknowns, generation), §5 (retrieval and pruning), App. B-C (prompts, settings: k = 3, 12-shot, k(n) = k(r) = 16 on MetaQA, 16,384 / 512 / 16 types on FactKG). Memory is an existing, human-readable KG; nothing is written or changed, so write_time is 'none' and management is 'not stated'. selection includes 'planner' for the LLM-written pattern graph.",
+  "mechanism": {
+    "sources": {
+      "paper": "Findings of ACL 2025 PDF (aclanthology 2025.findings-acl.163), read 2026-09-30; same paper as arXiv 2412.15272",
+      "code": "https://github.com/YZ-Cai/SimGRAG/tree/1dd95cc63240b19393f2527a775805c850a633a2/",
+      "code_note": "Latest commit 1dd95cc6 (2025-07-25) only edits the README; all code (src, configs, prompts, pipeline) is from the initial commit 5045faa (2024-12-17), the day arXiv v1 appeared. The repository holds pipelines for MetaQA and FactKG only; PathQuestions, WorldCup2014 and the baselines have no code there."
+    },
+    "headline": [
+      "The memory is an existing KG that is never changed; SimGRAG adds only name embeddings for entities, relations and (DBpedia) types.",
+      "The LLM does not pick facts: it drafts the query as a small graph, and a rule-based matcher finds KG subgraphs of that shape ranked by summed embedding distance.",
+      "The answer model reads 3 small subgraphs as triple lists, never the pattern or the distances."
+    ],
+    "units": [
+      {
+        "name": "KG triple",
+        "role": "a fact of the given KG",
+        "made_by": "the dataset (MetaQA, PathQuestions, WC2014, DBpedia), unchanged",
+        "fields": [
+          {
+            "name": "entity names",
+            "what": "head and tail entity text",
+            "kept_as": "verbatim",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "code dataset.py L53-L67",
+            "url": "https://github.com/YZ-Cai/SimGRAG/blob/1dd95cc63240b19393f2527a775805c850a633a2/src/dataset.py#L53-L67"
+          },
+          {
+            "name": "relation name",
+            "what": "relation label, e.g. directed_by",
+            "kept_as": "verbatim",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "code dataset.py L53-L67",
+            "url": "https://github.com/YZ-Cai/SimGRAG/blob/1dd95cc63240b19393f2527a775805c850a633a2/src/dataset.py#L53-L67"
+          }
+        ]
+      },
+      {
+        "name": "Name embeddings",
+        "role": "vectors for finding candidate entities and relations",
+        "made_by": "nomic-embed-text-v1, once per name",
+        "fields": [
+          {
+            "name": "entity vector",
+            "what": "768-d embedding of an entity name",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code indexer.py L16-L36",
+            "url": "https://github.com/YZ-Cai/SimGRAG/blob/1dd95cc63240b19393f2527a775805c850a633a2/src/indexer.py#L16-L36"
+          },
+          {
+            "name": "relation vector",
+            "what": "768-d embedding of a relation name",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code indexer.py L38-L51",
+            "url": "https://github.com/YZ-Cai/SimGRAG/blob/1dd95cc63240b19393f2527a775805c850a633a2/src/indexer.py#L38-L51"
+          },
+          {
+            "name": "type vector",
+            "what": "embedding of a DBpedia entity type, mapped to all entities of that type (FactKG only)",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper App. C.1; code dataset.py L112-L124",
+            "url": "https://github.com/YZ-Cai/SimGRAG/blob/1dd95cc63240b19393f2527a775805c850a633a2/src/dataset.py#L112-L124"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Load KG",
+        "how": "each triple is stored under its head and, with the same relation, under its tail, so matching ignores direction",
+        "out": "MetaQA 43,234 entities, 269,482 edges, 9 relations; DBpedia 9,912,183 entities, 42,879,918 edges, 522 relations",
+        "src": "paper §4.2, Table 7; code dataset.py L53-L67",
+        "url": "https://github.com/YZ-Cai/SimGRAG/blob/1dd95cc63240b19393f2527a775805c850a633a2/src/dataset.py#L53-L67"
+      },
+      {
+        "step": "Group by type",
+        "how": "DBpedia rdf:type values map each type to its entities (Wikidata Q-ids skipped)",
+        "out": "467 entity types",
+        "src": "paper App. C.1, Table 7; code dataset.py L112-L124",
+        "url": "https://github.com/YZ-Cai/SimGRAG/blob/1dd95cc63240b19393f2527a775805c850a633a2/src/dataset.py#L112-L124"
+      },
+      {
+        "step": "Embed names",
+        "how": "nomic-embed-text-v1 encodes every entity, relation and type name as written in the KG",
+        "params": {
+          "dim": "768"
+        },
+        "src": "paper §4.2; code indexer.py L16-L66",
+        "url": "https://github.com/YZ-Cai/SimGRAG/blob/1dd95cc63240b19393f2527a775805c850a633a2/src/indexer.py#L16-L66"
+      },
+      {
+        "step": "Index",
+        "how": "one Milvus collection each for entities, relations and types; HNSW with L2 metric",
+        "params": {
+          "M": "64",
+          "efConstruction": "512"
+        },
+        "src": "paper App. C.1; code vecdb.py L27-L37",
+        "url": "https://github.com/YZ-Cai/SimGRAG/blob/1dd95cc63240b19393f2527a775805c850a633a2/src/vecdb.py#L27-L37"
+      }
+    ],
+    "read": [
+      {
+        "step": "Draft pattern",
+        "round": 1,
+        "input": "query",
+        "how": "Llama 3 70B (temperature 0.2, top-p 0.1) segments the query and writes triples; UNKNOWN placeholders stand for missing entities or relations",
+        "params": {
+          "shots": "12 (the MetaQA prompt holds only 10 examples)"
+        },
+        "src": "paper §4.1, §4.3, Tables 16-17; code rewrite_metaQA.py L125-L155",
+        "url": "https://github.com/YZ-Cai/SimGRAG/blob/1dd95cc63240b19393f2527a775805c850a633a2/prompts/rewrite_metaQA.py#L125-L155"
+      },
+      {
+        "step": "Split",
+        "round": 1,
+        "how": "disconnected parts of the pattern are retrieved separately and their results concatenated",
+        "src": "code retriever.py L70-L85",
+        "url": "https://github.com/YZ-Cai/SimGRAG/blob/1dd95cc63240b19393f2527a775805c850a633a2/src/retriever.py#L70-L85"
+      },
+      {
+        "step": "Find candidates",
+        "round": 1,
+        "input": "pattern node and relation names",
+        "scores": "pattern text vs KG entity / relation names",
+        "how": "Nomic embedding, HNSW search, distance = L2; UNKNOWN parts match anything at distance 0",
+        "params": {
+          "k(n)": "16 MetaQA / 16,384 DBpedia",
+          "k(r)": "16 / 512",
+          "efSearch": "8 × k"
+        },
+        "src": "paper §5.1, App. C.1; code retriever.py L113-L154, vecdb.py L73-L84",
+        "url": "https://github.com/YZ-Cai/SimGRAG/blob/1dd95cc63240b19393f2527a775805c850a633a2/src/retriever.py#L113-L154"
+      },
+      {
+        "step": "Match",
+        "round": 1,
+        "how": "start at the pattern node with fewest candidates, walk pattern edges in DFS order, expand KG neighbours whose relation and node are both candidates, cheapest first; drop a branch when its partial distance plus the best-case rest exceeds the current 3rd best",
+        "src": "paper §5, Algorithm 1, Eq. 4-11; code retriever.py L156-L226",
+        "url": "https://github.com/YZ-Cai/SimGRAG/blob/1dd95cc63240b19393f2527a775805c850a633a2/src/retriever.py#L156-L226"
+      },
+      {
+        "step": "Keep",
+        "round": 1,
+        "how": "the 3 lowest-GSD subgraphs; the list starts with the best one whose KG nodes are all distinct, then the best one that reuses a KG node for two pattern nodes",
+        "params": {
+          "k": "3"
+        },
+        "src": "paper App. C.1; code utils.py L14-L50",
+        "url": "https://github.com/YZ-Cai/SimGRAG/blob/1dd95cc63240b19393f2527a775805c850a633a2/src/utils.py#L14-L50"
+      }
+    ],
+    "answer_context": {
+      "sees": "3 matched subgraphs as triple lists",
+      "format": "instructions + 12 examples, then \"query: '{q}'\\nevidences: graph [1]: [(h, r, t), …], graph [2]: …\"",
+      "excludes": [
+        "the pattern graph",
+        "GSD scores",
+        "entity types",
+        "any triple outside the matched subgraphs"
+      ],
+      "includes": [
+        "up to 3 subgraphs per connected part of the pattern",
+        "the query"
+      ],
+      "note": "For FactKG the prompt asks for True or False; in code it also says to answer from common sense when no evidence is given.",
+      "src": "paper §4.4, Tables 18-19; code answer_metaQA.py L192-L216",
+      "url": "https://github.com/YZ-Cai/SimGRAG/blob/1dd95cc63240b19393f2527a775805c850a633a2/prompts/answer_metaQA.py#L192-L216"
+    },
+    "compression": [
+      {
+        "what": "answer context vs the KG",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported in tokens. The context holds 3 subgraphs, each with as many triples as the pattern (1-3 edges, Table 3 and App. F), drawn from KGs of 3k to 43M edges (Table 7).",
+        "src": "paper Tables 3, 7",
+        "url": "https://aclanthology.org/2025.findings-acl.163.pdf"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "MetaQA Hits@1, 1 / 2 / 3-hop",
+        "value": "98.0 / 98.4 / 97.8",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "PathQuestions Hits@1, 2 / 3-hop",
+        "value": "88.7 / 78.6",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "FactKG accuracy",
+        "value": "86.8 (KAPING 75.5, supervised GEAR 77.7)",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "Pattern written as expected (manual check)",
+        "value": "98% MetaQA · 93% FactKG",
+        "src": "paper §4.1"
+      },
+      {
+        "label": "Retrieval time on DBpedia",
+        "value": "0.74 s = 0.59 vector search + 0.15 matching",
+        "src": "paper Table 5"
+      },
+      {
+        "label": "Latency per query, 12-shot",
+        "value": "9.0-11.9 s MetaQA · 14.2 s FactKG",
+        "src": "paper Table 6"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Isomorphism",
+        "paper": "a bijective mapping between pattern and subgraph",
+        "code": "one KG node may fill two pattern nodes; such results are flagged, and the final list puts the best result without reuse first and the best with reuse second",
+        "src": "retriever.py L189-L197; utils.py L26-L45",
+        "url": "https://github.com/YZ-Cai/SimGRAG/blob/1dd95cc63240b19393f2527a775805c850a633a2/src/retriever.py#L189-L197"
+      },
+      {
+        "topic": "Types for unknown entities (FactKG)",
+        "paper": "unknown entities take all nodes of the top-16 similar types as candidates",
+        "code": "types are used only when the pattern has no known entity at all; otherwise unknown nodes accept any neighbour",
+        "src": "retriever.py L99-L110, L131-L144",
+        "url": "https://github.com/YZ-Cai/SimGRAG/blob/1dd95cc63240b19393f2527a775805c850a633a2/src/retriever.py#L99-L144"
+      },
+      {
+        "topic": "Few-shot count",
+        "paper": "12-shot by default in both prompts",
+        "code": "the MetaQA query-to-pattern prompt has 10 examples, so '12-shot' uses 10",
+        "src": "rewrite_metaQA.py L148",
+        "url": "https://github.com/YZ-Cai/SimGRAG/blob/1dd95cc63240b19393f2527a775805c850a633a2/prompts/rewrite_metaQA.py#L148"
+      },
+      {
+        "topic": "Scoring",
+        "paper": "Hits@1 (KGQA) and accuracy (FactKG)",
+        "code": "correct if any gold string appears anywhere in the LLM output, case-insensitive",
+        "src": "utils.py L53-L57",
+        "url": "https://github.com/YZ-Cai/SimGRAG/blob/1dd95cc63240b19393f2527a775805c850a633a2/src/utils.py#L53-L57"
+      },
+      {
+        "topic": "FactKG answer prompt",
+        "paper": "Table 19 lists three notes",
+        "code": "adds a note to judge True or False by common sense when no evidence is provided",
+        "src": "answer_FactKG.py L165-L175",
+        "url": "https://github.com/YZ-Cai/SimGRAG/blob/1dd95cc63240b19393f2527a775805c850a633a2/prompts/answer_FactKG.py#L165-L175"
+      }
+    ],
+    "open_questions": [
+      "No ablation removes the shape constraint or the distance ranking, so against KAPING (single triples by query similarity) the pattern step, the structure and the GSD are changed together.",
+      "The few-shot examples are hand-written per KG; 4 instead of 12 shots costs 5.0 points on MetaQA 3-hop and 2.8 on FactKG (Table 2), and the paper does not test other example sets.",
+      "Where the supervised baseline numbers (EmbedKGQA, NSM, UniKGQA, TransferNet, GEAR) come from is not stated."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 244",
+        "body": "<text class=\"fig-t\" x=\"60\" y=\"16\" text-anchor=\"middle\">KG triples</text><rect class=\"gi-ev\" x=\"10\" y=\"26\" width=\"96\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"18\" y1=\"35\" x2=\"40\" y2=\"35\"/><line class=\"gi-t\" x1=\"46\" y1=\"35\" x2=\"66\" y2=\"35\"/><line class=\"gi-t\" x1=\"72\" y1=\"35\" x2=\"96\" y2=\"35\"/><rect class=\"gi-ev\" x=\"22\" y=\"50\" width=\"96\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"30\" y1=\"59\" x2=\"52\" y2=\"59\"/><line class=\"gi-t\" x1=\"58\" y1=\"59\" x2=\"78\" y2=\"59\"/><line class=\"gi-t\" x1=\"84\" y1=\"59\" x2=\"108\" y2=\"59\"/><rect class=\"gi-ev\" x=\"10\" y=\"74\" width=\"96\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"18\" y1=\"83\" x2=\"40\" y2=\"83\"/><line class=\"gi-t\" x1=\"46\" y1=\"83\" x2=\"66\" y2=\"83\"/><line class=\"gi-t\" x1=\"72\" y1=\"83\" x2=\"96\" y2=\"83\"/><rect class=\"gi-ev\" x=\"22\" y=\"98\" width=\"96\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"30\" y1=\"107\" x2=\"52\" y2=\"107\"/><line class=\"gi-t\" x1=\"58\" y1=\"107\" x2=\"78\" y2=\"107\"/><line class=\"gi-t\" x1=\"84\" y1=\"107\" x2=\"108\" y2=\"107\"/><rect class=\"gi-ev\" x=\"10\" y=\"122\" width=\"96\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"18\" y1=\"131\" x2=\"40\" y2=\"131\"/><line class=\"gi-t\" x1=\"46\" y1=\"131\" x2=\"66\" y2=\"131\"/><line class=\"gi-t\" x1=\"72\" y1=\"131\" x2=\"96\" y2=\"131\"/><text class=\"fig-s\" x=\"60\" y=\"158\" text-anchor=\"middle\">(head, relation, tail)</text><text class=\"fig-s\" x=\"60\" y=\"176\" text-anchor=\"middle\">MetaQA 43k nodes,</text><text class=\"fig-s\" x=\"60\" y=\"189\" text-anchor=\"middle\">269k edges; DBpedia</text><text class=\"fig-s\" x=\"60\" y=\"202\" text-anchor=\"middle\">9.9M nodes, 42.9M edges</text><path class=\"gi-a\" d=\"M122 50 L137 50\"/><polygon class=\"gi-ah\" points=\"144,50 137,46 137,54\"/><path class=\"gi-a\" d=\"M122 104 L137 104\"/><polygon class=\"gi-ah\" points=\"144,104 137,100 137,108\"/><rect class=\"gi-ev\" x=\"144\" y=\"30\" width=\"104\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"196.0\" y=\"54.0\" text-anchor=\"middle\">entity names</text><rect class=\"gi-ev\" x=\"144\" y=\"84\" width=\"104\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"196.0\" y=\"108.0\" text-anchor=\"middle\">relation names</text><rect class=\"gi-ev d\" x=\"144\" y=\"138\" width=\"104\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"196\" y=\"155\" text-anchor=\"middle\">entity types</text><text class=\"fig-s\" x=\"196\" y=\"169\" text-anchor=\"middle\">DBpedia only</text><path class=\"gi-a\" d=\"M248 50 L261 50\"/><polygon class=\"gi-ah\" points=\"268,50 261,46 261,54\"/><path class=\"gi-a\" d=\"M248 104 L261 104\"/><polygon class=\"gi-ah\" points=\"268,104 261,100 261,108\"/><path class=\"gi-a\" d=\"M248 158 L261 158\"/><polygon class=\"gi-ah\" points=\"268,158 261,154 261,162\"/><text class=\"fig-t\" x=\"306\" y=\"16\" text-anchor=\"middle\">Nomic, 768-d</text><rect class=\"gi-v\" x=\"270\" y=\"42\" width=\"12\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"285\" y=\"42\" width=\"12\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"300\" y=\"42\" width=\"12\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"315\" y=\"42\" width=\"12\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"330\" y=\"42\" width=\"12\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"270\" y=\"96\" width=\"12\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"285\" y=\"96\" width=\"12\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"300\" y=\"96\" width=\"12\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"315\" y=\"96\" width=\"12\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"330\" y=\"96\" width=\"12\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"270\" y=\"150\" width=\"12\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"285\" y=\"150\" width=\"12\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"300\" y=\"150\" width=\"12\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"315\" y=\"150\" width=\"12\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"330\" y=\"150\" width=\"12\" height=\"16\" rx=\"2\"/><path class=\"gi-a\" d=\"M346 50 L359 50\"/><polygon class=\"gi-ah\" points=\"366,50 359,46 359,54\"/><path class=\"gi-a\" d=\"M346 104 L359 104\"/><polygon class=\"gi-ah\" points=\"366,104 359,100 359,108\"/><path class=\"gi-a\" d=\"M346 158 L359 158\"/><polygon class=\"gi-ah\" points=\"366,158 359,154 359,162\"/><rect class=\"gi-f\" x=\"366\" y=\"30\" width=\"124\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"428.0\" y=\"48.0\" text-anchor=\"middle\">Entity index</text><text class=\"fig-s\" x=\"428.0\" y=\"61.0\" text-anchor=\"middle\">HNSW, L2</text><rect class=\"gi-f\" x=\"366\" y=\"84\" width=\"124\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"428.0\" y=\"102.0\" text-anchor=\"middle\">Relation index</text><text class=\"fig-s\" x=\"428.0\" y=\"115.0\" text-anchor=\"middle\">HNSW, L2</text><rect class=\"gi-f\" x=\"366\" y=\"138\" width=\"124\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"428.0\" y=\"156.0\" text-anchor=\"middle\">Type index</text><text class=\"fig-s\" x=\"428.0\" y=\"169.0\" text-anchor=\"middle\">types → entities</text><text class=\"fig-s\" x=\"428\" y=\"196\" text-anchor=\"middle\">Milvus, M 64,</text><text class=\"fig-s\" x=\"428\" y=\"209\" text-anchor=\"middle\">efConstruction 512</text><text class=\"fig-t\" x=\"526\" y=\"62\" text-anchor=\"middle\">adjacency</text><text class=\"fig-t\" x=\"526\" y=\"76\" text-anchor=\"middle\">list</text><line class=\"gi-e\" x1=\"512\" y1=\"90\" x2=\"540\" y2=\"104\"/><line class=\"gi-e\" x1=\"540\" y1=\"104\" x2=\"516\" y2=\"124\"/><line class=\"gi-e\" x1=\"512\" y1=\"90\" x2=\"516\" y2=\"124\"/><circle class=\"gi-n\" cx=\"512\" cy=\"90\" r=\"5\"/><circle class=\"gi-n\" cx=\"540\" cy=\"104\" r=\"5\"/><circle class=\"gi-n\" cx=\"516\" cy=\"124\" r=\"5\"/><text class=\"fig-s\" x=\"526\" y=\"144\" text-anchor=\"middle\">both</text><text class=\"fig-s\" x=\"526\" y=\"157\" text-anchor=\"middle\">directions</text><text class=\"fig-s\" x=\"280\" y=\"234\" text-anchor=\"middle\">no LLM and no rewriting: names are embedded as they are in the KG</text>",
+        "text": [
+          "The KG is kept as it is. Every entity name, relation name and, for DBpedia, entity type is embedded once with the 768-d Nomic model.",
+          "Vectors go into Milvus HNSW indexes (two, or three on DBpedia); the triples stay an adjacency list stored in both directions."
+        ],
+        "src": "paper §4.2, App. C.1, Table 7; code dataset.py L53-L146, indexer.py, vecdb.py L27-L37",
+        "url": "https://github.com/YZ-Cai/SimGRAG/blob/1dd95cc63240b19393f2527a775805c850a633a2/src/indexer.py#L13-L101"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 244",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"34\" width=\"50\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"29.0\" y=\"60.0\" text-anchor=\"middle\">Query</text><path class=\"gi-a\" d=\"M54 56 L57 56\"/><polygon class=\"gi-ah\" points=\"64,56 57,52 57,60\"/><rect class=\"gi-llm\" x=\"64\" y=\"34\" width=\"86\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"107.0\" y=\"54.0\" text-anchor=\"middle\">Pattern</text><text class=\"fig-s\" x=\"107.0\" y=\"67.0\" text-anchor=\"middle\">LLM, 12-shot</text><path class=\"gi-a\" d=\"M150 56 L153 56\"/><polygon class=\"gi-ah\" points=\"160,56 153,52 153,60\"/><rect class=\"gi-ev\" x=\"160\" y=\"26\" width=\"106\" height=\"60\" rx=\"8\"/><line class=\"gi-e\" x1=\"180\" y1=\"48\" x2=\"238\" y2=\"48\"/><circle class=\"gi-n\" cx=\"180\" cy=\"48\" r=\"6\"/><circle class=\"gi-ev d\" cx=\"238\" cy=\"48\" r=\"7\"/><text class=\"fig-s\" x=\"209\" y=\"42\" text-anchor=\"middle\">relation</text><text class=\"fig-s\" x=\"180\" y=\"72\" text-anchor=\"middle\">known</text><text class=\"fig-s\" x=\"234\" y=\"72\" text-anchor=\"middle\">UNKNOWN</text><path class=\"gi-a\" d=\"M266 56 L269 56\"/><polygon class=\"gi-ah\" points=\"276,56 269,52 269,60\"/><rect class=\"gi-v fig-soft\" x=\"276\" y=\"34\" width=\"86\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"319.0\" y=\"54.0\" text-anchor=\"middle\">Candidates</text><text class=\"fig-s\" x=\"319.0\" y=\"67.0\" text-anchor=\"middle\">nearest names</text><text class=\"fig-s\" x=\"319\" y=\"92\" text-anchor=\"middle\">16 per node and</text><text class=\"fig-s\" x=\"319\" y=\"105\" text-anchor=\"middle\">relation (MetaQA);</text><text class=\"fig-s\" x=\"319\" y=\"118\" text-anchor=\"middle\">16,384 / 512 DBpedia</text><path class=\"gi-a\" d=\"M362 56 L365 56\"/><polygon class=\"gi-ah\" points=\"372,56 365,52 365,60\"/><rect class=\"gi-f\" x=\"372\" y=\"34\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"420.0\" y=\"54.0\" text-anchor=\"middle\">Match shape</text><text class=\"fig-s\" x=\"420.0\" y=\"67.0\" text-anchor=\"middle\">DFS over KG</text><text class=\"fig-s\" x=\"420\" y=\"92\" text-anchor=\"middle\">from the node with</text><text class=\"fig-s\" x=\"420\" y=\"105\" text-anchor=\"middle\">fewest candidates;</text><text class=\"fig-s\" x=\"420\" y=\"118\" text-anchor=\"middle\">prune by GSD bound</text><path class=\"gi-a\" d=\"M468 56 L512 56 L512 153\"/><polygon class=\"gi-ah\" points=\"512,160 508,153 516,153\"/><rect class=\"gi-hi\" x=\"468\" y=\"160\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"512.0\" y=\"180.0\" text-anchor=\"middle\">Top-3</text><text class=\"fig-s\" x=\"512.0\" y=\"193.0\" text-anchor=\"middle\">lowest GSD</text><path class=\"gi-a\" d=\"M468 182 L419 182\"/><polygon class=\"gi-ah\" points=\"412,182 419,178 419,186\"/><rect class=\"gi-llm\" x=\"300\" y=\"160\" width=\"112\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"356.0\" y=\"180.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"356.0\" y=\"193.0\" text-anchor=\"middle\">LLM, 12-shot</text><text class=\"fig-s\" x=\"356\" y=\"222\" text-anchor=\"middle\">reads 3 subgraphs</text><text class=\"fig-s\" x=\"356\" y=\"235\" text-anchor=\"middle\">as triple lists</text><rect class=\"gi-ev\" x=\"8\" y=\"150\" width=\"244\" height=\"64\" rx=\"8\"/><text class=\"fig-t\" x=\"130\" y=\"168\" text-anchor=\"middle\">Graph Semantic Distance</text><text class=\"fig-s\" x=\"130\" y=\"186\" text-anchor=\"middle\">Σ L2(pattern node, KG node)</text><text class=\"fig-s\" x=\"130\" y=\"200\" text-anchor=\"middle\">+ Σ L2(pattern relation, KG relation)</text><text class=\"fig-s\" x=\"130\" y=\"232\" text-anchor=\"middle\">UNKNOWN parts match anything at 0</text>",
+        "text": [
+          "An LLM drafts the query as a small graph; nearest names give candidate KG entities and relations, and a DFS finds subgraphs with the same shape.",
+          "The 3 subgraphs with the smallest summed distance go, as triple lists, to the LLM that answers."
+        ],
+        "src": "paper §4-5, Algorithm 1; code retriever.py L63-L233, utils.py L14-L50",
+        "url": "https://github.com/YZ-Cai/SimGRAG/blob/1dd95cc63240b19393f2527a775805c850a633a2/src/retriever.py#L63-L233"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "KG size",
+        "value": "43k entities · 269k edges (MetaQA); 9.9M · 42.9M (DBpedia)",
+        "src": "paper Table 7",
+        "section": "construction"
+      },
+      {
+        "label": "Embeddings",
+        "value": "Nomic, 768-d; HNSW M 64, efConstruction 512",
+        "src": "paper App. C.1",
+        "section": "construction"
+      },
+      {
+        "label": "Candidates per node · relation",
+        "value": "16 · 16 (MetaQA); 16,384 · 512 + 16 types (DBpedia)",
+        "src": "paper App. C.1; code configs",
+        "section": "method"
+      },
+      {
+        "label": "Subgraphs to the LLM",
+        "value": "3",
+        "src": "paper App. C.1",
+        "section": "method"
+      },
+      {
+        "label": "Examples per prompt",
+        "value": "12 (10 in the MetaQA pattern prompt)",
+        "src": "paper App. C.1; code rewrite_metaQA.py",
+        "section": "method"
+      },
+      {
+        "label": "Retrieval time",
+        "value": "0.02 s MetaQA · 0.74 s DBpedia",
+        "src": "paper Table 5",
+        "section": "results"
+      },
+      {
+        "label": "Latency per query",
+        "value": "9.0-11.9 s MetaQA · 14.2 s FactKG (12-shot, one A6000)",
+        "src": "paper Table 6",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "MetaQA 1-hop",
+        "MetaQA 2-hop",
+        "MetaQA 3-hop",
+        "PQ 2-hop",
+        "PQ 3-hop",
+        "WC2014",
+        "FactKG"
+      ],
+      "rows": [
+        [
+          "default (12-shot, k = 3, Llama 3 70B)",
+          "98.0",
+          "98.4",
+          "97.8",
+          "88.7",
+          "78.6",
+          "98.1",
+          "86.8"
+        ],
+        [
+          "4-shot",
+          "98.6",
+          "96.5",
+          "92.8",
+          "90.9",
+          "78.3",
+          "97.2",
+          "84.0"
+        ],
+        [
+          "8-shot",
+          "98.3",
+          "96.4",
+          "98.8",
+          "90.3",
+          "79.5",
+          "96.3",
+          "87.9"
+        ],
+        [
+          "k = 1 subgraph",
+          "95.2",
+          "98.2",
+          "97.0",
+          "90.4",
+          "76.9",
+          "93.2",
+          "88.1"
+        ],
+        [
+          "k = 2 subgraphs",
+          "98.0",
+          "97.9",
+          "97.6",
+          "90.3",
+          "77.7",
+          "93.6",
+          "87.6"
+        ],
+        [
+          "Phi4-14B",
+          "92.7",
+          "99.5",
+          "90.8",
+          "92.2",
+          "83.4",
+          "91.6",
+          "86.1"
+        ],
+        [
+          "Qwen2.5-72B",
+          "98.6",
+          "99.8",
+          "98.2",
+          "88.7",
+          "77.7",
+          "97.5",
+          "83.6"
+        ]
+      ],
+      "src": "paper Table 2 (Hits@1; FactKG accuracy)"
+    },
+    "components": [
+      {
+        "role": "Drafts the pattern graph",
+        "model": "Llama 3 70B, 4-bit (Ollama), 12-shot",
+        "kind": "llm",
+        "src": "paper §4.1, App. C.1"
+      },
+      {
+        "role": "Finds candidate entities and relations",
+        "model": "nomic-embed-text-v1 + Milvus HNSW (L2)",
+        "kind": "retriever",
+        "src": "paper App. C.1; code vecdb.py L66-L86",
+        "url": "https://github.com/YZ-Cai/SimGRAG/blob/1dd95cc63240b19393f2527a775805c850a633a2/src/vecdb.py#L66-L86"
+      },
+      {
+        "role": "Matches subgraphs of the same shape",
+        "model": "DFS with Graph Semantic Distance lower-bound pruning",
+        "kind": "rule",
+        "src": "paper §5; code retriever.py L156-L226",
+        "url": "https://github.com/YZ-Cai/SimGRAG/blob/1dd95cc63240b19393f2527a775805c850a633a2/src/retriever.py#L156-L226"
+      },
+      {
+        "role": "Answers",
+        "model": "Llama 3 70B, 12-shot (Phi4-14B and Qwen2.5-72B in Table 2)",
+        "kind": "llm",
+        "src": "paper §4.4, Table 2"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Let the LLM draw the query as a small graph and let a distance-ranked subgraph matcher find where that shape occurs in the KG; without training this nears supervised scores on MetaQA and beats other training-free KG-RAG methods, most clearly on multi-hop questions.",
+      "claims": [
+        {
+          "claim": "Best among training-free KG-driven RAG methods.",
+          "evidence": "MetaQA 3-hop 97.8 vs 88.2 (KG-GPT) and 43.0 (KAPING); PQ 3-hop 78.6 vs 52.1; FactKG 86.8 vs 75.5. Table 1, §6.3."
+        },
+        {
+          "claim": "Close to supervised task-specific models without any training.",
+          "evidence": "MetaQA 98.0 / 98.4 / 97.8 vs 97.1-97.5 / 98.8-100 / 94.8-100; FactKG 86.8 beats supervised GEAR (77.7). Table 1."
+        },
+        {
+          "claim": "Scales to a 10-million-node KG.",
+          "evidence": "0.74 s retrieval per query on DBpedia (9.9M entities, 42.9M edges), 0.15 s of it matching. Table 5, §6.6."
+        },
+        {
+          "claim": "Pruning keeps results exact and makes search faster.",
+          "evidence": "The optimized search returns the same top-k as the plain one (§5.2); Fig. 5 shows lower retrieval time at high retrieval Hits@1."
+        },
+        {
+          "claim": "Works across LLMs.",
+          "evidence": "FactKG 86.1 with Phi4-14B and 83.6 with Qwen2.5-72B vs 86.8 with Llama 3 70B. Table 2."
+        }
+      ],
+      "limits": [
+        "Quality depends on the LLM following the instructions in both prompts; weaker LLMs and complex queries suffer.",
+        "It assumes a KG whose schema matches human intuition; specialised industrial KGs may need fine-tuned LLMs or the schema in the prompt.",
+        "Linking query entities to domain-specific KG entities with an off-the-shelf embedding model may fail; fine-tuned embeddings or other entity linkers are left for future work."
+      ],
+      "limits_src": "paper, Limitations",
+      "reading": [
+        "Most errors happen before retrieval: drafting the pattern causes 89% of MetaQA 1-hop errors and 49% on FactKG, and matching never fails on MetaQA (Table 4).",
+        "KG-GPT, KELP and G-Retriever are given oracle entities, so their numbers are upper bounds (Table 1 note), while KAPING and SimGRAG get none.",
+        "Edge direction is ignored in the definition and in the code (adjacency stored both ways), so a pattern can match a reversed relation.",
+        "The FactKG candidate sizes (16,384 / 512 / 16 types) equal the grid-search setting that reached retrieval Hits@1 of 1.0 on 100 hand-labelled FactKG queries (App. G).",
+        "In code an answer counts as correct if any gold string appears in the output, which rewards listing several answers; the prompt asks for all answers from all 3 subgraphs."
+      ]
+    },
+    "abstract": {
+      "text": "SimGRAG is a retrieval-augmented generation method for question answering and fact checking over knowledge graphs. It aligns a text query with KG structure in two steps: an LLM rewrites the query as a small pattern graph, and a retriever finds KG subgraphs with the same shape whose nodes and relations are closest in embedding distance, a score the authors call graph semantic distance. A pruned search returns the top subgraphs in under a second on a 10-million-node KG, and needs neither training nor user-supplied entity IDs. It outperforms other KG-driven RAG methods on question answering and fact verification.",
+      "note": "Summary in our words; the original abstract is on the ACL Anthology page.",
+      "url": "https://aclanthology.org/2025.findings-acl.163/"
+    },
+    "sections": {
+      "Memory architecture": "§4-5",
+      "Results": "§6.3",
+      "Ablation": "§6.4",
+      "Discussion": "§6.5-6.7, Limitations",
+      "Details": "App. A-C, G"
+    }
+  }
+}

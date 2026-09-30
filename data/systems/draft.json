@@ -1,0 +1,551 @@
+{
+  "id": "draft",
+  "name": "DRAFT",
+  "paper": {
+    "title": "From Exploration to Mastery: Enabling LLMs to Master Tools via Self-Driven Interactions",
+    "arxiv": "2410.08197",
+    "url": "https://arxiv.org/abs/2410.08197",
+    "venue": "ICLR 2025",
+    "venue_short": "ICLR",
+    "track": "main",
+    "year": 2025,
+    "code": "https://github.com/quchangle1/DRAFT"
+  },
+  "design": {
+    "construction": {
+      "unit": "tool documentation of one API (its description text)",
+      "kept_as": "LLM-rewritten description, revised from real calls to the tool",
+      "processing": "per API, up to 5 rounds: Explorer writes a query + parameters and calls the tool; Analyzer suggests edits; Rewriter rewrites the doc and proposes the next exploration direction",
+      "trigger": "offline-batch",
+      "writer": "GPT-4o (all three roles)"
+    },
+    "organization": {
+      "structure": "one document per API (plus one summary per tool in the code), keyed by tool and API name",
+      "stores": "documentation set; per-API history of explored queries and doc versions used during refinement",
+      "index": "none (docs are looked up by tool/API id); text-embedding-ada-002 only for the query-diversity and stop checks"
+    },
+    "management": {
+      "operations": "rewrite the doc in place each round; stop when two consecutive versions barely differ (avg of cosine and BLEU > 0.75)",
+      "conflicts": "Analyzer checks the doc against the actual tool output and flags inconsistencies",
+      "forgetting": null,
+      "timing": "offline"
+    },
+    "retrieval": {
+      "query": "the user task (split into subtasks in the released inference script)",
+      "candidates": "the benchmark's candidate tools for the query; their docs are in the prompt",
+      "selection": "the agent LLM picks a tool, then APIs, then parameters from the docs",
+      "budget": null
+    },
+    "use": {
+      "context": "revised tool and API documentation in place of the original docs",
+      "reasoning": "tool-use agent (ReAct/DFSDT-style); the paper does not name the agent loop used for DRAFT rows"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "fixed-rule",
+      "retrieval": "prompted-llm"
+    }
+  },
+  "classify": {
+    "structure": "flat",
+    "index": "exact match",
+    "management": "update in place",
+    "candidates": "read everything",
+    "decides": "LLM decides",
+    "note": "The memory is the documentation itself. At use time the agent reads the docs of every candidate tool the benchmark gives for the query and picks among them; there is no similarity search over docs (Table 3 tests BM25/Contriever only as an extra analysis)."
+  },
+  "tags": {
+    "fidelity": "rewritten",
+    "structure": [
+      "flat"
+    ],
+    "write_time": [
+      "summarize",
+      "consolidate"
+    ],
+    "selection": [
+      "model-reads"
+    ],
+    "memory_type": [
+      "procedural",
+      "semantic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "For each API, an Explorer LLM invents a natural user query and parameters from the current doc and actually calls the tool; a new query whose ada-002 embedding is too close (cosine >= 0.9) to an earlier one is rejected and regenerated.",
+    "construction": "An Analyzer LLM compares the doc with the observed call and result and writes edit suggestions; a Rewriter LLM rewrites the doc from the example, the suggestions and the revision history, and proposes where to explore next.",
+    "organization": "One revised description per API kept in the tool's documentation file; the code also writes a new tool-level summary after all its APIs are revised.",
+    "update": "The loop repeats up to 5 rounds per API and stops early when the average of embedding cosine and BLEU between consecutive versions exceeds 0.75.",
+    "retrieval": "No memory search: the agent receives the documentation of the candidate tools; in the released script an LLM picks a tool from tool summaries, then APIs from the tool doc, then parameters from the API doc.",
+    "answer": "The tool-use agent calls APIs and answers from their responses; the docs only change how it understands the tools.",
+    "learning": ""
+  },
+  "summary": "Rewrites human-written tool documentation into LLM-oriented documentation through an explore, analyze, rewrite loop driven by real tool calls, with a query-diversity check and a similarity-based stopping rule.",
+  "verified": false,
+  "notes": "Venue: PDF header 'Published as a conference paper at ICLR 2025'; arXiv comment and repo README say ICLR 2025 Oral (OpenReview QKBu1BOAwd, page not reachable from here). Memory here is procedural: the stored item is the tool's documentation, refined offline before any test task; it is not per-user or per-episode memory.\nDESIGN: §2.1-2.4, Algorithm 1, §3.1 (φ=0.9, τ=0.75, max 5 rounds, GPT-4o backbone), App. C (prompts). Code: DRAFT.py at commit 324685d. Retrieval/use fields describe the released Inference_DFSDT.py because the paper does not describe how the agent reads the docs.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2410.08197v2 (PDF read 2026-09-30)",
+      "code": "https://github.com/quchangle1/DRAFT/tree/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/",
+      "code_note": "Official repo linked in §3.1. Pinned at the latest commit 324685d (2025-08-09); DRAFT.py and the prompts were last changed 2025-03-25, after paper v2 (2025-02-26). DRAFT.py only covers ToolBench (RapidAPI calls); RestBench docs are released as finished files without their generation script. The released revised docs (dataset/*/tool_instruction/*_DRAFT.json) are the actual memory used for the scores."
+    },
+    "headline": [
+      "The memory is tool documentation: each API's description is rewritten by GPT-4o after it has actually called the tool, then frozen before testing.",
+      "Refinement stops per API when two consecutive versions are nearly the same (avg of cosine and BLEU > 0.75), at most 5 rounds.",
+      "The revised docs are longer: ToolBench API descriptions grow from 14 to 31 words on average, RestBench ones 3.6x (TMDB) to 6.9x (Spotify)."
+    ],
+    "units": [
+      {
+        "name": "API documentation",
+        "role": "the description the agent reads to decide whether and how to call an API",
+        "made_by": "Rewriter LLM (GPT-4o), from explored calls and Analyzer suggestions",
+        "fields": [
+          {
+            "name": "description",
+            "what": "rewritten API description: purpose, parameters, response fields, error behaviour",
+            "kept_as": "rewritten",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §2.4; code DRAFT.py L367-L381",
+            "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/DRAFT.py#L367-L381"
+          },
+          {
+            "name": "parameters",
+            "what": "required and optional parameter lists from the original doc, copied unchanged",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code DRAFT.py L285-L297",
+            "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/DRAFT.py#L285-L297"
+          },
+          {
+            "name": "example",
+            "what": "one user query with its parameters, present for every API in the released DRAFT files but not written by DRAFT.py",
+            "kept_as": "rewritten",
+            "used_for": [
+              "answer"
+            ],
+            "src": "released dataset/ToolBench/tool_instruction/DRAFT.json; read by the parameter prompt in Inference_DFSDT.py L330-L340 (L336)",
+            "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/Inference_DFSDT.py#L330-L340"
+          }
+        ]
+      },
+      {
+        "name": "Tool summary",
+        "role": "short description of a whole tool and its functions, used to choose a tool",
+        "made_by": "LLM, after all APIs of the tool are revised (code only)",
+        "fields": [
+          {
+            "name": "tool_description",
+            "what": "'<tool> is a tool that can ...' with a numbered list of its functions",
+            "kept_as": "summarized",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code DRAFT.py L383-L392, prompts/rewrite_tool_doc.txt",
+            "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/DRAFT.py#L383-L392"
+          }
+        ]
+      },
+      {
+        "name": "Refinement log (per API, during construction only)",
+        "role": "working memory of the loop, shown to the three LLM roles",
+        "made_by": "the loop itself",
+        "fields": [
+          {
+            "name": "explored queries",
+            "what": "all earlier queries and their embeddings; the Explorer sees the queries, not their results",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "code DRAFT.py L288-L323",
+            "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/DRAFT.py#L288-L323"
+          },
+          {
+            "name": "doc history",
+            "what": "every earlier version of the description, passed to Analyzer and Rewriter",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "code DRAFT.py L292-L293, L344-L346, L359-L361",
+            "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/DRAFT.py#L344-L361"
+          },
+          {
+            "name": "exploration direction",
+            "what": "Rewriter's advice on what to try next, passed to the next Explorer call",
+            "kept_as": "rewritten",
+            "used_for": [],
+            "src": "paper Eq. 4; code DRAFT.py L369",
+            "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/DRAFT.py#L369"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Explore",
+        "how": "Explorer LLM writes a natural user query and the parameters to call the API, avoiding earlier queries and following the last suggested direction",
+        "src": "paper §2.2, Eq. 1; code DRAFT.py L297-L323",
+        "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/DRAFT.py#L297-L323"
+      },
+      {
+        "step": "Diversity check",
+        "how": "reject the query if its ada-002 cosine to any earlier query is >= 0.9 and ask again with a 'too similar' note",
+        "params": {
+          "φ": "0.9",
+          "retries": "3 (code); paper: until satisfied"
+        },
+        "src": "paper Eq. 2, §3.1; code DRAFT.py L304-L315",
+        "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/DRAFT.py#L304-L315"
+      },
+      {
+        "step": "Call the tool",
+        "how": "run the real API with the parameters; the response is filtered by the API's response schema and cut to 2,048 characters",
+        "src": "code DRAFT.py L325-L340, L240-L242",
+        "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/DRAFT.py#L240-L242"
+      },
+      {
+        "step": "Analyze",
+        "how": "Analyzer LLM reads the current doc, this round's example and result, and the doc history, and writes suggestions (consistency with outputs, completeness, conciseness)",
+        "src": "paper §2.3, Eq. 3, App. C; code DRAFT.py L342-L352",
+        "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/DRAFT.py#L342-L352"
+      },
+      {
+        "step": "Rewrite",
+        "how": "Rewriter LLM writes the new description and a direction for the next exploration",
+        "src": "paper §2.4, Eq. 4; code DRAFT.py L355-L372",
+        "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/DRAFT.py#L355-L372"
+      },
+      {
+        "step": "Stop check",
+        "how": "Δ = (cosine of ada-002 embeddings + BLEU) / 2 between the last two versions; stop if Δ > 0.75, else next round",
+        "params": {
+          "τ": "0.75",
+          "max rounds": "5"
+        },
+        "out": "the last version replaces the original description",
+        "src": "paper Eq. 5, §3.1; code DRAFT.py L244-L255, L374-L381",
+        "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/DRAFT.py#L374-L381"
+      },
+      {
+        "step": "Summarize tool",
+        "how": "an LLM writes one tool-level description from the revised API docs",
+        "note": "code only, not in the paper",
+        "src": "code DRAFT.py L383-L392",
+        "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/DRAFT.py#L383-L392"
+      }
+    ],
+    "read": [
+      {
+        "step": "Split",
+        "round": 1,
+        "input": "user query",
+        "how": "LLM splits the query into subtasks and orders them by dependency; it sees the candidate APIs with their DRAFT descriptions",
+        "src": "code Inference_DFSDT.py L544-L610, L637-L656",
+        "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/Inference_DFSDT.py#L637-L656"
+      },
+      {
+        "step": "Pick tool",
+        "round": 1,
+        "input": "subtask",
+        "scores": "tool summaries of the query's candidate tools",
+        "how": "LLM chooses one tool ID",
+        "src": "code Inference_DFSDT.py L275-L302, L666-L672",
+        "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/Inference_DFSDT.py#L275-L302"
+      },
+      {
+        "step": "Pick APIs",
+        "round": 1,
+        "input": "subtask",
+        "scores": "the chosen tool's full documentation",
+        "how": "LLM lists the APIs to call",
+        "src": "code Inference_DFSDT.py L304-L328, L468-L487",
+        "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/Inference_DFSDT.py#L304-L328"
+      },
+      {
+        "step": "Fill parameters",
+        "round": 1,
+        "input": "subtask (+ answers of earlier subtasks)",
+        "scores": "the API documentation, including its example",
+        "how": "LLM writes the call parameters, then the API is called",
+        "src": "code Inference_DFSDT.py L330-L392, L499-L540",
+        "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/Inference_DFSDT.py#L330-L392"
+      },
+      {
+        "step": "Check and retry",
+        "round": 2,
+        "how": "LLM judges whether the subtask answer is adequate; if not, used APIs are excluded and the loop tries again",
+        "params": {
+          "attempts": "up to 5 (retrieval_num)"
+        },
+        "src": "code Inference_DFSDT.py L443-L466, L666-L734",
+        "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/Inference_DFSDT.py#L666-L734"
+      }
+    ],
+    "answer_context": {
+      "sees": "API responses for each subtask, then the subtask answers",
+      "format": "subtask answers are summarized into one final answer; the docs shape the tool, API and parameter choices, not the final prompt",
+      "excludes": [
+        "refinement log",
+        "explored examples other than the one stored per API"
+      ],
+      "src": "code Inference_DFSDT.py L394-L441, L612-L630",
+      "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/Inference_DFSDT.py#L612-L630",
+      "includes": [
+        "tool summaries (tool choice)",
+        "full tool doc (API choice)",
+        "API doc + example (parameters)"
+      ]
+    },
+    "compression": [
+      {
+        "what": "revised vs original API description, ToolBench",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not a compression: the doc grows from 14.2 to 31.4 words on average over 1,006 APIs (our count on the released Initial.json and DRAFT.json). The paper reports no length figures.",
+        "src": "code repo dataset/ToolBench/tool_instruction/",
+        "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/dataset/ToolBench/tool_instruction/DRAFT.json"
+      },
+      {
+        "what": "revised vs original API description, RestBench",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not a compression: TMDB 30.0 to 107.3 words (54 APIs), Spotify 14.6 to 99.9 words (40 APIs), our count on the released files.",
+        "src": "code repo dataset/RestBench/tool_instruction/",
+        "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/dataset/RestBench/tool_instruction/TMDB_DRAFT.json"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Diversity check",
+        "paper": "Explorer self-reflects and regenerates until the query is below the similarity threshold",
+        "code": "at most 3 generations; the last query is kept even if still too similar",
+        "src": "DRAFT.py L304-L315",
+        "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/DRAFT.py#L304-L315"
+      },
+      {
+        "topic": "Explorer history",
+        "paper": "Explorer conditions on earlier examples and their tool results (Eq. 1)",
+        "code": "Explorer receives the earlier queries only, not their results",
+        "src": "DRAFT.py L300-L302",
+        "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/DRAFT.py#L300-L302"
+      },
+      {
+        "topic": "Tool summary",
+        "paper": "not described",
+        "code": "after all APIs of a tool are revised, an LLM rewrites the tool-level description, which is what the agent reads to pick a tool",
+        "src": "DRAFT.py L383-L392; Inference_DFSDT.py L669",
+        "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/DRAFT.py#L383-L392"
+      },
+      {
+        "topic": "Stored example",
+        "paper": "not described",
+        "code": "every API in the released DRAFT docs carries a 'User Query' + 'Parameters' example that DRAFT.py does not produce; the parameter prompt tells the agent to use it",
+        "src": "Inference_DFSDT.py L336",
+        "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/Inference_DFSDT.py#L336"
+      },
+      {
+        "topic": "Agent used for DRAFT rows",
+        "paper": "Table 1 compares DRAFT with ReAct, DFSDT and EasyTool without naming the agent loop DRAFT runs in",
+        "code": "the released inference script (named DFSDT) splits the query into subtasks and picks tool, APIs and parameters with an answer check and up to 5 retries",
+        "src": "Inference_DFSDT.py L632-L734",
+        "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/Inference_DFSDT.py#L632-L734"
+      }
+    ],
+    "open_questions": [
+      "Released DRAFT docs add a worked example per API that the original docs lack; no ablation separates the effect of the example from the rewritten description.",
+      "Table 1 does not say which agent loop the DRAFT rows use; if it is the released decompose-and-retry script, part of the gain over ReAct and DFSDT may come from the loop rather than the documentation.",
+      "The docs are refined with GPT-4o calling the same APIs that the test queries use, and no held-out-tool split is reported."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 250",
+        "body": "<rect class=\"gi-f\" x=\"6\" y=\"38\" width=\"66\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"39.0\" y=\"58.0\" text-anchor=\"middle\">Raw doc</text><text class=\"fig-s\" x=\"39.0\" y=\"71.0\" text-anchor=\"middle\">one API</text><path class=\"gi-a\" d=\"M72.0 60.0 L77.0 60.0\"/><polygon class=\"gi-ah\" points=\"84.0,60.0 77.0,64.0 77.0,56.0\"/><rect class=\"gi-llm\" x=\"84\" y=\"38\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"132.0\" y=\"58.0\" text-anchor=\"middle\">Explorer</text><text class=\"fig-s\" x=\"132.0\" y=\"71.0\" text-anchor=\"middle\">query + params</text><path class=\"gi-a\" d=\"M180.0 60.0 L189.0 60.0\"/><polygon class=\"gi-ah\" points=\"196.0,60.0 189.0,64.0 189.0,56.0\"/><polygon class=\"gi-llm\" points=\"196,60 248,32 300,60 248,88\"/><text class=\"fig-t\" x=\"248\" y=\"59\" text-anchor=\"middle\">Too similar?</text><text class=\"fig-s\" x=\"248\" y=\"71\" text-anchor=\"middle\">cos ≥ 0.9</text><path class=\"gi-a\" d=\"M248.0 32.0 L248.0 18.0 L132.0 18.0 L132.0 31.0\"/><polygon class=\"gi-ah\" points=\"132.0,38.0 128.0,31.0 136.0,31.0\"/><text class=\"fig-no\" x=\"256\" y=\"24\" text-anchor=\"start\">yes: new query (≤ 3 tries)</text><path class=\"gi-a\" d=\"M300.0 60.0 L319.0 60.0\"/><polygon class=\"gi-ah\" points=\"326.0,60.0 319.0,64.0 319.0,56.0\"/><text class=\"fig-yes\" x=\"313\" y=\"54\" text-anchor=\"middle\">no</text><rect class=\"gi-f\" x=\"326\" y=\"38\" width=\"100\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"376.0\" y=\"58.0\" text-anchor=\"middle\">Call the API</text><text class=\"fig-s\" x=\"376.0\" y=\"71.0\" text-anchor=\"middle\">real response</text><rect class=\"gi-ev d\" x=\"440\" y=\"34\" width=\"114\" height=\"54\" rx=\"8\"/><text class=\"fig-t\" x=\"497\" y=\"50\" text-anchor=\"middle\">In the prompts</text><text class=\"fig-s\" x=\"497\" y=\"64\" text-anchor=\"middle\">past queries</text><text class=\"fig-s\" x=\"497\" y=\"77\" text-anchor=\"middle\">past doc versions</text><path class=\"gi-a\" d=\"M376.0 82.0 L376.0 141.0\"/><polygon class=\"gi-ah\" points=\"376.0,148.0 372.0,141.0 380.0,141.0\"/><rect class=\"gi-llm\" x=\"326\" y=\"148\" width=\"100\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"376.0\" y=\"168.0\" text-anchor=\"middle\">Analyzer</text><text class=\"fig-s\" x=\"376.0\" y=\"181.0\" text-anchor=\"middle\">suggestions</text><path class=\"gi-a\" d=\"M326.0 170.0 L303.0 170.0\"/><polygon class=\"gi-ah\" points=\"296.0,170.0 303.0,166.0 303.0,174.0\"/><rect class=\"gi-llm\" x=\"190\" y=\"148\" width=\"106\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"243.0\" y=\"168.0\" text-anchor=\"middle\">Rewriter</text><text class=\"fig-s\" x=\"243.0\" y=\"181.0\" text-anchor=\"middle\">new doc + direction</text><path class=\"gi-a\" d=\"M190.0 170.0 L185.0 170.0\"/><polygon class=\"gi-ah\" points=\"178.0,170.0 185.0,166.0 185.0,174.0\"/><polygon class=\"gi-llm\" points=\"62,170 120,142 178,170 120,198\"/><text class=\"fig-t\" x=\"120\" y=\"169\" text-anchor=\"middle\">Δ &gt; 0.75?</text><text class=\"fig-s\" x=\"120\" y=\"181\" text-anchor=\"middle\">avg of cos, BLEU</text><path class=\"gi-a\" d=\"M120.0 142.0 L120.0 89.0\"/><polygon class=\"gi-ah\" points=\"120.0,82.0 124.0,89.0 116.0,89.0\"/><text class=\"fig-no\" x=\"126\" y=\"118\" text-anchor=\"start\">no: next round (≤ 5)</text><path class=\"gi-a\" d=\"M120.0 198.0 L120.0 222.0 L181.0 222.0\"/><polygon class=\"gi-ah\" points=\"188.0,222.0 181.0,226.0 181.0,218.0\"/><text class=\"fig-yes\" x=\"126\" y=\"212\" text-anchor=\"start\">yes</text><rect class=\"gi-hi\" x=\"188\" y=\"204\" width=\"120\" height=\"36\" rx=\"8\"/><text class=\"fig-t\" x=\"248.0\" y=\"226.0\" text-anchor=\"middle\">Revised doc</text><path class=\"gi-a\" d=\"M308.0 222.0 L323.0 222.0\"/><polygon class=\"gi-ah\" points=\"330.0,222.0 323.0,226.0 323.0,218.0\"/><rect class=\"gi-f\" x=\"330\" y=\"204\" width=\"150\" height=\"36\" rx=\"8\"/><text class=\"fig-t\" x=\"405.0\" y=\"226.0\" text-anchor=\"middle\">+ tool summary</text><text class=\"fig-s\" x=\"486\" y=\"226\" text-anchor=\"start\">(code only)</text>",
+        "text": [
+          "For each API, an Explorer writes a new test query and calls the real tool, an Analyzer compares the doc with what happened, and a Rewriter writes a new doc and a direction for the next try.",
+          "The loop stops when two versions barely differ or after 5 rounds; the last version replaces the original doc."
+        ],
+        "src": "paper §2, Algorithm 1, §3.1; code DRAFT.py L279-L392",
+        "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/DRAFT.py#L279-L392"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 250",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"34\" width=\"56\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"32.0\" y=\"60.0\" text-anchor=\"middle\">Query</text><path class=\"gi-a\" d=\"M60.0 56.0 L63.0 56.0\"/><polygon class=\"gi-ah\" points=\"70.0,56.0 63.0,60.0 63.0,52.0\"/><rect class=\"gi-llm\" x=\"70\" y=\"34\" width=\"80\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"110.0\" y=\"54.0\" text-anchor=\"middle\">Split</text><text class=\"fig-s\" x=\"110.0\" y=\"67.0\" text-anchor=\"middle\">subtasks</text><path class=\"gi-a\" d=\"M150.0 56.0 L155.0 56.0\"/><polygon class=\"gi-ah\" points=\"162.0,56.0 155.0,60.0 155.0,52.0\"/><rect class=\"gi-llm\" x=\"162\" y=\"34\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"206.0\" y=\"54.0\" text-anchor=\"middle\">Pick tool</text><text class=\"fig-s\" x=\"206.0\" y=\"67.0\" text-anchor=\"middle\">tool summaries</text><path class=\"gi-a\" d=\"M250.0 56.0 L255.0 56.0\"/><polygon class=\"gi-ah\" points=\"262.0,56.0 255.0,60.0 255.0,52.0\"/><rect class=\"gi-llm\" x=\"262\" y=\"34\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"306.0\" y=\"54.0\" text-anchor=\"middle\">Pick APIs</text><text class=\"fig-s\" x=\"306.0\" y=\"67.0\" text-anchor=\"middle\">full tool doc</text><path class=\"gi-a\" d=\"M350.0 56.0 L355.0 56.0\"/><polygon class=\"gi-ah\" points=\"362.0,56.0 355.0,60.0 355.0,52.0\"/><rect class=\"gi-llm\" x=\"362\" y=\"34\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"406.0\" y=\"54.0\" text-anchor=\"middle\">Fill params</text><text class=\"fig-s\" x=\"406.0\" y=\"67.0\" text-anchor=\"middle\">doc + example</text><path class=\"gi-a\" d=\"M450.0 56.0 L455.0 56.0\"/><polygon class=\"gi-ah\" points=\"462.0,56.0 455.0,60.0 455.0,52.0\"/><rect class=\"gi-f\" x=\"462\" y=\"34\" width=\"92\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"508.0\" y=\"54.0\" text-anchor=\"middle\">Call API</text><text class=\"fig-s\" x=\"508.0\" y=\"67.0\" text-anchor=\"middle\">answer subtask</text><text class=\"fig-s\" x=\"306\" y=\"94\" text-anchor=\"middle\">DRAFT docs are read in these three steps</text><path class=\"gi-a\" d=\"M508.0 78.0 L508.0 127.0\"/><polygon class=\"gi-ah\" points=\"508.0,134.0 504.0,127.0 512.0,127.0\"/><polygon class=\"gi-llm\" points=\"462,160 508,134 554,160 508,186\"/><text class=\"fig-t\" x=\"508\" y=\"159\" text-anchor=\"middle\">Answered?</text><text class=\"fig-s\" x=\"508\" y=\"171\" text-anchor=\"middle\">LLM check</text><path class=\"gi-a\" d=\"M462.0 160.0 L206.0 160.0 L206.0 85.0\"/><polygon class=\"gi-ah\" points=\"206.0,78.0 210.0,85.0 202.0,85.0\"/><text class=\"fig-no\" x=\"334\" y=\"152\" text-anchor=\"middle\">no: try another API or tool (≤ 5)</text><path class=\"gi-a\" d=\"M508.0 186.0 L508.0 220.0 L459.0 220.0\"/><polygon class=\"gi-ah\" points=\"452.0,220.0 459.0,216.0 459.0,224.0\"/><text class=\"fig-yes\" x=\"500\" y=\"206\" text-anchor=\"end\">yes</text><rect class=\"gi-hi\" x=\"332\" y=\"200\" width=\"120\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"392.0\" y=\"218.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"392.0\" y=\"231.0\" text-anchor=\"middle\">summarize subtasks</text><text class=\"fig-s\" x=\"10\" y=\"212\" text-anchor=\"start\">subtasks run in dependency order</text><text class=\"fig-s\" x=\"10\" y=\"226\" text-anchor=\"start\">(released script; the paper does</text><text class=\"fig-s\" x=\"10\" y=\"239\" text-anchor=\"start\">not describe the agent loop)</text>",
+        "text": [
+          "Nothing is searched: the agent reads the revised docs of the candidate tools the benchmark gives. In the released script an LLM picks a tool from tool summaries, APIs from the tool doc, and parameters from the API doc.",
+          "If an LLM check finds a subtask unanswered, it tries other APIs or tools, up to 5 times."
+        ],
+        "src": "code Inference_DFSDT.py L275-L734",
+        "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/Inference_DFSDT.py#L632-L734"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Rounds per API",
+        "value": "at most 5",
+        "src": "paper §3.1; code DRAFT.py L277",
+        "section": "construction"
+      },
+      {
+        "label": "Query rejected if",
+        "value": "cosine ≥ 0.9 to an earlier query (ada-002)",
+        "src": "paper §2.2, §3.1",
+        "section": "construction"
+      },
+      {
+        "label": "Stop when",
+        "value": "avg(cosine, BLEU) of two versions > 0.75",
+        "src": "paper Eq. 5, §3.1",
+        "section": "construction"
+      },
+      {
+        "label": "Refinement model",
+        "value": "GPT-4o (gpt-4o-2024-08-06, temperature 0.2)",
+        "src": "paper §3.1; code DRAFT.py L273-L276",
+        "section": "construction"
+      },
+      {
+        "label": "Tool response shown",
+        "value": "first 2,048 characters",
+        "src": "code DRAFT.py L241",
+        "section": "method"
+      },
+      {
+        "label": "Docs refined",
+        "value": "1,006 ToolBench APIs in 282 tools; 54 TMDB and 40 Spotify APIs",
+        "src": "released tool_instruction files; paper §3.1 (TMDB 54, Spotify 40)",
+        "section": "construction"
+      },
+      {
+        "label": "Description length",
+        "value": "14 → 31 words (ToolBench) · 30 → 107 (TMDB) · 15 → 100 (Spotify)",
+        "src": "our count on the released Initial/DRAFT files",
+        "section": "construction"
+      },
+      {
+        "label": "Retries at test time",
+        "value": "up to 5 per subtask",
+        "src": "code Inference_DFSDT.py L764",
+        "section": "method"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "TMDB CP%",
+        "TMDB Win%",
+        "Spotify CP%",
+        "Spotify Win%",
+        "ToolBench CP%",
+        "ToolBench Win%"
+      ],
+      "rows": [
+        [
+          "DRAFT (GPT-4o)",
+          "88.00",
+          "71.00",
+          "70.17",
+          "84.21",
+          "51.00",
+          "78.00"
+        ],
+        [
+          "without diversity check",
+          "84.00",
+          "69.00",
+          "64.91",
+          "73.68",
+          "44.00",
+          "72.00"
+        ],
+        [
+          "without adaptive stop (always 5 rounds)",
+          "80.00",
+          "68.00",
+          "59.64",
+          "68.42",
+          "46.00",
+          "76.00"
+        ]
+      ],
+      "src": "paper Table 5 (GPT-4o rows; TMDB columns also in Table 2)"
+    },
+    "components": [
+      {
+        "role": "Explorer, Analyzer, Rewriter",
+        "model": "GPT-4o (gpt-4o-2024-08-06)",
+        "kind": "llm",
+        "src": "paper §3.1; code DRAFT.py L276",
+        "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/DRAFT.py#L276"
+      },
+      {
+        "role": "Query-diversity and stop checks",
+        "model": "text-embedding-ada-002 cosine; BLEU (NLTK, smoothing method 4)",
+        "kind": "rule",
+        "src": "paper Eq. 2, 5; code DRAFT.py L38-L49, L244-L255",
+        "url": "https://github.com/quchangle1/DRAFT/blob/324685d1b65622fe4d6ccdc11473f1e0f62af5d0/DRAFT.py#L244-L255"
+      },
+      {
+        "role": "Tool-using agent at test time",
+        "model": "GPT-4o-mini, Llama-3-70B or GPT-4o",
+        "kind": "llm",
+        "src": "paper §3.1, Table 1"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Tool documentation can be treated as a memory the model writes for itself: letting GPT-4o call each API, critique the doc and rewrite it gives better tool use than the original or a one-shot rewrite (EasyTool), and the rewritten docs help other models too.",
+      "claims": [
+        {
+          "claim": "DRAFT docs beat ReAct, DFSDT and EasyTool on all three datasets and three agent models.",
+          "evidence": "GPT-4o CP%: TMDB 88 vs 79 (EasyTool), Spotify 70.17 vs 64.91 (DFSDT), ToolBench 51 vs 45. Table 1, §3.2"
+        },
+        {
+          "claim": "Docs refined by one model help other models (cross-model generalization).",
+          "evidence": "GPT-4o-refined docs lift GPT-4o-mini and Llama-3-70B; Llama-3-70B-refined docs also help on TMDB. Table 1, Fig. 7, §3.3"
+        },
+        {
+          "claim": "More rounds help up to a point, then docs get redundant and scores drop.",
+          "evidence": "Fig. 6 curves over rounds 1-5; App. E trajectory rounds 4-5"
+        },
+        {
+          "claim": "Both the diversity check and the adaptive stop matter.",
+          "evidence": "GPT-4o TMDB CP 88 → 84 without diversity, → 80 without adaptive stop. Table 2, Table 5"
+        },
+        {
+          "claim": "Revised docs also improve tool retrieval and read better to humans.",
+          "evidence": "BM25 NDCG@1 on TMDB 24.0 → 29.0 (Table 3); human raters prefer DRAFT docs for completeness 68% vs 4% on ToolBench (Table 4)"
+        }
+      ],
+      "limits": [],
+      "limits_src": "The paper has no limitations section.",
+      "reading": [
+        "The memory is built offline, once per API, before testing; there is no update from test episodes, so this is documentation refinement rather than memory that grows with use.",
+        "The released DRAFT docs contain a per-API usage example absent from the original docs and not produced by DRAFT.py; its contribution is not measured.",
+        "Win% is a ChatGPT pairwise judgement against ReAct, so ReAct is 50 by construction; CP% only checks that the gold API path appears as a subsequence of the calls made.",
+        "Test sets are small: the released files hold 100 ToolBench G3 queries, 100 TMDB and 57 Spotify queries, so one query moves CP by 1 to 1.75 points.",
+        "Refinement uses GPT-4o, and GPT-4o also scores best as the agent; the gains for the other two models test transfer of GPT-4o-written docs."
+      ]
+    },
+    "abstract": {
+      "text": "DRAFT argues that human-written tool documentation is often incomplete, redundant or wrong for LLMs, and that an LLM can fix it by using the tool. For each API it runs a loop in which an explorer invents a query and calls the tool, an analyzer points out where the doc disagrees with what happened, and a rewriter produces a new doc. A similarity check keeps the explored queries diverse, and a stopping rule ends the loop when the doc stops changing. On ToolBench and RestBench the revised docs raise tool-use accuracy for GPT-4o, GPT-4o-mini and Llama-3-70B.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2410.08197"
+    },
+    "sections": {
+      "Memory architecture": "§2",
+      "Results": "§3.2",
+      "Ablation": "§3.3, App. B",
+      "Discussion": "§3.3, §5",
+      "Details": "§2, §3.1, App. C, E"
+    }
+  }
+}

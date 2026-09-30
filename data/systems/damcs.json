@@ -1,0 +1,552 @@
+{
+  "id": "damcs",
+  "name": "DAMCS",
+  "paper": {
+    "title": "LLM-Powered Decentralized Generative Agents with Adaptive Hierarchical Knowledge Graph for Cooperative Planning",
+    "arxiv": "2502.05453",
+    "url": "https://arxiv.org/abs/2502.05453",
+    "venue": "arXiv 2025",
+    "venue_short": "arXiv",
+    "track": "preprint",
+    "year": 2025,
+    "code": "https://github.com/13RENDA/Mcrafter_LLM_Agent"
+  },
+  "design": {
+    "construction": {
+      "unit": "step experience: GPT-4o structured response (reflection, goal, action, collaboration, summary) + observed state",
+      "kept_as": "LLM-written structured decision record and free-text summary; state fields copied from the game",
+      "processing": "each decision call's structured output is stored as a post-stage experience; a rule files it under goal and long-term-goal nodes",
+      "trigger": "other",
+      "writer": "GPT-4o (Azure) decision call; graph built by fixed rules"
+    },
+    "organization": {
+      "structure": "per-agent three-level graph: long-term-goal nodes -> goal nodes -> step nodes, chained in time",
+      "stores": "experience pool + goal hierarchy graph (long-term memory); hard-coded crafting recipes (semantic); last actions (procedural)",
+      "index": "none (graph position; embeddings are computed but unused)"
+    },
+    "management": {
+      "operations": "graph rebuilt from all stored experiences at every environment step",
+      "conflicts": null,
+      "forgetting": null,
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "none; the latest goal node is always read",
+      "candidates": "latest goal node, its step nodes and its chain of earlier goal nodes",
+      "selection": "fixed rule: latest goal node only; last 1 step summary; last 7 actions",
+      "budget": "1 goal node, 1 summary, 7 actions"
+    },
+    "use": {
+      "context": "game rules + view image + current state + last summary + last 7 actions + goal read-out and recipe check + previous agent's status and role policy",
+      "reasoning": "one structured GPT-4o call per decision"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "fixed-rule",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "hierarchy",
+    "index": "none",
+    "management": "append-only",
+    "candidates": "graph walk",
+    "decides": "top-k rule",
+    "note": "Nothing is searched: a rule always reads the latest goal node and walks back along its goal chain; the graph is re-derived from the append-only pool each step."
+  },
+  "tags": {
+    "fidelity": "mixed",
+    "structure": [
+      "graph",
+      "tree",
+      "typed-stores"
+    ],
+    "write_time": [
+      "segment",
+      "link"
+    ],
+    "selection": [
+      "graph-expansion"
+    ],
+    "memory_type": [
+      "episodic",
+      "semantic",
+      "procedural",
+      "working"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "embodied",
+      "multimodal"
+    ]
+  },
+  "stages": {
+    "ingestion": "At each decision point an agent's working memory is assembled from its camera image, position, vitals, inventory, last actions and messages derived from the preceding agent.",
+    "construction": "GPT-4o answers with a Pydantic-schema response (reflection, goal and long-term goal, next action, collaboration, past-tense summary); this post-stage record is added to the agent's experience pool.",
+    "organization": "A rule builds a directed graph per agent: step nodes hang under goal nodes, which chain in time and attach to long-term-goal nodes; a new goal node starts when the goal or the inventory changes.",
+    "update": "The graph is rebuilt from all stored experiences at every environment step; the working-memory read-out is recomputed for each goal node.",
+    "retrieval": "No search: the read-out of the latest goal node (actions taken under it, earlier goals in the chain, a hard-coded recipe check of the goals against the inventory) plus the previous step's summary and the last 7 actions go into the prompt.",
+    "answer": "One GPT-4o call per decision picks the next action (move, do, navigate to a material, share an item with an agent).",
+    "learning": ""
+  },
+  "summary": "Decentralized GPT-4o agents in a multi-agent Crafter game, each keeping a goal-organized hierarchical graph of its own decision steps and reading the latest goal node, plus a structured protocol where each agent reads its predecessor's goal status.",
+  "verified": false,
+  "notes": "Multi-agent embodied planning paper; memory is per-agent and goal-organized, not conversational. Evaluation is its own Multi-Agent Crafter environment (steps to finish each tech-tree task), so results are not comparable with QA memory benchmarks. Code: project page lists 13RENDA/Mcrafter_LLM_Agent (new) and HappyEureka/mcrafter (legacy, environment + simple language-agent example); the memory system is only in the new repo.\nDESIGN: §3.1-3.4, §6.1, App. B-D; code memory_system/agent.py, knowledge_graph.py, memory_modules.py, utils.py at c5491f62.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2502.05453v1 (PDF read 2026-09-30; 572 pages, of which pp. 12-572 are the schema, graph examples and a full six-agent game log)",
+      "code": "https://github.com/13RENDA/Mcrafter_LLM_Agent/tree/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/",
+      "code_note": "The project page links this repo as the current code. Its history starts 2025-08-02 (six months after the paper) and the last commit c5491f62 (2025-11-25) only edits the README, so it is taken as the released version; identity with the paper's runs is not guaranteed. The legacy repo HappyEureka/mcrafter (d0d91861) holds the environment and a simpler language-agent example without the graph memory."
+    },
+    "sections": {
+      "Memory architecture": "§3.2",
+      "Results": "§6.2, Table 1",
+      "Ablation": "§6.2 (Mem vs Mem+Comm vs LLM basic)",
+      "Discussion": "§4, §7",
+      "Details": "§3.3-3.4, §6.1, App. A-D"
+    },
+    "abstract": {
+      "text": "DAMCS puts several GPT-4o agents into a multi-agent version of the Crafter survival game, where the team must climb a crafting tree and obtain a diamond as fast as possible. Each agent keeps its own memory: a pool of its past decision steps organized into a graph of long-term goals, goals and steps, which is read back into a short working memory together with a recipe check. A structured communication scheme orders the agents so that each helps its predecessor and shares tools. On the new environment, two and six communicating agents reach the diamond in 63% and 74% fewer steps than a basic LLM agent, and 13.6% and 39% fewer than one agent with memory.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2502.05453"
+    },
+    "headline": [
+      "Memory is read by position, not by search: every decision sees the latest goal node, its chain of earlier goals, the previous step's summary and the last 7 actions.",
+      "The graph is built by fixed rules from the LLM's own structured outputs and rebuilt from scratch at every step; a new goal node starts whenever the inventory changes.",
+      "The 'messages' between agents are code-generated: agent i reads agent i−1's recipe check and a fixed role policy."
+    ],
+    "units": [
+      {
+        "name": "Step experience",
+        "role": "one decision of one agent (post-stage experience)",
+        "made_by": "GPT-4o structured output plus game state",
+        "fields": [
+          {
+            "name": "summary",
+            "what": "past-tense note written by the LLM about the step, its goal and plan",
+            "kept_as": "rewritten",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code llm_api.py L169-L180; memory_system.py L20-L27",
+            "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/memory_system/llm_api.py#L169-L180"
+          },
+          {
+            "name": "goal fields",
+            "what": "long-term goal, current goal and their reasons and status (enum values)",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "code knowledge_graph.py L136-L166",
+            "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/memory_system/knowledge_graph.py#L136-L166"
+          },
+          {
+            "name": "action",
+            "what": "chosen action, navigation target, item to share, target agent",
+            "kept_as": "extracted",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code knowledge_graph.py L581-L608",
+            "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/memory_system/knowledge_graph.py#L581-L608"
+          },
+          {
+            "name": "inventory, facing",
+            "what": "state copied from the game at the step",
+            "kept_as": "verbatim",
+            "used_for": [
+              "index"
+            ],
+            "src": "code knowledge_graph.py L209-L256",
+            "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/memory_system/knowledge_graph.py#L209-L256"
+          },
+          {
+            "name": "reflection text, collaboration",
+            "what": "LLM reflection on the last action and the help plan (only last action and its result are copied into step nodes)",
+            "kept_as": "rewritten",
+            "used_for": [],
+            "src": "code knowledge_graph.py L136-L166 (not copied into step nodes)",
+            "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/memory_system/knowledge_graph.py#L136-L166"
+          },
+          {
+            "name": "embeddings",
+            "what": "text-embedding vectors of the state description and summary",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "code memory_system.py L29-L42 (similarity retrieval commented out); llm_api.py L211-L225",
+            "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/memory_system/memory_system.py#L29-L42"
+          }
+        ]
+      },
+      {
+        "name": "Goal node",
+        "role": "a run of steps with the same goal and inventory",
+        "made_by": "rule",
+        "fields": [
+          {
+            "name": "working-memory read-out",
+            "what": "actions of its steps, earlier goal names in the chain, long-term goal, recipe checks",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code knowledge_graph.py L469-L529",
+            "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/memory_system/knowledge_graph.py#L469-L529"
+          }
+        ]
+      },
+      {
+        "name": "Semantic memory",
+        "role": "crafting recipes of the game",
+        "made_by": "hand-written by the authors",
+        "fields": [
+          {
+            "name": "recipes",
+            "what": "prerequisites per goal (facing, items), checked against the inventory",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.2; code knowledge_graph.py L15-L98",
+            "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/memory_system/knowledge_graph.py#L15-L98"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Decide",
+        "how": "GPT-4o reads the working memory and the camera image and returns a schema-bound response",
+        "src": "paper §3.3, App. B; code llm_api.py L190-L200",
+        "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/memory_system/llm_api.py#L190-L200"
+      },
+      {
+        "step": "Store",
+        "how": "the response and the pre-stage state become one experience in the pool",
+        "out": "one experience per decision; agents do not decide while an action (e.g. navigation) is in progress",
+        "src": "code agent.py L143-L150",
+        "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/memory_system/agent.py#L143-L150"
+      },
+      {
+        "step": "Link",
+        "how": "step nodes are chained under goal nodes; a new goal node when goal or inventory changes, a new long-term-goal node when the long-term goal changes",
+        "src": "paper §3.2; code knowledge_graph.py L168-L275",
+        "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/memory_system/knowledge_graph.py#L168-L275"
+      },
+      {
+        "step": "Summarize goal node",
+        "how": "rule-built read-out for every goal node (no LLM)",
+        "src": "code knowledge_graph.py L469-L529",
+        "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/memory_system/knowledge_graph.py#L469-L529"
+      }
+    ],
+    "read": [
+      {
+        "step": "Rebuild",
+        "round": 1,
+        "how": "a fresh graph is built from all experiences",
+        "src": "code agent.py L88-L99",
+        "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/memory_system/agent.py#L88-L99"
+      },
+      {
+        "step": "Latest goal node",
+        "round": 1,
+        "input": "none (position in the graph)",
+        "how": "take the read-out of the last goal node",
+        "params": {
+          "goal nodes": "1"
+        },
+        "src": "code agent.py L101",
+        "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/memory_system/agent.py#L101"
+      },
+      {
+        "step": "Recipe check",
+        "round": 1,
+        "how": "hard-coded recipes vs inventory and facing tile for the long-term and current goal",
+        "src": "code agent.py L109-L128",
+        "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/memory_system/agent.py#L109-L128"
+      },
+      {
+        "step": "Add recent items",
+        "round": 1,
+        "how": "previous step's summary and the last 7 actions",
+        "params": {
+          "summaries": "1",
+          "actions": "7"
+        },
+        "src": "code agent.py L130; memory_system.py L7, L20-L27",
+        "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/memory_system/agent.py#L130-L133"
+      },
+      {
+        "step": "Add team status",
+        "round": 1,
+        "how": "agent i gets agent i−1's recipe check turned into text plus a fixed role policy",
+        "src": "code utils.py L213-L297",
+        "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/utils.py#L213-L297"
+      }
+    ],
+    "answer_context": {
+      "sees": "one prompt: game rules, texture sheet and camera image, state, last summary, last 7 actions, goal read-out, recipe check, team status",
+      "format": "markdown sections (### Last Experience Summary, ### Current Experience, ### Past Actions, ### Crafting Station Availability, ### Prerequisites Check, ### Collaboration...)",
+      "excludes": [
+        "older step summaries",
+        "steps under earlier goal nodes",
+        "other agents' graphs",
+        "embeddings"
+      ],
+      "src": "code agent.py L72-L133; memory_system/utils.py L27-L65",
+      "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/memory_system/agent.py#L72-L133"
+    },
+    "compression": [
+      {
+        "what": "working memory vs stored experiences",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported: the paper gives no token counts.",
+        "src": "paper §6",
+        "url": "https://arxiv.org/pdf/2502.05453"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Steps to diamond, 1 agent: basic / Mem",
+        "value": "334.67 / 140.0",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "Steps to diamond, 2 agents: Mem / Mem+Comm",
+        "value": "150.4 / 121.0",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "Steps to diamond, 6 agents: Mem / Mem+Comm",
+        "value": "140.6 / 85.4",
+        "src": "paper Table 1"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Retrieval",
+        "paper": "agents retrieve relevant experiences from long-term memory",
+        "code": "no similarity search; the embedding retrieval function is commented out and the latest goal node is always read",
+        "src": "memory_system.py L29-L42; agent.py L101",
+        "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/memory_system/memory_system.py#L29-L42"
+      },
+      {
+        "topic": "Goal nodes",
+        "paper": "a new goal node when a new goal begins",
+        "code": "also a new goal node whenever the inventory changes",
+        "src": "knowledge_graph.py L242",
+        "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/memory_system/knowledge_graph.py#L242"
+      },
+      {
+        "topic": "Ablation switches",
+        "paper": "Mem, Mem+Comm and basic settings",
+        "code": "--memory and --communication flags are parsed but not used; only the full system is released",
+        "src": "utils.py L457-L460",
+        "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/utils.py#L457-L460"
+      }
+    ],
+    "open_questions": [
+      "Communication and role assignment change together: the Mem+Comm agents also get a fixed division of labour (agent 0 crafts, the last agent hunts the diamond), so the gain cannot be split between shared status and the role policy.",
+      "The LLM basic baseline differs in both memory and prompt; there is no run with the graph removed but the recipe check kept."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 250",
+        "body": "<text class=\"fig-t\" x=\"63\" y=\"16\" text-anchor=\"middle\">One decision step</text><rect class=\"gi-ev\" x=\"6\" y=\"26\" width=\"114\" height=\"24\" rx=\"6\"/><text class=\"fig-s\" x=\"14\" y=\"42\" text-anchor=\"start\">camera view image</text><rect class=\"gi-ev\" x=\"6\" y=\"56\" width=\"114\" height=\"24\" rx=\"6\"/><text class=\"fig-s\" x=\"14\" y=\"72\" text-anchor=\"start\">position, vitals, items</text><rect class=\"gi-ev\" x=\"6\" y=\"86\" width=\"114\" height=\"24\" rx=\"6\"/><text class=\"fig-s\" x=\"14\" y=\"102\" text-anchor=\"start\">last 7 actions</text><rect class=\"gi-ev\" x=\"6\" y=\"116\" width=\"114\" height=\"24\" rx=\"6\"/><text class=\"fig-s\" x=\"14\" y=\"132\" text-anchor=\"start\">agent i−1 status</text><rect class=\"gi-ev d\" x=\"6\" y=\"146\" width=\"114\" height=\"24\" rx=\"6\"/><text class=\"fig-s\" x=\"14\" y=\"162\" text-anchor=\"start\">graph read-out</text><text class=\"fig-s\" x=\"63\" y=\"188\" text-anchor=\"middle\">prompt (with game rules)</text><path class=\"gi-a\" d=\"M122 98 L145 98\"/><polygon class=\"gi-ah\" points=\"152,98 145,94 145,102\"/><rect class=\"gi-llm\" x=\"152\" y=\"62\" width=\"92\" height=\"72\" rx=\"8\"/><text class=\"fig-t\" x=\"198\" y=\"92\" text-anchor=\"middle\">GPT-4o</text><text class=\"fig-s\" x=\"198\" y=\"107\" text-anchor=\"middle\">structured</text><text class=\"fig-s\" x=\"198\" y=\"119\" text-anchor=\"middle\">output</text><path class=\"gi-a\" d=\"M244 98 L265 98\"/><polygon class=\"gi-ah\" points=\"272,98 265,94 265,102\"/><rect class=\"gi-ev\" x=\"272\" y=\"22\" width=\"104\" height=\"160\" rx=\"10\"/><text class=\"fig-t\" x=\"324\" y=\"39\" text-anchor=\"middle\">Experience</text><rect class=\"gi-f\" x=\"280\" y=\"48\" width=\"88\" height=\"20\" rx=\"5\"/><text class=\"fig-s\" x=\"286\" y=\"62\" text-anchor=\"start\">reflection</text><rect class=\"gi-f\" x=\"280\" y=\"74\" width=\"88\" height=\"20\" rx=\"5\"/><text class=\"fig-s\" x=\"286\" y=\"88\" text-anchor=\"start\">goals</text><rect class=\"gi-f\" x=\"280\" y=\"100\" width=\"88\" height=\"20\" rx=\"5\"/><text class=\"fig-s\" x=\"286\" y=\"114\" text-anchor=\"start\">next action</text><rect class=\"gi-f\" x=\"280\" y=\"126\" width=\"88\" height=\"20\" rx=\"5\"/><text class=\"fig-s\" x=\"286\" y=\"140\" text-anchor=\"start\">collaboration</text><rect class=\"gi-hi\" x=\"280\" y=\"152\" width=\"88\" height=\"20\" rx=\"5\"/><text class=\"fig-s\" x=\"286\" y=\"166\" text-anchor=\"start\">summary (text)</text><text class=\"fig-s\" x=\"324\" y=\"198\" text-anchor=\"middle\">appended to the pool</text><path class=\"gi-a\" d=\"M378 115 L393 115\"/><polygon class=\"gi-ah\" points=\"400,115 393,111 393,119\"/><text class=\"fig-s\" x=\"389\" y=\"130\" text-anchor=\"middle\">rule</text><text class=\"fig-t\" x=\"478\" y=\"16\" text-anchor=\"middle\">Goal hierarchy graph</text><text class=\"gi-lbl\" x=\"400\" y=\"44\" text-anchor=\"start\">LTG</text><text class=\"gi-lbl\" x=\"400\" y=\"94\" text-anchor=\"start\">goal</text><text class=\"gi-lbl\" x=\"400\" y=\"144\" text-anchor=\"start\">step</text><line class=\"gi-e\" x1=\"457\" y1=\"47\" x2=\"444\" y2=\"84\"/><line class=\"gi-e\" x1=\"457\" y1=\"47\" x2=\"470\" y2=\"84\"/><line class=\"gi-e\" x1=\"457\" y1=\"47\" x2=\"496\" y2=\"84\"/><line class=\"gi-e\" x1=\"535\" y1=\"47\" x2=\"522\" y2=\"84\"/><line class=\"gi-e\" x1=\"535\" y1=\"47\" x2=\"548\" y2=\"84\"/><line class=\"gi-e\" x1=\"464\" y1=\"40\" x2=\"528\" y2=\"40\"/><line class=\"gi-e\" x1=\"450\" y1=\"90\" x2=\"464\" y2=\"90\"/><line class=\"gi-e\" x1=\"476\" y1=\"90\" x2=\"490\" y2=\"90\"/><line class=\"gi-e\" x1=\"502\" y1=\"90\" x2=\"516\" y2=\"90\"/><line class=\"gi-e\" x1=\"528\" y1=\"90\" x2=\"542\" y2=\"90\"/><line class=\"gi-e\" x1=\"444\" y1=\"96\" x2=\"438\" y2=\"132\"/><line class=\"gi-e\" x1=\"444\" y1=\"96\" x2=\"450\" y2=\"132\"/><line class=\"gi-e\" x1=\"470\" y1=\"96\" x2=\"470\" y2=\"132\"/><line class=\"gi-e\" x1=\"496\" y1=\"96\" x2=\"490\" y2=\"132\"/><line class=\"gi-e\" x1=\"496\" y1=\"96\" x2=\"502\" y2=\"132\"/><line class=\"gi-e\" x1=\"522\" y1=\"96\" x2=\"522\" y2=\"132\"/><line class=\"gi-e\" x1=\"548\" y1=\"96\" x2=\"548\" y2=\"132\"/><circle class=\"gi-hi\" cx=\"457\" cy=\"40\" r=\"7\"/><circle class=\"gi-hi\" cx=\"535\" cy=\"40\" r=\"7\"/><circle class=\"gi-n\" cx=\"444\" cy=\"90\" r=\"6\"/><circle class=\"gi-n\" cx=\"470\" cy=\"90\" r=\"6\"/><circle class=\"gi-n\" cx=\"496\" cy=\"90\" r=\"6\"/><circle class=\"gi-n\" cx=\"522\" cy=\"90\" r=\"6\"/><circle class=\"gi-n\" cx=\"548\" cy=\"90\" r=\"6\"/><rect class=\"gi-r\" x=\"434\" y=\"132\" width=\"8\" height=\"8\" rx=\"2\"/><rect class=\"gi-r\" x=\"446\" y=\"132\" width=\"8\" height=\"8\" rx=\"2\"/><rect class=\"gi-r\" x=\"466\" y=\"132\" width=\"8\" height=\"8\" rx=\"2\"/><rect class=\"gi-r\" x=\"486\" y=\"132\" width=\"8\" height=\"8\" rx=\"2\"/><rect class=\"gi-r\" x=\"498\" y=\"132\" width=\"8\" height=\"8\" rx=\"2\"/><rect class=\"gi-r\" x=\"518\" y=\"132\" width=\"8\" height=\"8\" rx=\"2\"/><rect class=\"gi-r\" x=\"544\" y=\"132\" width=\"8\" height=\"8\" rx=\"2\"/><text class=\"fig-s\" x=\"478\" y=\"170\" text-anchor=\"middle\">new goal node when the goal</text><text class=\"fig-s\" x=\"478\" y=\"183\" text-anchor=\"middle\">or the inventory changes;</text><text class=\"fig-s\" x=\"478\" y=\"196\" text-anchor=\"middle\">new LTG node when the</text><text class=\"fig-s\" x=\"478\" y=\"209\" text-anchor=\"middle\">long-term goal changes</text><text class=\"fig-s\" x=\"280\" y=\"238\" text-anchor=\"middle\">the graph is rebuilt from every stored step at each environment step; no LLM or embedding builds it</text>",
+        "text": [
+          "At each decision GPT-4o returns a structured record (reflection, goals, action, collaboration, summary), which is stored as one step.",
+          "A fixed rule hangs steps under goal nodes and goal nodes under long-term goals; the graph is rebuilt at every step."
+        ],
+        "src": "paper §3.2, Fig. 3, App. B-C; code knowledge_graph.py L136-L275, agent.py L143-L150",
+        "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/memory_system/knowledge_graph.py#L168-L275"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 250",
+        "body": "<rect class=\"gi-f\" x=\"6\" y=\"28\" width=\"80\" height=\"56\" rx=\"8\"/><text class=\"fig-t\" x=\"46\" y=\"52\" text-anchor=\"middle\">Graph</text><text class=\"fig-s\" x=\"46\" y=\"66\" text-anchor=\"middle\">all steps</text><path class=\"gi-a\" d=\"M86 56 L99 56\"/><polygon class=\"gi-ah\" points=\"106,56 99,52 99,60\"/><rect class=\"gi-f\" x=\"106\" y=\"28\" width=\"92\" height=\"56\" rx=\"8\"/><text class=\"fig-t\" x=\"152\" y=\"52\" text-anchor=\"middle\">latest goal</text><text class=\"fig-s\" x=\"152\" y=\"66\" text-anchor=\"middle\">node (rule)</text><path class=\"gi-a\" d=\"M198 56 L207 56\"/><polygon class=\"gi-ah\" points=\"214,56 207,52 207,60\"/><rect class=\"gi-ev\" x=\"216\" y=\"18\" width=\"110\" height=\"22\" rx=\"6\"/><text class=\"fig-s\" x=\"224\" y=\"33\" text-anchor=\"start\">its steps' actions</text><path class=\"gi-a\" d=\"M326 29 L339 29\"/><polygon class=\"gi-ah\" points=\"346,29 339,25 339,33\"/><rect class=\"gi-ev\" x=\"216\" y=\"46\" width=\"110\" height=\"22\" rx=\"6\"/><text class=\"fig-s\" x=\"224\" y=\"61\" text-anchor=\"start\">earlier goals</text><path class=\"gi-a\" d=\"M326 57 L339 57\"/><polygon class=\"gi-ah\" points=\"346,57 339,53 339,61\"/><rect class=\"gi-ev\" x=\"216\" y=\"74\" width=\"110\" height=\"22\" rx=\"6\"/><text class=\"fig-s\" x=\"224\" y=\"89\" text-anchor=\"start\">recipe check</text><path class=\"gi-a\" d=\"M326 85 L339 85\"/><polygon class=\"gi-ah\" points=\"346,85 339,81 339,89\"/><text class=\"fig-s\" x=\"271\" y=\"112\" text-anchor=\"middle\">hard-coded recipes vs inventory</text><rect class=\"gi-ev\" x=\"6\" y=\"124\" width=\"156\" height=\"20\" rx=\"6\"/><text class=\"fig-s\" x=\"14\" y=\"138\" text-anchor=\"start\">last step's LLM summary</text><rect class=\"gi-ev\" x=\"170\" y=\"124\" width=\"156\" height=\"20\" rx=\"6\"/><text class=\"fig-s\" x=\"178\" y=\"138\" text-anchor=\"start\">last 7 actions</text><rect class=\"gi-ev\" x=\"6\" y=\"150\" width=\"156\" height=\"20\" rx=\"6\"/><text class=\"fig-s\" x=\"14\" y=\"164\" text-anchor=\"start\">position, vitals, items</text><rect class=\"gi-ev\" x=\"170\" y=\"150\" width=\"156\" height=\"20\" rx=\"6\"/><text class=\"fig-s\" x=\"178\" y=\"164\" text-anchor=\"start\">camera view image</text><rect class=\"gi-ev\" x=\"6\" y=\"176\" width=\"156\" height=\"20\" rx=\"6\"/><text class=\"fig-s\" x=\"14\" y=\"190\" text-anchor=\"start\">agent i−1's recipe check</text><rect class=\"gi-ev\" x=\"170\" y=\"176\" width=\"156\" height=\"20\" rx=\"6\"/><text class=\"fig-s\" x=\"178\" y=\"190\" text-anchor=\"start\">fixed role policy</text><path class=\"gi-a\" d=\"M326 134 L339 134\"/><polygon class=\"gi-ah\" points=\"346,134 339,130 339,138\"/><path class=\"gi-a\" d=\"M326 160 L339 160\"/><polygon class=\"gi-ah\" points=\"346,160 339,156 339,164\"/><path class=\"gi-a\" d=\"M326 186 L339 186\"/><polygon class=\"gi-ah\" points=\"346,186 339,182 339,190\"/><text class=\"fig-s\" x=\"166\" y=\"212\" text-anchor=\"middle\">not from the graph</text><rect class=\"gi-hi\" x=\"346\" y=\"14\" width=\"96\" height=\"182\" rx=\"8\"/><text class=\"fig-t\" x=\"394\" y=\"98\" text-anchor=\"middle\">Working</text><text class=\"fig-t\" x=\"394\" y=\"112\" text-anchor=\"middle\">memory</text><text class=\"fig-s\" x=\"394\" y=\"128\" text-anchor=\"middle\">one prompt</text><path class=\"gi-a\" d=\"M442 104 L457 104\"/><polygon class=\"gi-ah\" points=\"464,104 457,100 457,108\"/><rect class=\"gi-llm\" x=\"464\" y=\"76\" width=\"90\" height=\"56\" rx=\"8\"/><text class=\"fig-t\" x=\"509\" y=\"100\" text-anchor=\"middle\">GPT-4o</text><text class=\"fig-s\" x=\"509\" y=\"114\" text-anchor=\"middle\">one call</text><path class=\"gi-a\" d=\"M509 132 L509 153\"/><polygon class=\"gi-ah\" points=\"509,160 505,153 513,153\"/><rect class=\"gi-f\" x=\"464\" y=\"160\" width=\"90\" height=\"36\" rx=\"8\"/><text class=\"fig-t\" x=\"509\" y=\"182\" text-anchor=\"middle\">action</text><text class=\"fig-s\" x=\"509\" y=\"212\" text-anchor=\"middle\">stored as a new step</text><text class=\"fig-s\" x=\"6\" y=\"236\" text-anchor=\"start\">no similarity search: embeddings are computed but the retrieval function is commented out</text>",
+        "text": [
+          "No search is run: a rule reads the latest goal node, its steps' actions, the earlier goals in its chain and a recipe check.",
+          "These join the last summary, last 7 actions, current state and the previous agent's status in one GPT-4o prompt."
+        ],
+        "src": "code agent.py L72-L133; knowledge_graph.py L469-L658; utils.py L213-L297",
+        "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/memory_system/agent.py#L72-L133"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Graph levels",
+        "value": "3: long-term goal, goal, step",
+        "src": "paper §3.2, App. C",
+        "section": "construction"
+      },
+      {
+        "label": "LLM calls to build the graph",
+        "value": "0 (rules over the decision outputs)",
+        "src": "code knowledge_graph.py L168-L275",
+        "section": "construction"
+      },
+      {
+        "label": "Goal nodes read per decision",
+        "value": "1 (the latest)",
+        "src": "code agent.py L101",
+        "section": "method"
+      },
+      {
+        "label": "Recent items in the prompt",
+        "value": "1 step summary + 7 actions",
+        "src": "code agent.py L130, memory_system.py L7",
+        "section": "method"
+      },
+      {
+        "label": "Backbone",
+        "value": "GPT-4o (Azure), one call per decision",
+        "src": "paper §6.1; code llm_api.py L190",
+        "section": "method"
+      },
+      {
+        "label": "Episode cap in code",
+        "value": "350 steps",
+        "src": "code run.py L18",
+        "section": "method"
+      },
+      {
+        "label": "Steps to diamond",
+        "value": "334.67 basic · 140.0 one agent · 121.0 two · 85.4 six",
+        "src": "paper Table 1",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Decide and write the step record",
+        "model": "GPT-4o (Azure), Pydantic structured output",
+        "kind": "llm",
+        "src": "paper §6.1; code llm_api.py L190-L200",
+        "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/memory_system/llm_api.py#L190-L200"
+      },
+      {
+        "role": "Build goal graph",
+        "model": "networkx rules",
+        "kind": "rule",
+        "src": "code knowledge_graph.py L168-L275",
+        "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/memory_system/knowledge_graph.py#L168-L275"
+      },
+      {
+        "role": "Read latest goal node",
+        "model": "rule",
+        "kind": "rule",
+        "src": "code knowledge_graph.py L469-L529; agent.py L101",
+        "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/memory_system/knowledge_graph.py#L469-L529"
+      },
+      {
+        "role": "Recipe (prerequisite) check",
+        "model": "hard-coded recipe table",
+        "kind": "rule",
+        "src": "code knowledge_graph.py L15-L98",
+        "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/memory_system/knowledge_graph.py#L15-L98"
+      },
+      {
+        "role": "Team status text",
+        "model": "templates over agent i−1's recipe check",
+        "kind": "rule",
+        "src": "code utils.py L133-L297",
+        "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/utils.py#L133-L297"
+      },
+      {
+        "role": "Embeddings (computed, unused for reading)",
+        "model": "Azure 'text-embedding' deployment",
+        "kind": "retriever",
+        "src": "code llm_api.py L211-L225",
+        "url": "https://github.com/13RENDA/Mcrafter_LLM_Agent/blob/c5491f62abf8a8447b7e7d81ea70f3b4d8cd9c80/memory_system/llm_api.py#L211-L225"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "Make stone pickaxe",
+        "Make iron pickaxe",
+        "Collect diamond"
+      ],
+      "rows": [
+        [
+          "1 agent, LLM basic",
+          "54.2",
+          "281.0",
+          "334.67"
+        ],
+        [
+          "1 agent, Mem",
+          "32.2",
+          "118.8",
+          "140.0"
+        ],
+        [
+          "2 agents, Mem",
+          "36.8",
+          "119.6",
+          "150.4"
+        ],
+        [
+          "2 agents, Mem+Comm",
+          "33.2",
+          "112.0",
+          "121.0"
+        ],
+        [
+          "6 agents, Mem",
+          "40.2",
+          "119.2",
+          "140.6"
+        ],
+        [
+          "6 agents, Mem+Comm",
+          "28.8",
+          "81.8",
+          "85.4"
+        ]
+      ],
+      "src": "paper Table 1 (average steps, lower is better)"
+    },
+    "discussion": {
+      "takeaway": "Give each LLM agent a goal-organized record of its own steps and a fixed cooperation protocol, and a team finishes a long crafting chain in far fewer steps; the memory helps one agent, the protocol helps teams.",
+      "claims": [
+        {
+          "claim": "Goal-oriented memory lets one agent follow the crafting hierarchy much faster than a basic LLM agent.",
+          "evidence": "Diamond in 140.0 vs 334.67 steps (about 3x faster); the basic agent succeeds on the last three tasks in only 60% of episodes. §6.2, Table 1"
+        },
+        {
+          "claim": "Memory without communication does not help teams.",
+          "evidence": "Two Mem agents: 150.4 steps; six Mem agents: 140.6, vs 140.0 for one agent. §6.2, Table 1"
+        },
+        {
+          "claim": "Structured communication lets agents split work.",
+          "evidence": "121.0 steps with two agents (13.6% fewer than one agent, 63% fewer than basic); 85.4 with six (39% and 74% fewer). §6.2, Table 1"
+        },
+        {
+          "claim": "RL baselines do not reach the diamond in the same environment.",
+          "evidence": "PPO and MADDPG rewards plateau after 1,000 training episodes. §6.2, Fig. 5 (no step numbers given)"
+        }
+      ],
+      "limits": [
+        "Memory quality and adaptability of LLM agents are hard to measure directly.",
+        "No standard metric exists for LLM-agent cooperation, so cooperation is measured indirectly through steps.",
+        "LLM agents are sensitive to the prompt and environment description."
+      ],
+      "limits_src": "paper §4 (no separate limitations section)",
+      "reading": [
+        "The released code reads memory by position only: the latest goal node, its chain, one summary and 7 actions. The similarity-retrieval function is commented out, so 'retrieving relevant experiences' amounts to a fixed recency window plus the goal chain.",
+        "Mem+Comm also adds a hard-coded division of labour (agent 0 crafts, agent 1 feeds stone, the last agent goes for the diamond), and messages are templates over the previous agent's recipe check rather than LLM-written text.",
+        "Table 1's caption says five environments and ten runs; the released run.py fixes seed 4, and the code has no switch to reproduce the Mem-only or basic settings.",
+        "The reflection text and the collaboration block are generated at each step but not copied into the graph nodes (only the last action and its result are), so they return to the prompt only through the one-step summary.",
+        "RL/MARL baselines are reported only as training reward curves, not as steps, so they cannot be compared with the LLM rows."
+      ]
+    }
+  }
+}

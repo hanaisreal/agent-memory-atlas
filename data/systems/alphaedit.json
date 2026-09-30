@@ -1,0 +1,551 @@
+{
+  "id": "alphaedit",
+  "name": "AlphaEdit",
+  "paper": {
+    "title": "AlphaEdit: Null-Space Constrained Knowledge Editing for Language Models",
+    "arxiv": "2410.02355",
+    "url": "https://arxiv.org/abs/2410.02355",
+    "venue": "ICLR 2025",
+    "venue_short": "ICLR",
+    "track": "main",
+    "year": 2025,
+    "code": "https://github.com/jianghoucheng/AlphaEdit"
+  },
+  "design": {
+    "construction": {
+      "unit": "a batch of 100 factual rewrites (subject, relation, new object)",
+      "kept_as": "parametric: closed-form update to FFN output matrices",
+      "processing": "optimise a target hidden vector per fact (25 gradient steps), take the subject's FFN key, then solve a least-squares weight update projected onto the approximate null space of preserved-knowledge keys",
+      "trigger": "other",
+      "writer": "closed-form solver (no LLM writes text)"
+    },
+    "organization": {
+      "structure": "the model's FFN output (down_proj) matrices of 5-6 consecutive layers (4-8 for LLaMA3)",
+      "stores": "edited weights; running sum KpKpᵀ of past edit keys; one fixed projection P per layer",
+      "index": null
+    },
+    "management": {
+      "operations": "each batch adds its projected update to W and its keys to KpKpᵀ",
+      "conflicts": "the update is penalised on keys of earlier edits (‖ΔP Kp‖²) and projected off the keys of preserved knowledge",
+      "forgetting": null,
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "the prompt itself",
+      "candidates": "none: every forward pass uses the edited weights",
+      "selection": null,
+      "budget": null
+    },
+    "use": {
+      "context": "no retrieved text; the edited weights produce the answer",
+      "reasoning": "ordinary forward pass / generation"
+    },
+    "control": {
+      "construction": "fixed-rule",
+      "management": "fixed-rule",
+      "retrieval": "none"
+    }
+  },
+  "classify": {
+    "structure": "none",
+    "index": "none",
+    "management": "update in place",
+    "candidates": "read everything",
+    "decides": "reads everything",
+    "note": "Parametric: edits are folded into the FFN weights, so there is no store to search; every prompt passes through the edited matrices."
+  },
+  "tags": {
+    "fidelity": "compressed",
+    "structure": [
+      "parametric"
+    ],
+    "write_time": [
+      "learned"
+    ],
+    "selection": [
+      "model-reads"
+    ],
+    "memory_type": [
+      "semantic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "Edits arrive in batches of 100 factual rewrites (subject, relation, new object); 2,000 in the main experiments.",
+    "construction": "For each fact a target hidden vector at the last edited layer is found by 25 gradient steps; its key is the FFN input at the subject's last token, averaged over the bare prompt and 5 generated prefixes.",
+    "organization": "Knowledge stays in the FFN output matrices of layers 4-8 (LLaMA3; 3-8 GPT-J; 13-17 GPT2-XL). A projection P per layer, computed once from 100,000 Wikipedia samples, points away from directions that preserved knowledge uses.",
+    "update": "Per layer, Δ = R K1ᵀ P (Kp Kpᵀ P + K1 K1ᵀ P + αI)⁻¹ is added to W (the residual is spread over the edited layers), then the batch's keys are added to Kp Kpᵀ so later batches avoid them.",
+    "retrieval": "",
+    "answer": "The model answers from its edited weights in an ordinary forward pass.",
+    "learning": ""
+  },
+  "summary": "Locate-then-edit with one extra projection: each MEMIT-style weight update is projected onto the approximate null space of preserved-knowledge keys, so thousands of sequential edits barely move the model's other outputs.",
+  "verified": false,
+  "notes": "VENUE: ICLR 2025 main conference, oral (OpenReview forum HvSytvg3Jh, venue 'ICLR 2025 Oral'; the PDF header reads 'Published as a conference paper at ICLR 2025'). CODE: github.com/jianghoucheng/AlphaEdit pinned to aac456de (2025-04-22), the last code change, same day as arXiv v4; later commits touch only README and LICENSE. This is a model-editing paper: the memory is the model's own weights, so there is no retrieval stage and the Map placement is 'none / reads everything'. TAGS: write_time=learned because the target vectors are found by gradient steps before the closed-form write; learning=training-free because no editor network or policy is trained. Main results also include memory-based editors (SERAC, GRACE, MELO) in App. C.5 Table 2, and Gemma / phi-1.5 in Table 3 (not transcribed). KnowEdit, MQuAKE and LEME results (Tables 4-5) are appendix extras, not transcribed.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2410.02355v4 (PDF read 2026-09-30)",
+      "code": "https://github.com/jianghoucheng/AlphaEdit/tree/aac456de14c7242c958dc64d6f622bf3a765dbea/",
+      "code_note": "Official repository named in the paper. Commit aac456de (2025-04-22) is the last code change and matches arXiv v4 (2025-04-22); the repo builds on the MEMIT codebase (rome/, memit/ folders)."
+    },
+    "headline": [
+      "The memory is the model's own FFN weights; nothing is stored beside them except key statistics used for later writes.",
+      "The only change from sequential MEMIT is where the update may point: into directions that preserved-knowledge keys (almost) never use.",
+      "The null space is approximate (eigenvalues below a threshold), so preserved facts still move: Counterfact specificity 89.48 → 67.88 on LLaMA3 after 2,000 edits."
+    ],
+    "units": [
+      {
+        "name": "Edited FFN weights",
+        "role": "the FFN output matrices that hold both pretrained and edited facts",
+        "made_by": "closed-form update per batch",
+        "fields": [
+          {
+            "name": "W_out (layers 4-8)",
+            "what": "down_proj matrices of LLaMA3 (5 layers); GPT-J 3-8, GPT2-XL 13-17",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper App. A.3; code Llama3-8B.json",
+            "url": "https://github.com/jianghoucheng/AlphaEdit/blob/aac456de14c7242c958dc64d6f622bf3a765dbea/hparams/AlphaEdit/Llama3-8B.json"
+          },
+          {
+            "name": "projection P",
+            "what": "one d0 × d0 matrix per layer, from the eigenvectors of K0K0ᵀ with small eigenvalues",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "code evaluate.py L426-L443 (used only while writing)",
+            "url": "https://github.com/jianghoucheng/AlphaEdit/blob/aac456de14c7242c958dc64d6f622bf3a765dbea/experiments/evaluate.py#L426-L443"
+          },
+          {
+            "name": "KpKpᵀ",
+            "what": "running sum of the keys of every past edit",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "code AlphaEdit_main.py L146-L148 (used only while writing)",
+            "url": "https://github.com/jianghoucheng/AlphaEdit/blob/aac456de14c7242c958dc64d6f622bf3a765dbea/AlphaEdit/AlphaEdit_main.py#L146-L148"
+          },
+          {
+            "name": "K0K0ᵀ",
+            "what": "second moment of FFN keys over 100,000 Wikipedia samples; only feeds P",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "paper §2.2; code AlphaEdit_main.py L154-L189",
+            "url": "https://github.com/jianghoucheng/AlphaEdit/blob/aac456de14c7242c958dc64d6f622bf3a765dbea/AlphaEdit/AlphaEdit_main.py#L154-L189"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Preserved keys",
+        "how": "collect K0K0ᵀ, the key second moment at each edited layer, over Wikipedia text",
+        "params": {
+          "samples": "100,000"
+        },
+        "src": "paper §2.2, §3.2; code AlphaEdit_main.py L154-L189",
+        "url": "https://github.com/jianghoucheng/AlphaEdit/blob/aac456de14c7242c958dc64d6f622bf3a765dbea/AlphaEdit/AlphaEdit_main.py#L154-L189"
+      },
+      {
+        "step": "Projection",
+        "how": "SVD of K0K0ᵀ; keep eigenvectors whose eigenvalue is below the threshold; P = ÛÛᵀ; computed once before editing",
+        "params": {
+          "threshold": "2e-2 (code) / 1e-2 (paper footnote)"
+        },
+        "src": "paper Eq. 8-9; code evaluate.py L206-L209, L426-L443",
+        "url": "https://github.com/jianghoucheng/AlphaEdit/blob/aac456de14c7242c958dc64d6f622bf3a765dbea/experiments/evaluate.py#L426-L443"
+      },
+      {
+        "step": "Target values",
+        "how": "per fact, optimise a change to the hidden state at the last edited layer so the model outputs the new object (NLL + KL + decay terms)",
+        "params": {
+          "steps": "25",
+          "lr": "0.1 (LLaMA3), 0.5 (GPT-J, GPT2-XL)"
+        },
+        "src": "paper App. A.3, B.1 Eq. 24; code compute_z.py",
+        "url": "https://github.com/jianghoucheng/AlphaEdit/blob/aac456de14c7242c958dc64d6f622bf3a765dbea/AlphaEdit/compute_z.py"
+      },
+      {
+        "step": "Keys",
+        "how": "FFN input at the subject's last token, averaged over the bare prompt and 5 generated prefixes",
+        "src": "code compute_ks.py L11-L50, AlphaEdit_main.py L209-L228",
+        "url": "https://github.com/jianghoucheng/AlphaEdit/blob/aac456de14c7242c958dc64d6f622bf3a765dbea/AlphaEdit/compute_ks.py#L11-L50"
+      },
+      {
+        "step": "Solve",
+        "how": "per layer, solve (P(K1K1ᵀ + KpKpᵀ) + αI) Δᵀ = P K1 Rᵀ; the residual R is split over the remaining edited layers",
+        "params": {
+          "α": "10 (code 'L2'; Eq. 14 uses I)",
+          "layers": "4-8 (LLaMA3)"
+        },
+        "out": "one update per layer, added to W",
+        "src": "paper Eq. 12-14; code AlphaEdit_main.py L107-L139",
+        "url": "https://github.com/jianghoucheng/AlphaEdit/blob/aac456de14c7242c958dc64d6f622bf3a765dbea/AlphaEdit/AlphaEdit_main.py#L107-L139"
+      },
+      {
+        "step": "Remember",
+        "how": "recompute the batch's keys on the updated model and add them to KpKpᵀ",
+        "src": "paper Eq. 12; code AlphaEdit_main.py L146-L148",
+        "url": "https://github.com/jianghoucheng/AlphaEdit/blob/aac456de14c7242c958dc64d6f622bf3a765dbea/AlphaEdit/AlphaEdit_main.py#L146-L148"
+      }
+    ],
+    "read": [
+      {
+        "step": "Forward pass",
+        "round": 0,
+        "input": "prompt",
+        "how": "no retrieval: the prompt runs through the edited model and each edited FFN computes (W + ΔP)k",
+        "src": "paper Eq. 10"
+      },
+      {
+        "step": "Preserved facts",
+        "round": 0,
+        "how": "for keys of preserved knowledge ΔP k0 ≈ 0, so their values (and answers) stay approximately the same",
+        "src": "paper §3.2, Eq. 10",
+        "url": "https://arxiv.org/pdf/2410.02355"
+      },
+      {
+        "step": "Edited facts",
+        "round": 0,
+        "how": "for an edited subject's key the new matrix yields the optimised value v*, which leads to the new object",
+        "src": "paper §2.2, App. B.1",
+        "url": "https://arxiv.org/pdf/2410.02355"
+      }
+    ],
+    "answer_context": {
+      "sees": "the prompt only",
+      "format": "no memory text; edits act inside the FFN layers",
+      "excludes": [
+        "edit records",
+        "keys and statistics"
+      ],
+      "includes": [
+        "the prompt",
+        "edited FFN weights"
+      ],
+      "src": "paper §3",
+      "url": "https://arxiv.org/pdf/2410.02355"
+    },
+    "compression": [
+      {
+        "what": "edited facts vs extra storage",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported. Edits add no parameters; P and KpKpᵀ are d0 × d0 matrices per edited layer used only when writing.",
+        "src": "code evaluate.py L196-L209",
+        "url": "https://github.com/jianghoucheng/AlphaEdit/blob/aac456de14c7242c958dc64d6f622bf3a765dbea/experiments/evaluate.py#L196-L209"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "LLaMA3 Counterfact Eff. / Gen. / Spe.",
+        "value": "98.90 / 94.22 / 67.88",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "LLaMA3 ZsRE Eff. / Gen. / Spe.",
+        "value": "94.47 / 91.13 / 32.55",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "Seconds per 100 edits, ZsRE, LLaMA3",
+        "value": "231.40 (MEMIT 231.32)",
+        "src": "paper Table 7"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Null-space threshold",
+        "paper": "drop eigenvectors with eigenvalue above 1e-2",
+        "code": "keep eigenvectors with singular value below 2e-2 (all released configs)",
+        "src": "evaluate.py L440-L443; Llama3-8B.json",
+        "url": "https://github.com/jianghoucheng/AlphaEdit/blob/aac456de14c7242c958dc64d6f622bf3a765dbea/experiments/evaluate.py#L426-L443"
+      },
+      {
+        "topic": "Regulariser",
+        "paper": "+ I in Eq. 14 (αI with α > 0 in App. B.5)",
+        "code": "α = 10 ('L2')",
+        "src": "AlphaEdit_main.py L130-L132",
+        "url": "https://github.com/jianghoucheng/AlphaEdit/blob/aac456de14c7242c958dc64d6f622bf3a765dbea/AlphaEdit/AlphaEdit_main.py#L130-L132"
+      },
+      {
+        "topic": "λ",
+        "paper": "App. A.3 sets λ = 15,000 (GPT-J, LLaMA3) and 20,000 (GPT2-XL)",
+        "code": "mom2_update_weight is in the configs but AlphaEdit's update never reads it (only MEMIT's does)",
+        "src": "AlphaEdit_main.py L107-L139",
+        "url": "https://github.com/jianghoucheng/AlphaEdit/blob/aac456de14c7242c958dc64d6f622bf3a765dbea/AlphaEdit/AlphaEdit_main.py#L107-L139"
+      },
+      {
+        "topic": "Base model",
+        "paper": "LLaMA3 (8B)",
+        "code": "README run command uses meta-llama/Meta-Llama-3-8B-Instruct",
+        "src": "README.md",
+        "url": "https://github.com/jianghoucheng/AlphaEdit/blob/aac456de14c7242c958dc64d6f622bf3a765dbea/README.md"
+      }
+    ],
+    "open_questions": [
+      "How many directions P keeps per layer is not reported, so how much room the edits have, and how far from an exact null space it is, is unknown.",
+      "AlphaEdit changes three things relative to MEMIT (projection, dropping the K0 term, the ‖ΔP‖² term); Fig. 6 adds the projection to baselines, but no run separates the three.",
+      "P is computed once on the unedited model; edits to earlier layers change the keys later layers see, and the effect of not recomputing P is not studied."
+    ],
+    "glance": [
+      {
+        "q": "What is one memory item?",
+        "a": "A batch of 100 facts folded into the FFN output matrices of 5 layers; there is no separate item.",
+        "src": "paper §4.2",
+        "url": "https://arxiv.org/pdf/2410.02355"
+      },
+      {
+        "q": "Is the edit text stored?",
+        "a": "No. Only weights change; the code also keeps the sum of past edit keys (KpKpᵀ) to protect them in later batches.",
+        "src": "code AlphaEdit_main.py L146-L148",
+        "url": "https://github.com/jianghoucheng/AlphaEdit/blob/aac456de14c7242c958dc64d6f622bf3a765dbea/AlphaEdit/AlphaEdit_main.py#L146-L148"
+      },
+      {
+        "q": "How is memory organised?",
+        "a": "It is not: facts live in the weights. A fixed projection per layer limits where updates may point.",
+        "src": "paper §3.2",
+        "url": "https://arxiv.org/pdf/2410.02355"
+      },
+      {
+        "q": "Is there reranking?",
+        "a": "No retrieval of any kind.",
+        "src": "paper §3",
+        "url": "https://arxiv.org/pdf/2410.02355"
+      },
+      {
+        "q": "Is memory reconstructed at question time?",
+        "a": "No. The edited model is queried like any model.",
+        "src": "paper §3",
+        "url": "https://arxiv.org/pdf/2410.02355"
+      },
+      {
+        "q": "What does the model read?",
+        "a": "Only the prompt.",
+        "src": "paper §3",
+        "url": "https://arxiv.org/pdf/2410.02355"
+      }
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 236",
+        "body": "<text class=\"fig-s\" x=\"8\" y=\"14\" text-anchor=\"start\">Once, before any edit</text><rect class=\"gi-ev\" x=\"6\" y=\"22\" width=\"96\" height=\"42\" rx=\"8\"/><text class=\"fig-t\" x=\"54.0\" y=\"41.0\" text-anchor=\"middle\">Wikipedia text</text><text class=\"fig-s\" x=\"54.0\" y=\"54.0\" text-anchor=\"middle\">100,000 samples</text><path class=\"gi-a\" d=\"M102.0 43.0 L113.0 43.0\"/><polygon class=\"gi-ah\" points=\"120.0,43.0 113.0,47.0 113.0,39.0\"/><rect class=\"gi-f\" x=\"120\" y=\"22\" width=\"96\" height=\"42\" rx=\"8\"/><text class=\"fig-t\" x=\"168.0\" y=\"41.0\" text-anchor=\"middle\">Keys K0</text><text class=\"fig-s\" x=\"168.0\" y=\"54.0\" text-anchor=\"middle\">FFN inputs</text><path class=\"gi-a\" d=\"M216.0 43.0 L227.0 43.0\"/><polygon class=\"gi-ah\" points=\"234.0,43.0 227.0,47.0 227.0,39.0\"/><rect class=\"gi-f\" x=\"234\" y=\"22\" width=\"96\" height=\"42\" rx=\"8\"/><text class=\"fig-t\" x=\"282.0\" y=\"41.0\" text-anchor=\"middle\">SVD of K0K0ᵀ</text><text class=\"fig-s\" x=\"282.0\" y=\"54.0\" text-anchor=\"middle\">d0 × d0 per layer</text><path class=\"gi-a\" d=\"M330.0 43.0 L341.0 43.0\"/><polygon class=\"gi-ah\" points=\"348.0,43.0 341.0,47.0 341.0,39.0\"/><rect class=\"gi-v fig-soft\" x=\"348\" y=\"22\" width=\"118\" height=\"42\" rx=\"8\"/><text class=\"fig-t\" x=\"407.0\" y=\"41.0\" text-anchor=\"middle\">Projection P</text><text class=\"fig-s\" x=\"407.0\" y=\"54.0\" text-anchor=\"middle\">eigenvalues &lt; 0.02 kept</text><text class=\"fig-s\" x=\"474\" y=\"38\" text-anchor=\"start\">off the keys of</text><text class=\"fig-s\" x=\"474\" y=\"51\" text-anchor=\"start\">preserved facts</text><line class=\"gi-e d\" x1=\"6\" y1=\"84\" x2=\"554\" y2=\"84\"/><text class=\"fig-s\" x=\"8\" y=\"102\" text-anchor=\"start\">Per batch of 100 edits</text><rect class=\"gi-ev\" x=\"10\" y=\"112\" width=\"84\" height=\"13\" rx=\"5\"/><line class=\"gi-t\" x1=\"18\" y1=\"118.5\" x2=\"74\" y2=\"118.5\"/><rect class=\"gi-ev\" x=\"10\" y=\"128\" width=\"84\" height=\"13\" rx=\"5\"/><line class=\"gi-t\" x1=\"18\" y1=\"134.5\" x2=\"74\" y2=\"134.5\"/><rect class=\"gi-ev\" x=\"10\" y=\"144\" width=\"84\" height=\"13\" rx=\"5\"/><line class=\"gi-t\" x1=\"18\" y1=\"150.5\" x2=\"74\" y2=\"150.5\"/><text class=\"fig-s\" x=\"52\" y=\"172\" text-anchor=\"middle\">(s, r, new o*)</text><path class=\"gi-a\" d=\"M100.0 136.0 L111.0 136.0\"/><polygon class=\"gi-ah\" points=\"118.0,136.0 111.0,140.0 111.0,132.0\"/><rect class=\"gi-f\" x=\"118\" y=\"112\" width=\"96\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"166.0\" y=\"134.0\" text-anchor=\"middle\">Target v*, key k</text><text class=\"fig-s\" x=\"166.0\" y=\"147.0\" text-anchor=\"middle\">25 grad steps</text><path class=\"gi-a\" d=\"M214.0 136.0 L225.0 136.0\"/><polygon class=\"gi-ah\" points=\"232.0,136.0 225.0,140.0 225.0,132.0\"/><rect class=\"gi-hi\" x=\"232\" y=\"106\" width=\"164\" height=\"60\" rx=\"8\"/><text class=\"fig-t\" x=\"314.0\" y=\"134.0\" text-anchor=\"middle\">Solve Δ in closed form</text><text class=\"fig-s\" x=\"314.0\" y=\"147.0\" text-anchor=\"middle\">R K1ᵀP (KpKpᵀP + K1K1ᵀP + αI)⁻¹</text><path class=\"gi-a\" d=\"M407 64 L407 90 L360 90\"/><path class=\"gi-a\" d=\"M360.0 90.0 L360.0 99.0\"/><polygon class=\"gi-ah\" points=\"360.0,106.0 356.0,99.0 364.0,99.0\"/><path class=\"gi-a\" d=\"M396.0 136.0 L413.0 136.0\"/><polygon class=\"gi-ah\" points=\"420.0,136.0 413.0,140.0 413.0,132.0\"/><rect class=\"gi-w fig-soft\" x=\"420\" y=\"112\" width=\"116\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"478.0\" y=\"134.0\" text-anchor=\"middle\">W_out += Δ</text><text class=\"fig-s\" x=\"478.0\" y=\"147.0\" text-anchor=\"middle\">layers 4–8 (LLaMA3)</text><path class=\"gi-a d\" d=\"M478 160 L478 196 L314 196\"/><path class=\"gi-a d\" d=\"M314.0 196.0 L314.0 173.0\"/><polygon class=\"gi-ah\" points=\"314.0,166.0 318.0,173.0 310.0,173.0\"/><text class=\"fig-s\" x=\"396\" y=\"212\" text-anchor=\"middle\">add this batch's keys to KpKpᵀ</text><text class=\"fig-s\" x=\"396\" y=\"225\" text-anchor=\"middle\">(earlier edits stay protected)</text><text class=\"fig-s\" x=\"120\" y=\"200\" text-anchor=\"start\">no K0 term in the objective:</text><text class=\"fig-s\" x=\"120\" y=\"213\" text-anchor=\"start\">P already keeps Δ off it</text>",
+        "text": [
+          "Before editing, key statistics from 100,000 Wikipedia samples give a projection P that points away from directions preserved facts use.",
+          "Each batch of 100 facts gets target values and keys, and a closed-form update, projected by P and kept off earlier edits' keys, is added to layers 4-8."
+        ],
+        "src": "paper §3, Eq. 8-14, App. A.3; code AlphaEdit_main.py L107-L148, evaluate.py L426-L443",
+        "url": "https://github.com/jianghoucheng/AlphaEdit/blob/aac456de14c7242c958dc64d6f622bf3a765dbea/AlphaEdit/AlphaEdit_main.py#L107-L148"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 232",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"84\" width=\"58\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"33.0\" y=\"110.0\" text-anchor=\"middle\">Prompt</text><path class=\"gi-a\" d=\"M62.0 106.0 L71.0 106.0\"/><polygon class=\"gi-ah\" points=\"78.0,106.0 71.0,110.0 71.0,102.0\"/><rect class=\"gi-l\" x=\"78\" y=\"84\" width=\"64\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"110.0\" y=\"104.0\" text-anchor=\"middle\">Layers</text><text class=\"fig-s\" x=\"110.0\" y=\"117.0\" text-anchor=\"middle\">0–3</text><path class=\"gi-a\" d=\"M142 100 L156 100 L156 50\"/><path class=\"gi-a\" d=\"M156.0 50.0 L163.0 50.0\"/><polygon class=\"gi-ah\" points=\"170.0,50.0 163.0,54.0 163.0,46.0\"/><path class=\"gi-a\" d=\"M142 112 L156 112 L156 162\"/><path class=\"gi-a\" d=\"M156.0 162.0 L163.0 162.0\"/><polygon class=\"gi-ah\" points=\"170.0,162.0 163.0,166.0 163.0,158.0\"/><text class=\"fig-s\" x=\"8\" y=\"16\" text-anchor=\"start\">No search step: every prompt reads the edited FFN weights (layers 4–8).</text><rect class=\"gi-v fig-soft\" x=\"170\" y=\"30\" width=\"104\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"222.0\" y=\"48.0\" text-anchor=\"middle\">Key k0</text><text class=\"fig-s\" x=\"222.0\" y=\"61.0\" text-anchor=\"middle\">unrelated fact</text><path class=\"gi-a\" d=\"M274.0 50.0 L289.0 50.0\"/><polygon class=\"gi-ah\" points=\"296.0,50.0 289.0,54.0 289.0,46.0\"/><rect class=\"gi-w fig-soft\" x=\"296\" y=\"30\" width=\"102\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"347.0\" y=\"48.0\" text-anchor=\"middle\">(W + ΔP) k0</text><text class=\"fig-s\" x=\"347.0\" y=\"61.0\" text-anchor=\"middle\">ΔP k0 ≈ 0</text><path class=\"gi-a\" d=\"M398.0 50.0 L413.0 50.0\"/><polygon class=\"gi-ah\" points=\"420.0,50.0 413.0,54.0 413.0,46.0\"/><rect class=\"gi-f\" x=\"420\" y=\"30\" width=\"118\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"479.0\" y=\"48.0\" text-anchor=\"middle\">Old value v0</text><text class=\"fig-s\" x=\"479.0\" y=\"61.0\" text-anchor=\"middle\">answer unchanged</text><path class=\"gi-ok\" d=\"M544 44 L548 50 L556 38\"/><rect class=\"gi-v fig-soft\" x=\"170\" y=\"142\" width=\"104\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"222.0\" y=\"160.0\" text-anchor=\"middle\">Key k1</text><text class=\"fig-s\" x=\"222.0\" y=\"173.0\" text-anchor=\"middle\">edited subject</text><path class=\"gi-a\" d=\"M274.0 162.0 L289.0 162.0\"/><polygon class=\"gi-ah\" points=\"296.0,162.0 289.0,166.0 289.0,158.0\"/><rect class=\"gi-w fig-soft\" x=\"296\" y=\"142\" width=\"102\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"347.0\" y=\"160.0\" text-anchor=\"middle\">(W + ΔP) k1</text><text class=\"fig-s\" x=\"347.0\" y=\"173.0\" text-anchor=\"middle\">maps to v*</text><path class=\"gi-a\" d=\"M398.0 162.0 L413.0 162.0\"/><polygon class=\"gi-ah\" points=\"420.0,162.0 413.0,166.0 413.0,158.0\"/><rect class=\"gi-hi\" x=\"420\" y=\"142\" width=\"118\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"479.0\" y=\"160.0\" text-anchor=\"middle\">New value v*</text><text class=\"fig-s\" x=\"479.0\" y=\"173.0\" text-anchor=\"middle\">answer o*</text><path class=\"gi-ok\" d=\"M544 156 L548 162 L556 150\"/><text class=\"fig-s\" x=\"356\" y=\"104\" text-anchor=\"middle\">same weights, two kinds of key</text><text class=\"fig-s\" x=\"356\" y=\"117\" text-anchor=\"middle\">(through layers 4–8, then 9–31)</text><text class=\"fig-s\" x=\"280\" y=\"208\" text-anchor=\"middle\">ΔP k0 is only near zero: P keeps directions with eigenvalue &lt; 0.02,</text><text class=\"fig-s\" x=\"280\" y=\"221\" text-anchor=\"middle\">so after 2,000 edits Counterfact specificity is 67.88 vs 89.48 unedited.</text>",
+        "text": [
+          "There is no retrieval: every prompt passes through the edited weights.",
+          "Keys of unrelated facts are (nearly) untouched by the projected update, while an edited subject's key now maps to the new value."
+        ],
+        "src": "paper Eq. 7-10, Table 1",
+        "url": "https://arxiv.org/pdf/2410.02355"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Edited layers",
+        "value": "4-8 (LLaMA3) · 3-8 (GPT-J) · 13-17 (GPT2-XL)",
+        "src": "paper App. A.3",
+        "section": "construction"
+      },
+      {
+        "label": "Preserved-key sample",
+        "value": "100,000 Wikipedia samples",
+        "src": "paper §2.2; code Llama3-8B.json",
+        "section": "construction"
+      },
+      {
+        "label": "Null-space threshold",
+        "value": "eigenvalue < 0.01 (paper) · 0.02 (code)",
+        "src": "paper §3.2 footnote; code Llama3-8B.json",
+        "section": "construction"
+      },
+      {
+        "label": "Edits",
+        "value": "2,000 in batches of 100",
+        "src": "paper §4.2",
+        "section": "construction"
+      },
+      {
+        "label": "Target-vector search",
+        "value": "25 steps, lr 0.1 (LLaMA3)",
+        "src": "paper App. A.3",
+        "section": "method"
+      },
+      {
+        "label": "Regulariser α",
+        "value": "10 (code)",
+        "src": "code Llama3-8B.json",
+        "section": "method"
+      },
+      {
+        "label": "Time per 100 edits",
+        "value": "231.40 s vs 231.32 s MEMIT (ZsRE, LLaMA3)",
+        "src": "paper Table 7",
+        "section": "results"
+      },
+      {
+        "label": "Gain over best baseline",
+        "value": "+12.54% Eff. · +16.78% Gen. (average)",
+        "src": "paper §4.2",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Model being edited",
+        "model": "LLaMA3 (8B), GPT-J (6B), GPT2-XL (1.5B); Gemma, phi-1.5 in App. C.6",
+        "kind": "llm",
+        "src": "paper §4.1"
+      },
+      {
+        "role": "Target values",
+        "model": "gradient search on one hidden vector per fact",
+        "kind": "rule",
+        "src": "paper App. B.1; code compute_z.py",
+        "url": "https://github.com/jianghoucheng/AlphaEdit/blob/aac456de14c7242c958dc64d6f622bf3a765dbea/AlphaEdit/compute_z.py"
+      },
+      {
+        "role": "Projection",
+        "model": "SVD of key covariance, small-eigenvalue eigenvectors",
+        "kind": "rule",
+        "src": "paper Eq. 8-9; code evaluate.py L426-L443",
+        "url": "https://github.com/jianghoucheng/AlphaEdit/blob/aac456de14c7242c958dc64d6f622bf3a765dbea/experiments/evaluate.py#L426-L443"
+      },
+      {
+        "role": "Write",
+        "model": "closed-form least squares (Eq. 14)",
+        "kind": "rule",
+        "src": "code AlphaEdit_main.py L130-L132",
+        "url": "https://github.com/jianghoucheng/AlphaEdit/blob/aac456de14c7242c958dc64d6f622bf3a765dbea/AlphaEdit/AlphaEdit_main.py#L130-L132"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "Counterfact Eff.",
+        "Counterfact Gen.",
+        "Counterfact Spe.",
+        "ZsRE Eff.",
+        "ZsRE Gen.",
+        "ZsRE Spe."
+      ],
+      "rows": [
+        [
+          "AlphaEdit, K0 from the full sample",
+          "98.90",
+          "94.22",
+          "67.88",
+          "94.47",
+          "91.13",
+          "32.55"
+        ],
+        [
+          "K0 from 50% of the sample",
+          "97.93",
+          "94.01",
+          "63.51",
+          "92.96",
+          "91.67",
+          "28.56"
+        ],
+        [
+          "K0 from 10% of the sample",
+          "95.21",
+          "90.12",
+          "56.12",
+          "92.01",
+          "89.97",
+          "25.89"
+        ],
+        [
+          "MEMIT, sequential (no projection)",
+          "65.65",
+          "64.65",
+          "51.56",
+          "34.62",
+          "31.28",
+          "18.49"
+        ],
+        [
+          "Unedited model",
+          "7.85",
+          "10.58",
+          "89.48",
+          "36.99",
+          "36.34",
+          "31.89"
+        ]
+      ],
+      "src": "paper Table 6 (App. C.8) and Table 1; LLaMA3, 2,000 edits in batches of 100. The MEMIT row differs from AlphaEdit in more than the projection."
+    },
+    "discussion": {
+      "takeaway": "Project each locate-then-edit update onto the approximate null space of preserved-knowledge keys. In its experiments this single change lets 2,000 sequential edits land without collapsing the model, and it improves MEMIT-style editors by large margins.",
+      "claims": [
+        {
+          "claim": "Sequential locate-then-edit degrades because each update disturbs preserved key-value pairs and shifts hidden representations.",
+          "evidence": "Fig. 1, Fig. 5 (t-SNE of hidden states before and after 2,000 edits), §1."
+        },
+        {
+          "claim": "Best editing results across three LLMs.",
+          "evidence": "Table 1, LLaMA3: Counterfact Eff./Gen. 98.90/94.22 vs 83.33/67.79 for the best baseline (FT); ZsRE Eff. 94.47 vs 86.05 (RECT). Average +12.54% Eff. and +16.78% Gen. over the best baseline (§4.2)."
+        },
+        {
+          "claim": "General abilities survive heavy editing.",
+          "evidence": "GLUE-style F1 on SST, MRPC, CoLA, RTE, MMLU, NLI stays near the unedited level up to 3,000 edits while baselines fall toward zero after 2,000. Fig. 4, §4.3."
+        },
+        {
+          "claim": "The projection is a plug-in for other editors.",
+          "evidence": "Adding it to MEMIT, PRUNE and RECT improves them by 28.24% (editing) and 42.65% (general capability) on average. Fig. 6-7, §4.5."
+        },
+        {
+          "claim": "Better than memory-based editors on efficacy and generalization.",
+          "evidence": "LLaMA3 ZsRE Gen. 91.13 vs GRACE 1.03, SERAC 33.96, MELO 24.14; GRACE keeps higher Counterfact specificity (72.23 vs 67.88). Table 2, App. C.5."
+        },
+        {
+          "claim": "No extra runtime.",
+          "evidence": "231.40 s vs 231.32 s per 100 ZsRE edits on LLaMA3. Table 7."
+        }
+      ],
+      "limits": [
+        "Not tested on multimodal LLMs or large reasoning models.",
+        "Applying null-space projection to other capabilities (safety, math, biochemistry) is left open."
+      ],
+      "limits_src": "paper §6 (Limitations & Future Discussion)",
+      "reading": [
+        "The null space is approximate, so preserved facts still move: Counterfact specificity drops from 89.48 (unedited) to 67.88 on LLaMA3 after 2,000 edits (Table 1).",
+        "P is computed once from the unedited model and not recomputed as edits to layers 4-7 change the keys that later layers see (evaluate.py L206-L209).",
+        "App. A.3 lists λ = 15,000 / 20,000, but the AlphaEdit update never reads that setting; preserved knowledge enters only through P (AlphaEdit_main.py L130-L132).",
+        "The released configs use a 2e-2 eigenvalue threshold, while the paper's footnote says 1e-2.",
+        "The same full-data LLaMA3 numbers carry ±0.10 in Table 1 and ±1.21 in Table 6, so the spreads come from different runs or calculations.",
+        "PRUNE has no public code and was reimplemented from its paper (App. A.4); ZsRE efficacy is token-level top-1 accuracy, and the unedited LLaMA3 already scores 36.99."
+      ]
+    },
+    "abstract": {
+      "text": "AlphaEdit addresses sequential knowledge editing, where many factual updates are written into an LLM's FFN weights one batch after another. Locate-then-edit methods such as MEMIT balance fitting the new facts against keeping old ones, and over many edits the balance fails and the model forgets or collapses. AlphaEdit instead projects each weight update onto the null space of the keys of preserved knowledge, so the fit to new facts no longer competes with preservation. With one extra line of code over MEMIT it reports large gains on Counterfact and ZsRE for LLaMA3, GPT-J and GPT2-XL, and the projection also lifts other editors.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2410.02355"
+    },
+    "sections": {
+      "Memory architecture": "§2.2, §3",
+      "Results": "§4.2-4.3, App. C.5",
+      "Ablation": "§4.5, App. C.8",
+      "Discussion": "§6",
+      "Details": "§4.1, App. A.3, App. B"
+    }
+  }
+}

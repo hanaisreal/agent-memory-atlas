@@ -1,0 +1,563 @@
+{
+ "id": "hypermem",
+ "name": "HyperMem",
+ "paper": {
+  "title": "HyperMem: Hypergraph Memory for Long-Term Conversations",
+  "arxiv": "2604.08256",
+  "url": "https://arxiv.org/abs/2604.08256",
+  "venue": "ACL 2026",
+  "venue_short": "ACL",
+  "track": "main",
+  "year": 2026,
+  "code": "https://github.com/EverMind-AI/HyperMem"
+ },
+ "design": {
+  "construction": {
+   "unit": "episode (dialogue segment with title, summary and third-person narrative) + facts",
+   "kept_as": "LLM-rewritten episode narrative and summary; extracted fact sentences; raw turns kept",
+   "processing": "LLM boundary detector cuts the stream into episodes; LLM writes title, summary and narrative; facts extracted per topic",
+   "trigger": "other",
+   "writer": "backbone LLM (GPT-4.1-mini in the released config)"
+  },
+  "organization": {
+   "structure": "three-level hypergraph: topics → episodes → facts; a topic is a weighted hyperedge over its episodes, an episode a weighted hyperedge over its facts",
+   "stores": "topic, episode and fact nodes with BM25 and dense indexes",
+   "index": "Qwen3-Embedding-4B dense (embeddings propagated through hyperedges, λ = 0.5) + BM25"
+  },
+  "management": {
+   "operations": "LLM matches each new episode against existing topics: joins and regenerates matched topics, or starts a new one",
+   "conflicts": null,
+   "forgetting": null,
+   "timing": "both"
+  },
+  "retrieval": {
+   "query": "question used as is",
+   "candidates": "BM25 + dense fused by RRF at each level: topics, then episodes of the chosen topics, then facts of the chosen episodes",
+   "selection": "top-10 topics, top-10 episodes, top-30 facts; paper adds Qwen3-Reranker-4B at each level (off by default in the released code)",
+   "budget": "10 episodes + 30 facts (7.5x Mem0's tokens, Fig. 5)"
+  },
+  "use": {
+   "context": "episode narratives with timestamps + fact sentences with time and place",
+   "reasoning": "single chain-of-thought answer call"
+  },
+  "control": {
+   "construction": "prompted-llm",
+   "management": "prompted-llm",
+   "retrieval": "fixed-rule"
+  }
+ },
+ "classify": {
+  "structure": "hierarchy",
+  "index": "vector and lexical",
+  "management": "consolidate",
+  "candidates": "hybrid",
+  "decides": "top-k rule",
+  "note": "The paper reranks each level with Qwen3-Reranker-4B; the released code turns the reranker off by default, so the top-k of the RRF list decides."
+ },
+ "tags": {
+  "fidelity": "rewritten",
+  "structure": [
+   "tree",
+   "graph"
+  ],
+  "write_time": [
+   "segment",
+   "summarize",
+   "extract",
+   "link",
+   "consolidate"
+  ],
+  "selection": [
+   "hybrid",
+   "rerank"
+  ],
+  "memory_type": [
+   "episodic",
+   "semantic"
+  ],
+  "learning": "training-free",
+  "domain": [
+   "conversation"
+  ]
+ },
+ "stages": {
+  "ingestion": "Messages stream into a buffer; an LLM boundary detector decides after each new message whether the buffer forms a complete episode (topic change, time gap, closing signals).",
+  "construction": "Each episode gets an LLM-written title, 2-4 sentence summary and a detailed third-person narrative with absolute dates; the raw turns are kept. Facts (a sentence, the questions it could answer, keywords, an importance weight) are later extracted per topic and anchored to their source episodes.",
+  "organization": "Topics group episodes through weighted episode hyperedges; each episode groups its facts through a weighted fact hyperedge. Node embeddings are shifted towards their hyperedges' weighted means (h' = h + 0.5·Σ h_e).",
+  "update": "The LLM compares a new episode with all existing topics (10 per call); matched topics absorb it and get a regenerated title and summary, otherwise a new topic is created. An episode can join several topics.",
+  "retrieval": "Coarse to fine: BM25 + dense RRF over topics keeps 10, RRF over those topics' episodes keeps 10, RRF over those episodes' facts keeps 30. The paper reranks each level with Qwen3-Reranker-4B over 100 RRF candidates.",
+  "answer": "GPT-4.1-mini answers with a step-by-step prompt from the 10 episode narratives and 30 facts; topic text is not included.",
+  "learning": ""
+ },
+ "summary": "Conversation memory as a three-level hypergraph (topics over episodes over facts) with hyperedge-smoothed embeddings, read top-down from topics to episodes to facts.",
+ "verified": false,
+ "notes": "Venue: ACL 2026 long paper (aclanthology 2026.acl-long.1627), matching the arXiv comment 'ACL 2026 Main'. The paper says code is 'about to be released'; the official repo EverMind-AI/HyperMem (linked from EverOS's README) was checked at commit 15c70090 (2026-06-03). HyperMem shares its episode prompt design with EverMemOS (same group, EverMind AI).",
+ "mechanism": {
+  "sources": {
+   "paper": "arXiv 2604.08256v2 (PDF read 2026-09-30)",
+   "code": "https://github.com/EverMind-AI/HyperMem/tree/15c700908f3ec64d6931f253695e42c679a4c958/",
+   "code_note": "Repo created 2026-06-02, about two months after paper v2; 6 commits, head 15c70090. The run script defaults (reranker off, top-k 10/10/30) and the README (top-k 15/25/30) disagree with each other and with the paper (reranker on), so exact identity with the paper's runs is not guaranteed. Episode detection (stage 1) is not in the default run script, which starts from stage 2."
+  },
+  "sections": {
+   "Memory architecture": "§3.1-3.2",
+   "Results": "§4.2, §4.5",
+   "Ablation": "§4.3, §4.4",
+   "Discussion": "§5, Limitations",
+   "Details": "§3.3, §4.1, App. A-B"
+  },
+  "abstract": {
+   "text": "HyperMem argues that pairwise links in RAG and graph memories miss joint relations among several pieces of a long conversation. It stores memory as a hypergraph with three levels: topics, episodes (contiguous dialogue segments) and facts, where hyperedges group all episodes of a topic and all facts of an episode. Embeddings are smoothed along hyperedges and indexed with BM25, and retrieval narrows from topics to episodes to facts. On LoCoMo the authors report 92.73% LLM-judge accuracy, above RAG and memory-system baselines.",
+   "note": "Summary in our words; the original abstract is on arXiv.",
+   "url": "https://arxiv.org/abs/2604.08256"
+  },
+  "headline": [
+   "The answer model reads LLM-written episode narratives plus extracted facts; topic text and raw turns are not included.",
+   "Topics only route: the answer comes from episodes and facts inside the 10 chosen topics, each level re-scored from the question alone.",
+   "Removing episode context costs the most (92.66 → 88.90); skipping topic retrieval costs 0.72 points."
+  ],
+  "units": [
+   {
+    "name": "Episode",
+    "role": "a contiguous dialogue segment about one event",
+    "made_by": "LLM boundary detector + LLM episode writer",
+    "fields": [
+     {
+      "name": "subject (title)",
+      "what": "10-20 word title",
+      "kept_as": "rewritten",
+      "used_for": [
+       "index"
+      ],
+      "src": "code episode_prompts.py L27-L32; stage3 L148-L185",
+      "url": "https://github.com/EverMind-AI/HyperMem/blob/15c700908f3ec64d6931f253695e42c679a4c958/hypermem/prompts/episode_prompts.py#L10-L32"
+     },
+     {
+      "name": "summary",
+      "what": "2-4 sentence summary used to match topics",
+      "kept_as": "summarized",
+      "used_for": [
+       "index",
+       "scene routing"
+      ],
+      "src": "code episode_prompts.py L30; topic_extractor.py L750-L768",
+      "url": "https://github.com/EverMind-AI/HyperMem/blob/15c700908f3ec64d6931f253695e42c679a4c958/hypermem/extractors/topic_extractor.py#L740-L906"
+     },
+     {
+      "name": "episode_description",
+      "what": "detailed third-person narrative with absolute dates",
+      "kept_as": "rewritten",
+      "used_for": [
+       "index",
+       "rerank",
+       "answer"
+      ],
+      "src": "code conv_episode_extractor.py L300-L312; stage4 L940-L950",
+      "url": "https://github.com/EverMind-AI/HyperMem/blob/15c700908f3ec64d6931f253695e42c679a4c958/hypermem/extractors/conv_episode_extractor.py#L300-L312"
+     },
+     {
+      "name": "raw turns",
+      "what": "original messages of the segment",
+      "kept_as": "verbatim",
+      "used_for": [],
+      "src": "types.py Episode.original_data; not read by stage 3-5"
+     }
+    ]
+   },
+   {
+    "name": "Topic",
+    "role": "episode hyperedge: one recurring situation (e.g. one person's project)",
+    "made_by": "LLM topic matching and summarising",
+    "fields": [
+     {
+      "name": "title, summary, keywords",
+      "what": "regenerated when an episode joins",
+      "kept_as": "summarized",
+      "used_for": [
+       "index",
+       "scene routing"
+      ],
+      "src": "paper §3.2.2; code stage3 L187-L217",
+      "url": "https://github.com/EverMind-AI/HyperMem/blob/15c700908f3ec64d6931f253695e42c679a4c958/hypermem/main/stage3_hypergraph_index.py#L83-L217"
+     },
+     {
+      "name": "episode weights",
+      "what": "LLM importance weight per member episode, in [0, 1]",
+      "kept_as": "derived",
+      "used_for": [
+       "index"
+      ],
+      "src": "paper §3.2.2, Eq. 2; code stage3 L650-L680",
+      "url": "https://github.com/EverMind-AI/HyperMem/blob/15c700908f3ec64d6931f253695e42c679a4c958/hypermem/main/stage3_hypergraph_index.py#L500-L730"
+     }
+    ]
+   },
+   {
+    "name": "Fact",
+    "role": "atomic answerable statement anchored to its episodes",
+    "made_by": "LLM per topic, reading all its episodes",
+    "fields": [
+     {
+      "name": "content",
+      "what": "one standalone sentence",
+      "kept_as": "extracted",
+      "used_for": [
+       "index",
+       "rerank",
+       "answer"
+      ],
+      "src": "paper §3.2.3, Fig. 8; code stage4 L955-L970",
+      "url": "https://github.com/EverMind-AI/HyperMem/blob/15c700908f3ec64d6931f253695e42c679a4c958/hypermem/main/stage4_hypergraph_retrieval.py#L900-L1008"
+     },
+     {
+      "name": "potential queries",
+      "what": "questions this fact may answer",
+      "kept_as": "extracted",
+      "used_for": [
+       "index"
+      ],
+      "src": "paper §3.2.3; code stage3 L83-L146",
+      "url": "https://github.com/EverMind-AI/HyperMem/blob/15c700908f3ec64d6931f253695e42c679a4c958/hypermem/main/stage3_hypergraph_index.py#L83-L217"
+     },
+     {
+      "name": "keywords, time, place",
+      "what": "terms for BM25; time and place also shown to the answer model",
+      "kept_as": "extracted",
+      "used_for": [
+       "index",
+       "answer"
+      ],
+      "src": "code stage3 L500-L550; stage4 L955-L970",
+      "url": "https://github.com/EverMind-AI/HyperMem/blob/15c700908f3ec64d6931f253695e42c679a4c958/hypermem/main/stage3_hypergraph_index.py#L500-L730"
+     }
+    ]
+   }
+  ],
+  "write": [
+   {
+    "step": "Segment",
+    "how": "after each new message an LLM judges whether the buffer is a complete episode (topic change, intent change, time gap, closing signals)",
+    "src": "paper §3.2.1, Fig. 6; code conv_prompts.py L2-L60",
+    "url": "https://github.com/EverMind-AI/HyperMem/blob/15c700908f3ec64d6931f253695e42c679a4c958/hypermem/prompts/conv_prompts.py#L2-L60"
+   },
+   {
+    "step": "Describe",
+    "how": "LLM writes title, summary and third-person narrative, keeping relative dates with the absolute date added",
+    "src": "code episode_prompts.py L10-L32",
+    "url": "https://github.com/EverMind-AI/HyperMem/blob/15c700908f3ec64d6931f253695e42c679a4c958/hypermem/prompts/episode_prompts.py#L10-L32"
+   },
+   {
+    "step": "Group into topics",
+    "how": "LLM compares the episode's title and summary with every existing topic, 10 per call; joins all matches (regenerating their title and summary) or creates a new topic; LLM weights each member episode",
+    "src": "paper §3.2.2, Fig. 7; code topic_extractor.py L740-L906",
+    "url": "https://github.com/EverMind-AI/HyperMem/blob/15c700908f3ec64d6931f253695e42c679a4c958/hypermem/extractors/topic_extractor.py#L740-L906"
+   },
+   {
+    "step": "Extract facts",
+    "how": "per topic, an LLM reads all its episodes and writes facts with potential queries, keywords and a weight, anchored to source episodes",
+    "src": "paper §3.2.3, Fig. 8, Alg. 1",
+    "url": "https://arxiv.org/pdf/2604.08256"
+   },
+   {
+    "step": "Index",
+    "how": "BM25 over weighted text (title ×3, summary ×2, ...) and Qwen3-Embedding-4B vectors; episode and fact vectors shifted by 0.5 × sum of their hyperedge vectors (softmax-weighted means)",
+    "params": {
+     "λ": "0.5",
+     "Agg": "sum"
+    },
+    "src": "paper §3.3.1, Eq. 2-3; code stage3 L83-L217, L600-L730",
+    "url": "https://github.com/EverMind-AI/HyperMem/blob/15c700908f3ec64d6931f253695e42c679a4c958/hypermem/main/stage3_hypergraph_index.py#L500-L730"
+   }
+  ],
+  "read": [
+   {
+    "step": "Topics",
+    "round": 1,
+    "input": "question",
+    "scores": "topic title + summary (dense); title, keywords, summary (BM25)",
+    "how": "BM25 and dense lists fused by RRF",
+    "params": {
+     "RRF k": "60",
+     "keep": "10"
+    },
+    "src": "code stage4 L44-L91, L545-L640",
+    "url": "https://github.com/EverMind-AI/HyperMem/blob/15c700908f3ec64d6931f253695e42c679a4c958/hypermem/main/stage4_hypergraph_retrieval.py#L545-L640"
+   },
+   {
+    "step": "Episodes",
+    "round": 1,
+    "input": "question",
+    "scores": "subject + summary + narrative",
+    "how": "dense over the chosen topics' episodes; BM25 over all episodes (top 2k) then filtered to them; RRF",
+    "params": {
+     "keep": "10"
+    },
+    "src": "code stage4 L652-L760",
+    "url": "https://github.com/EverMind-AI/HyperMem/blob/15c700908f3ec64d6931f253695e42c679a4c958/hypermem/main/stage4_hypergraph_retrieval.py#L652-L760"
+   },
+   {
+    "step": "Facts",
+    "round": 1,
+    "input": "question",
+    "scores": "fact sentence + potential queries + keywords + time/place",
+    "how": "same RRF over facts of the chosen episodes",
+    "params": {
+     "keep": "30"
+    },
+    "src": "code stage4 L770-L897",
+    "url": "https://github.com/EverMind-AI/HyperMem/blob/15c700908f3ec64d6931f253695e42c679a4c958/hypermem/main/stage4_hypergraph_retrieval.py#L770-L897"
+   },
+   {
+    "step": "Rerank (paper)",
+    "round": 1,
+    "how": "Qwen3-Reranker-4B over 100 RRF candidates at each level; in code only when HYPERMEM_USE_RERANKER=true (default false)",
+    "params": {
+     "candidates": "100"
+    },
+    "src": "paper §3.3.2, §4.1; code config.py L76, run_eval.sh L10",
+    "url": "https://github.com/EverMind-AI/HyperMem/blob/15c700908f3ec64d6931f253695e42c679a4c958/hypermem/config.py#L30-L80"
+   }
+  ],
+  "answer_context": {
+   "sees": "10 episode narratives with timestamps and 30 fact sentences with time and place",
+   "format": "'Episodes memories for conversation between {A} and {B}:' + '## Relevant Memory Cells: [Memory i] narrative, Time' + '## Relevant Facts: [Fact i] content, Time, Location', inside a step-by-step answer prompt",
+   "excludes": [
+    "raw turns",
+    "topic titles and summaries",
+    "episode titles and summaries"
+   ],
+   "src": "code stage4 L94-L131, L900-L1008; stage5 L24-L45",
+   "url": "https://github.com/EverMind-AI/HyperMem/blob/15c700908f3ec64d6931f253695e42c679a4c958/hypermem/main/stage4_hypergraph_retrieval.py#L900-L1008"
+  },
+  "compression": [
+   {
+    "what": "answer context vs Mem0's",
+    "kept": null,
+    "of": null,
+    "unit": "tokens",
+    "basis": "Fig. 5 gives token use relative to Mem0 only (Episode + Fact 7.5x, Fact only 2.5x); absolute token counts are not reported",
+    "src": "paper Fig. 5, §4.5",
+    "url": "https://arxiv.org/pdf/2604.08256"
+   }
+  ],
+  "paper_vs_code": [
+   {
+    "topic": "Reranker",
+    "paper": "Qwen3-Reranker-4B after RRF at every level",
+    "code": "off by default (HYPERMEM_USE_RERANKER=false); without it each level keeps the RRF top-k",
+    "src": "config.py L76; run_eval.sh L10",
+    "url": "https://github.com/EverMind-AI/HyperMem/blob/15c700908f3ec64d6931f253695e42c679a4c958/hypermem/config.py#L30-L80"
+   },
+   {
+    "topic": "Top-k",
+    "paper": "10 topics, 10 episodes, 30 facts (§4.1); Fig. 4 titles say 10-15-30",
+    "code": "run script 10/10/30; config.py fallback 15/20/30; README 15/25/30",
+    "src": "run_eval.sh L11-L14; config.py L35-L40",
+    "url": "https://github.com/EverMind-AI/HyperMem/blob/15c700908f3ec64d6931f253695e42c679a4c958/scripts/run_eval.sh#L8-L14"
+   },
+   {
+    "topic": "Topic aggregation",
+    "paper": "first retrieves similar past episodes by BM25 + embeddings, then asks the LLM",
+    "code": "LLM compares the new episode with every existing topic in batches of 10; no retrieval step",
+    "src": "topic_extractor.py L740-L906; stage2 L436-L441",
+    "url": "https://github.com/EverMind-AI/HyperMem/blob/15c700908f3ec64d6931f253695e42c679a4c958/hypermem/extractors/topic_extractor.py#L740-L906"
+   },
+   {
+    "topic": "Episode context",
+    "paper": "facts optionally augmented with episode summaries",
+    "code": "the full episode narrative (episode_description) is passed, not the summary",
+    "src": "stage4 L940-L950",
+    "url": "https://github.com/EverMind-AI/HyperMem/blob/15c700908f3ec64d6931f253695e42c679a4c958/hypermem/main/stage4_hypergraph_retrieval.py#L900-L1008"
+   }
+  ],
+  "open_questions": [
+   "Only one benchmark (LoCoMo) is used, and all hyperparameter sweeps are on that same test set.",
+   "The ablation does not separate hyperedge embedding propagation from the rest; λ = 0 still gives 91.69 vs 92.66 (Fig. 4)."
+  ],
+  "figures": [
+   {
+    "id": "build",
+    "title": "Memory construction",
+    "viewBox": "0 0 560 258",
+    "body": "<text class=\"fig-t\" x=\"46\" y=\"16\" text-anchor=\"middle\">Dialogue stream</text><rect class=\"gi-ev\" x=\"8\" y=\"26\" width=\"66\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"14\" y1=\"33\" x2=\"64\" y2=\"33\"/><rect class=\"gi-ev\" x=\"20\" y=\"46\" width=\"66\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"26\" y1=\"53\" x2=\"76\" y2=\"53\"/><rect class=\"gi-ev\" x=\"8\" y=\"66\" width=\"66\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"14\" y1=\"73\" x2=\"64\" y2=\"73\"/><rect class=\"gi-ev\" x=\"20\" y=\"94\" width=\"66\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"26\" y1=\"101\" x2=\"76\" y2=\"101\"/><rect class=\"gi-ev\" x=\"8\" y=\"114\" width=\"66\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"14\" y1=\"121\" x2=\"64\" y2=\"121\"/><rect class=\"gi-ev\" x=\"20\" y=\"142\" width=\"66\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"26\" y1=\"149\" x2=\"76\" y2=\"149\"/><rect class=\"gi-ev\" x=\"8\" y=\"162\" width=\"66\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"14\" y1=\"169\" x2=\"64\" y2=\"169\"/><line class=\"gi-e d\" x1=\"4\" y1=\"86\" x2=\"92\" y2=\"86\"/><line class=\"gi-e d\" x1=\"4\" y1=\"134\" x2=\"92\" y2=\"134\"/><text class=\"fig-s\" x=\"48\" y=\"194\" text-anchor=\"middle\">LLM boundary check</text><text class=\"fig-s\" x=\"48\" y=\"206\" text-anchor=\"middle\">per new message</text><path class=\"gi-a\" d=\"M96.0 96.0 L109.0 96.0\"/><polygon class=\"gi-ah\" points=\"116.0,96.0 109.0,100.0 109.0,92.0\"/><rect class=\"gi-ev\" x=\"118\" y=\"30\" width=\"128\" height=\"140\" rx=\"8\"/><text class=\"fig-t\" x=\"182\" y=\"46\" text-anchor=\"middle\">Episode</text><rect class=\"gi-f\" x=\"126\" y=\"54\" width=\"112\" height=\"20\" rx=\"5\"/><text class=\"fig-s\" x=\"132\" y=\"68\" text-anchor=\"start\">title</text><rect class=\"gi-f\" x=\"126\" y=\"78\" width=\"112\" height=\"20\" rx=\"5\"/><text class=\"fig-s\" x=\"132\" y=\"92\" text-anchor=\"start\">summary, 2-4 sent.</text><rect class=\"gi-hi\" x=\"126\" y=\"102\" width=\"112\" height=\"36\" rx=\"5\"/><text class=\"fig-s\" x=\"132\" y=\"116\" text-anchor=\"start\">narrative, third</text><text class=\"fig-s\" x=\"132\" y=\"129\" text-anchor=\"start\">person, dates added</text><rect class=\"gi-ev d\" x=\"126\" y=\"142\" width=\"112\" height=\"20\" rx=\"5\"/><text class=\"fig-s\" x=\"132\" y=\"156\" text-anchor=\"start\">raw turns: kept</text><path class=\"gi-a\" d=\"M246.0 70.0 L265.0 70.0\"/><polygon class=\"gi-ah\" points=\"272.0,70.0 265.0,74.0 265.0,66.0\"/><rect class=\"gi-llm\" x=\"250\" y=\"52\" width=\"22\" height=\"12\" rx=\"3\"/><text class=\"gi-lbl\" x=\"261\" y=\"61\" text-anchor=\"middle\">LLM</text><text class=\"fig-s\" x=\"252\" y=\"86\" text-anchor=\"start\">match vs all</text><text class=\"fig-s\" x=\"252\" y=\"97\" text-anchor=\"start\">topics, 10 at</text><text class=\"fig-s\" x=\"252\" y=\"108\" text-anchor=\"start\">a time</text><text class=\"fig-t\" x=\"390\" y=\"16\" text-anchor=\"middle\">Topics = episode hyperedges</text><path class=\"gi-h\" d=\"M290 44 C 286 22, 390 18, 402 36 C 414 58, 330 74, 304 68 C 292 64, 290 56, 290 44 Z\"/><rect class=\"gi-hi\" x=\"304\" y=\"40\" width=\"16\" height=\"12\" rx=\"3\"/><rect class=\"gi-hi\" x=\"332\" y=\"32\" width=\"16\" height=\"12\" rx=\"3\"/><rect class=\"gi-hi\" x=\"358\" y=\"44\" width=\"16\" height=\"12\" rx=\"3\"/><text class=\"fig-s\" x=\"404\" y=\"60\" text-anchor=\"start\">Alice's marathon</text><path class=\"gi-h\" d=\"M350 98 C 346 76, 452 74, 462 92 C 472 114, 390 128, 364 122 C 352 118, 350 108, 350 98 Z\"/><rect class=\"gi-hi\" x=\"364\" y=\"92\" width=\"16\" height=\"12\" rx=\"3\"/><rect class=\"gi-hi\" x=\"392\" y=\"86\" width=\"16\" height=\"12\" rx=\"3\"/><rect class=\"gi-hi\" x=\"420\" y=\"98\" width=\"16\" height=\"12\" rx=\"3\"/><text class=\"fig-s\" x=\"470\" y=\"106\" text-anchor=\"start\">Bob's project</text><text class=\"fig-s\" x=\"420\" y=\"136\" text-anchor=\"middle\">no match → new topic; an episode</text><text class=\"fig-s\" x=\"420\" y=\"148\" text-anchor=\"middle\">may join several; LLM weight per episode</text><path class=\"gi-a\" d=\"M300.0 150.0 L300.0 169.0\"/><polygon class=\"gi-ah\" points=\"300.0,176.0 296.0,169.0 304.0,169.0\"/><rect class=\"gi-llm\" x=\"284\" y=\"158\" width=\"30\" height=\"12\" rx=\"3\"/><text class=\"gi-lbl\" x=\"299\" y=\"167\" text-anchor=\"middle\">LLM</text><rect class=\"gi-f\" x=\"262\" y=\"178\" width=\"150\" height=\"64\" rx=\"8\"/><text class=\"fig-t\" x=\"270\" y=\"193\" text-anchor=\"start\">Facts, per topic</text><text class=\"fig-s\" x=\"270\" y=\"207\" text-anchor=\"start\">sentence + likely questions</text><text class=\"fig-s\" x=\"270\" y=\"219\" text-anchor=\"start\">+ keywords + weight,</text><text class=\"fig-s\" x=\"270\" y=\"231\" text-anchor=\"start\">linked to source episodes</text><path class=\"gi-h\" d=\"M428 196 C 426 180, 520 178, 530 194 C 540 212, 470 224, 446 220 C 432 216, 428 206, 428 196 Z\"/><circle class=\"gi-n\" cx=\"448\" cy=\"198\" r=\"5\"/><circle class=\"gi-n\" cx=\"470\" cy=\"192\" r=\"5\"/><circle class=\"gi-n\" cx=\"494\" cy=\"200\" r=\"5\"/><circle class=\"gi-n\" cx=\"514\" cy=\"196\" r=\"5\"/><text class=\"fig-s\" x=\"488\" y=\"236\" text-anchor=\"middle\">fact hyperedge = 1 episode</text><text class=\"fig-s\" x=\"488\" y=\"250\" text-anchor=\"middle\">h' = h + 0.5 · Σ edges</text>",
+    "text": [
+     "An LLM cuts the dialogue into episodes and writes a title, summary and narrative for each; another LLM call joins each episode to matching topics or starts a new one.",
+     "Facts are extracted per topic; topics and episodes are weighted hyperedges, and node vectors are shifted towards their hyperedges."
+    ],
+    "src": "paper §3.2, §3.3.1, Figs. 6-8; code conv_prompts.py, topic_extractor.py L740-L906, stage3 L600-L730",
+    "url": "https://github.com/EverMind-AI/HyperMem/blob/15c700908f3ec64d6931f253695e42c679a4c958/hypermem/extractors/topic_extractor.py#L740-L906"
+   },
+   {
+    "id": "read",
+    "title": "Memory retrieval",
+    "viewBox": "0 0 560 246",
+    "body": "<rect class=\"gi-f\" x=\"4\" y=\"34\" width=\"60\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"34.0\" y=\"60.0\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M64.0 56.0 L69.0 56.0\"/><polygon class=\"gi-ah\" points=\"76.0,56.0 69.0,60.0 69.0,52.0\"/><rect class=\"gi-v fig-soft\" x=\"76\" y=\"34\" width=\"98\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"125.0\" y=\"54.0\" text-anchor=\"middle\">Topics</text><text class=\"fig-s\" x=\"125.0\" y=\"67.0\" text-anchor=\"middle\">BM25 + dense, RRF</text><path class=\"gi-a\" d=\"M174.0 56.0 L179.0 56.0\"/><polygon class=\"gi-ah\" points=\"186.0,56.0 179.0,60.0 179.0,52.0\"/><rect class=\"gi-f\" x=\"186\" y=\"34\" width=\"58\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"215.0\" y=\"54.0\" text-anchor=\"middle\">top 10</text><text class=\"fig-s\" x=\"215.0\" y=\"67.0\" text-anchor=\"middle\">topics</text><path class=\"gi-a\" d=\"M244.0 56.0 L249.0 56.0\"/><polygon class=\"gi-ah\" points=\"256.0,56.0 249.0,60.0 249.0,52.0\"/><rect class=\"gi-v fig-soft\" x=\"256\" y=\"34\" width=\"98\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"305.0\" y=\"54.0\" text-anchor=\"middle\">Their episodes</text><text class=\"fig-s\" x=\"305.0\" y=\"67.0\" text-anchor=\"middle\">BM25 + dense, RRF</text><path class=\"gi-a\" d=\"M354.0 56.0 L359.0 56.0\"/><polygon class=\"gi-ah\" points=\"366.0,56.0 359.0,60.0 359.0,52.0\"/><rect class=\"gi-f\" x=\"366\" y=\"34\" width=\"58\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"395.0\" y=\"54.0\" text-anchor=\"middle\">top 10</text><text class=\"fig-s\" x=\"395.0\" y=\"67.0\" text-anchor=\"middle\">episodes</text><path class=\"gi-a\" d=\"M424.0 56.0 L429.0 56.0\"/><polygon class=\"gi-ah\" points=\"436.0,56.0 429.0,60.0 429.0,52.0\"/><rect class=\"gi-v fig-soft\" x=\"436\" y=\"34\" width=\"118\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"495.0\" y=\"54.0\" text-anchor=\"middle\">Their facts</text><text class=\"fig-s\" x=\"495.0\" y=\"67.0\" text-anchor=\"middle\">BM25 + dense, RRF</text><path class=\"gi-a\" d=\"M495.0 78.0 L495.0 97.0\"/><polygon class=\"gi-ah\" points=\"495.0,104.0 491.0,97.0 499.0,97.0\"/><rect class=\"gi-f\" x=\"446\" y=\"104\" width=\"98\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"495.0\" y=\"128.0\" text-anchor=\"middle\">top 30 facts</text><rect class=\"fig-cross fig-soft\" x=\"76\" y=\"96\" width=\"348\" height=\"40\" rx=\"8\"/><text class=\"fig-s\" x=\"250\" y=\"112\" text-anchor=\"middle\">Paper: Qwen3-Reranker-4B reranks 100 RRF candidates at each level</text><text class=\"fig-s\" x=\"250\" y=\"126\" text-anchor=\"middle\">Released code: reranker off by default, RRF order kept (k = 60)</text><path class=\"gi-a\" d=\"M495.0 144.0 L495.0 169.0\"/><polygon class=\"gi-ah\" points=\"495.0,176.0 491.0,169.0 499.0,169.0\"/><path class=\"gi-a d\" d=\"M395.0 78.0 L395.0 90.0 L440.0 90.0 L440.0 169.0\"/><polygon class=\"gi-ah\" points=\"440.0,176.0 436.0,169.0 444.0,169.0\"/><rect class=\"gi-hi\" x=\"330\" y=\"176\" width=\"226\" height=\"64\" rx=\"8\"/><text class=\"fig-t\" x=\"443\" y=\"194\" text-anchor=\"middle\">Answer: GPT-4.1-mini, step by step</text><text class=\"fig-s\" x=\"443\" y=\"208\" text-anchor=\"middle\">10 episode narratives with times</text><text class=\"fig-s\" x=\"443\" y=\"220\" text-anchor=\"middle\">+ 30 facts with time / place</text><text class=\"fig-s\" x=\"443\" y=\"232\" text-anchor=\"middle\">no topic text, no raw turns</text><text class=\"fig-s\" x=\"160\" y=\"170\" text-anchor=\"middle\">dense scores use propagated embeddings;</text><text class=\"fig-s\" x=\"160\" y=\"183\" text-anchor=\"middle\">BM25 scores all nodes of that level, then</text><text class=\"fig-s\" x=\"160\" y=\"196\" text-anchor=\"middle\">keeps those inside the chosen topics / episodes</text><text class=\"fig-s\" x=\"160\" y=\"222\" text-anchor=\"middle\">episode hits are not combined with topic scores;</text><text class=\"fig-s\" x=\"160\" y=\"235\" text-anchor=\"middle\">each level re-ranks from the question alone</text>",
+    "text": [
+     "BM25 and dense scores fused by RRF pick 10 topics, then 10 of their episodes, then 30 of those episodes' facts.",
+     "The answer model reads the 10 episode narratives and 30 facts; the paper also reranks each level, which the released code leaves off by default."
+    ],
+    "src": "paper §3.3.2, §4.1, Alg. 3; code stage4 L44-L1008, config.py",
+    "url": "https://github.com/EverMind-AI/HyperMem/blob/15c700908f3ec64d6931f253695e42c679a4c958/hypermem/main/stage4_hypergraph_retrieval.py#L545-L640"
+   }
+  ],
+  "key_numbers": [
+   {
+    "label": "Hyperedge smoothing",
+    "value": "h' = h + 0.5 · Σ hyperedge vectors",
+    "src": "paper §4.1; code config.py L21-L22",
+    "section": "construction"
+   },
+   {
+    "label": "Topic matching",
+    "value": "LLM vs all topics, 10 per call",
+    "src": "code stage2 L436-L441",
+    "section": "construction"
+   },
+   {
+    "label": "Fusion",
+    "value": "BM25 + dense, RRF k = 60",
+    "src": "code stage4 L44",
+    "section": "method"
+   },
+   {
+    "label": "Kept per level",
+    "value": "10 topics → 10 episodes → 30 facts",
+    "src": "paper §4.1",
+    "section": "method"
+   },
+   {
+    "label": "Reranker pool",
+    "value": "100 candidates per level (paper)",
+    "src": "paper §4.1",
+    "section": "method"
+   },
+   {
+    "label": "Topic top-k 1 vs 10",
+    "value": "76.88 vs 92.66",
+    "src": "paper §4.4, Fig. 4",
+    "section": "method"
+   },
+   {
+    "label": "Context tokens",
+    "value": "7.5x Mem0 (Episode + Fact); 2.5x (Fact only, 89.48)",
+    "src": "paper Fig. 5",
+    "section": "results"
+   }
+  ],
+  "components": [
+   {
+    "role": "Cuts episodes, writes topics and facts",
+    "model": "LLM (GPT-4.1-mini in the released config)",
+    "kind": "llm",
+    "src": "code config.py L87-L95",
+    "url": "https://github.com/EverMind-AI/HyperMem/blob/15c700908f3ec64d6931f253695e42c679a4c958/hypermem/config.py#L30-L80"
+   },
+   {
+    "role": "Dense search",
+    "model": "Qwen3-Embedding-4B",
+    "kind": "retriever",
+    "src": "paper §4.1"
+   },
+   {
+    "role": "Lexical search",
+    "model": "BM25",
+    "kind": "retriever",
+    "src": "paper §3.3.1"
+   },
+   {
+    "role": "Fuse and cut per level",
+    "model": "RRF (k = 60), top-k",
+    "kind": "rule",
+    "src": "code stage4 L44-L91",
+    "url": "https://github.com/EverMind-AI/HyperMem/blob/15c700908f3ec64d6931f253695e42c679a4c958/hypermem/main/stage4_hypergraph_retrieval.py#L44-L91"
+   },
+   {
+    "role": "Rerank (paper; off by default in code)",
+    "model": "Qwen3-Reranker-4B",
+    "kind": "cross",
+    "src": "paper §4.1; code config.py L76",
+    "url": "https://github.com/EverMind-AI/HyperMem/blob/15c700908f3ec64d6931f253695e42c679a4c958/hypermem/config.py#L30-L80"
+   },
+   {
+    "role": "Answer",
+    "model": "GPT-4.1-mini, chain of thought",
+    "kind": "llm",
+    "src": "paper §4.1"
+   }
+  ],
+  "ablation": {
+   "cols": [
+    "LoCoMo overall"
+   ],
+   "rows": [
+    [
+     "HyperMem (full)",
+     "92.66"
+    ],
+    [
+     "without fact context",
+     "91.75"
+    ],
+    [
+     "without episode context",
+     "88.90"
+    ],
+    [
+     "without topic retrieval",
+     "91.94"
+    ],
+    [
+     "without topic retrieval and fact context",
+     "91.75"
+    ],
+    [
+     "without topic retrieval and episode context",
+     "88.83"
+    ],
+    [
+     "without topic and episode retrieval (facts only)",
+     "90.19"
+    ]
+   ],
+   "src": "paper Table 2 (GPT-4.1-mini answers, GPT-4o-mini judge)"
+  },
+  "discussion": {
+   "takeaway": "Grouping a conversation into topics, episodes and facts linked by hyperedges, and reading it top-down, gives the highest LoCoMo score in the paper (92.73), mostly thanks to returning whole episode narratives alongside facts.",
+   "claims": [
+    {
+     "claim": "State of the art on LoCoMo.",
+     "evidence": "92.73 overall vs 86.49 HyperGraphRAG and 85.38 MIRIX. Table 1, §4.2"
+    },
+    {
+     "claim": "Hyperedges bind scattered episodes for multi-hop questions.",
+     "evidence": "multi-hop 93.62 vs 84.04 LightRAG; facts-only retrieval loses 5.68 on multi-hop. Table 1, §4.3"
+    },
+    {
+     "claim": "Episode context is the most important component.",
+     "evidence": "without it 88.90 (−3.76), temporal −5.61. Table 2, Fig. 3"
+    },
+    {
+     "claim": "Enough topics must be opened.",
+     "evidence": "topic top-k 1 → 10 raises 76.88 → 92.66. §4.4, Fig. 4"
+    },
+    {
+     "claim": "More accurate and cheaper than graph RAG.",
+     "evidence": "92.73 at 7.5x Mem0 tokens vs GraphRAG 67.60 at 35.3x and HyperGraphRAG 86.49 at 26.3x. Fig. 5"
+    }
+   ],
+   "limits": [
+    "Assumes a single user; multi-user or multi-agent memory raises access-control and isolation issues.",
+    "Open-domain questions stay hard because they need knowledge beyond the conversation."
+   ],
+   "limits_src": "paper, Limitations",
+   "reading": [
+    "Memory-system baselines are copied from other papers (Mem0, MIRIX, MemOS) that used other answer models: the Mem0-sourced rows used GPT-4o-mini while HyperMem uses GPT-4.1-mini, and MIRIX's source judged with GPT-4.1, not the GPT-4o-mini the caption states.",
+    "The best result (92.73) and the ablation baseline (92.66) come from slightly different top-k settings; λ and top-k were tuned on LoCoMo itself, the only benchmark.",
+    "Topics only select which episodes are searched: their text never reaches the answer model, and episode and fact scores do not use the topic score or the hyperedge weights (code stage4 L680-L710, L795-L825).",
+    "Skipping topic retrieval costs 0.72 points, while dropping episode narratives costs 3.76, so most of the gain comes from giving the answer model rewritten episodes, much as in EverMemOS from the same group.",
+    "BM25 at the episode and fact levels scores the whole conversation and keeps only hits inside the chosen set (top 2k), so it can contribute few candidates.",
+    "The released code has no reranker by default and a question-type 'temporal enhancement' flag that is computed but unused; which settings produced Table 1 cannot be checked.",
+    "The repo README reprints Table 1 with a few different baseline cells (OpenAI open-domain 63.22 vs 62.29, LangMem 72.20 vs 71.12, MemU 50.56 vs 50.01)."
+   ]
+  }
+ }
+}

@@ -1,0 +1,555 @@
+{
+  "id": "webweaver",
+  "name": "WebWeaver",
+  "paper": {
+    "title": "WebWeaver: Structuring Web-Scale Evidence with Dynamic Outlines for Open-Ended Deep Research",
+    "arxiv": "2509.13312",
+    "url": "https://arxiv.org/abs/2509.13312",
+    "venue": "arXiv 2025",
+    "venue_short": "arXiv",
+    "track": "preprint",
+    "year": 2025,
+    "code": "https://github.com/Alibaba-NLP/DeepResearch/tree/main/WebAgent/WebWeaver"
+  },
+  "design": {
+    "construction": {
+      "unit": "evidence-bank entry per visited URL (goal, summary, evidence) + an outline whose sections cite entry ids",
+      "kept_as": "LLM-extracted evidence passages (asked to keep original wording) + LLM summary",
+      "processing": "web search → LLM picks URLs → page read (≤24k tokens) → LLM extracts summary and evidence; planner rewrites the cited outline",
+      "trigger": "agent-decides",
+      "writer": "gpt-oss-120b (URL selection, summary, evidence); planner LLM (outline)"
+    },
+    "organization": {
+      "structure": "flat id-keyed evidence bank + hierarchical outline citing ids",
+      "stores": "memory bank (url → goal, summary, evidence); outline",
+      "index": "sequential ids <id_n> per URL; no embeddings"
+    },
+    "management": {
+      "operations": "append entries for new URLs (seen URLs reused); outline rewritten in each cycle",
+      "conflicts": null,
+      "forgetting": null,
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "writer names the ids cited under the current section",
+      "candidates": "bank entries with those ids (exact lookup)",
+      "selection": "writer LLM, guided by the outline citations",
+      "budget": "retrieved evidence cut at 20,000 characters per call; writer context cap 100k tokens"
+    },
+    "use": {
+      "context": "outline + goal and summary of every page + the current section's evidence; earlier evidence masked",
+      "reasoning": "section-by-section ReAct writing (~25 steps per report)"
+    },
+    "control": {
+      "construction": "agent-tool-calls",
+      "management": "agent-tool-calls",
+      "retrieval": "agent-tool-calls"
+    }
+  },
+  "classify": {
+    "structure": "agent-defined",
+    "index": "exact match",
+    "management": "update in place",
+    "candidates": "LLM routing",
+    "decides": "LLM decides",
+    "note": "The bank itself is a flat append-only list keyed by id; the structure is the agent-written outline, which is rewritten each cycle and routes the writer to ids."
+  },
+  "tags": {
+    "fidelity": "extracted",
+    "structure": [
+      "flat",
+      "tree"
+    ],
+    "write_time": [
+      "extract",
+      "summarize",
+      "agent-chosen"
+    ],
+    "selection": [
+      "llm-tool-call",
+      "planner"
+    ],
+    "memory_type": [
+      "working",
+      "semantic"
+    ],
+    "learning": "mixed",
+    "domain": [
+      "web"
+    ]
+  },
+  "stages": {
+    "ingestion": "The planner issues batches of web queries; a search API returns the top 10 results per query, an LLM picks relevant URLs from titles and snippets, and each page is read and cut to 24k tokens.",
+    "construction": "An LLM (gpt-oss-120b) turns each page into a short query-focused summary and longer evidence (quotes, data, tables); summary and evidence are stored under a new <id_n> in the memory bank.",
+    "organization": "The bank is a flat list keyed by id. The planner keeps a hierarchical outline and cites bank ids under each subsection; only summaries enter the planner's own context.",
+    "update": "After new evidence arrives the planner rewrites the whole outline (expand, restructure, add citations); on average 2.2 outline rounds per task.",
+    "retrieval": "The writer walks the outline section by section, calling retrieve with the cited ids to pull those entries' evidence from the bank.",
+    "answer": "The writer reads the outline, every page's summary and the current section's evidence, writes the section, and the evidence is masked before the next section.",
+    "learning": "WebWeaver-3k (3.3k planning and 3.1k writing trajectories from a teacher) is used for full fine-tuning of Qwen3-30B-A3B."
+  },
+  "summary": "Deep-research agent whose memory is an id-keyed evidence bank plus a dynamic outline that cites it: the planner interleaves search with outline rewriting, and the writer composes section by section from only the evidence each section cites.",
+  "verified": false,
+  "notes": "DESIGN: paper §2 (actions, memory bank), §3.2-3.3, §4.1, Tables 3-4; code DeepResearch repo WebAgent/WebWeaver at f72f75d8 (2026-02-27). Venue: only arXiv v1-v3 known (v3 2025-10-07); arXiv comment 'An agent system for open-ended deep research'. Not a conversational memory system: the 'memory' is per-task working memory for one report. learning=mixed because the framework is prompt-only but the paper also SFTs a 30B model on WebWeaver-3k.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2509.13312v3 (PDF read 2026-09-30)",
+      "code": "https://github.com/Alibaba-NLP/DeepResearch/tree/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/",
+      "code_note": "The WebWeaver folder was added to the Alibaba-NLP/DeepResearch repo on 2026-02-26 (commit 330a5bf2) and patched the next day (f72f75d8, pinned here), about five months after arXiv v3. Its scripts default to qwen3-235b-a22b-instruct-2507 for planner and writer, while the paper's default is Claude-sonnet-4; the summary model is any local vLLM model. Exact identity with the paper's runs is not guaranteed."
+    },
+    "headline": [
+      "The bank stores LLM-extracted evidence per URL, not the raw page; the planner only ever sees the short summaries.",
+      "The writer is not limited to cited evidence: its first prompt already holds every page's goal and summary; the retrieve call adds full evidence for the ids a section cites.",
+      "After each written section its evidence is masked from the context, so the writer's context stays near one section's evidence."
+    ],
+    "units": [
+      {
+        "name": "Memory bank entry",
+        "role": "one visited web page, reduced by an LLM",
+        "made_by": "gpt-oss-120b extractor (paper); SUMMARY_MODEL_PATH in code",
+        "fields": [
+          {
+            "name": "id",
+            "what": "<id_n>, assigned in order of first visit",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code react_agent_search_id.py L128-L136",
+            "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/react_agent_search_id.py#L128-L136"
+          },
+          {
+            "name": "url",
+            "what": "page address; also printed in the reference list",
+            "kept_as": "verbatim",
+            "used_for": [
+              "index"
+            ],
+            "src": "code react_agent_outline_write.py L141-L145",
+            "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/react_agent_outline_write.py#L141-L145"
+          },
+          {
+            "name": "goal",
+            "what": "the planner's search goal for the call that found the page",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code react_agent_outline_write.py L119-L128",
+            "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/react_agent_outline_write.py#L119-L128"
+          },
+          {
+            "name": "summary",
+            "what": "concise query-focused paragraph",
+            "kept_as": "summarized",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.2; code tool_visit.py L27-L41, react_agent_search_id.py L97-L114",
+            "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/tool/tool_visit.py#L27-L41"
+          },
+          {
+            "name": "evidence",
+            "what": "most relevant passages, prompt asks for full original context incl. tables, from the first 24k tokens of the page",
+            "kept_as": "extracted",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.2; code tool_visit.py L27-L44, L275-L301",
+            "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/tool/tool_visit.py#L27-L44"
+          },
+          {
+            "name": "rational",
+            "what": "extractor's reasoning about where the relevant content is",
+            "kept_as": "extracted",
+            "used_for": [],
+            "src": "code tool_visit.py L36-L40",
+            "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/tool/tool_visit.py#L36-L40"
+          }
+        ]
+      },
+      {
+        "name": "Outline",
+        "role": "report plan whose subsections cite bank ids",
+        "made_by": "planner LLM",
+        "fields": [
+          {
+            "name": "sections + citations",
+            "what": "hierarchy up to four levels, each subsection followed by <citation><id_k>…</citation>",
+            "kept_as": "rewritten",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper §3.2; code search_user_prompt_id_3.py L12-L14",
+            "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/prompt/search_user_prompt_id_3.py#L12-L14"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Search",
+        "how": "planner calls search_and_visit with several queries and a goal; the search API returns 10 results per query",
+        "src": "paper §2, §3.2; code tool_search.py L21, tool_search_and_visit.py L52-L96",
+        "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/tool/tool_search_and_visit.py#L52-L96"
+      },
+      {
+        "step": "Pick URLs",
+        "how": "LLM selects relevant URLs from titles and snippets; URLs already in the bank are reused, not re-read",
+        "src": "paper §3.2; code tool_select_url.py L8-L27, tool_search_and_visit.py L73-L93",
+        "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/tool/tool_search_and_visit.py#L73-L93"
+      },
+      {
+        "step": "Read and extract",
+        "how": "page fetched as markdown, cut to 24k tokens; LLM returns rational, evidence and summary as JSON",
+        "params": {
+          "page cap": "24,000 tokens",
+          "temperature": "0.7"
+        },
+        "src": "paper §3.2; code tool_visit.py L44, L181-L209, L275-L301",
+        "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/tool/tool_visit.py#L275-L301"
+      },
+      {
+        "step": "Store",
+        "how": "new URLs appended to page_info with the next id; only '<id_n> Summary' goes back into the planner's context",
+        "out": "112 saved pages, 67k evidence tokens and 15k summary tokens per DRB task",
+        "src": "paper Table 3; code react_agent_search_id.py L97-L136, L215-L221",
+        "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/react_agent_search_id.py#L215-L221"
+      },
+      {
+        "step": "Rewrite outline",
+        "how": "planner emits a complete new outline inside <write_outline>, citing ids; prompt asks for at least three updates",
+        "out": "2.16 optimization rounds, 4,876-token outline (DRB)",
+        "src": "paper §3.2, Table 3, Fig. 5; code react_agent_search_id.py L179-L193",
+        "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/react_agent_search_id.py#L179-L193"
+      },
+      {
+        "step": "Stop",
+        "how": "planner outputs <terminate>; hard stops at 40 LLM calls or 84k context tokens",
+        "params": {
+          "max calls": "40",
+          "context cap": "84k tokens"
+        },
+        "src": "paper §3.2; code react_agent_search_id.py L25, L228-L259",
+        "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/react_agent_search_id.py#L228-L259"
+      }
+    ],
+    "read": [
+      {
+        "step": "Load",
+        "round": 1,
+        "input": "question",
+        "scores": "none",
+        "how": "writer prompt holds the outline (URLs replaced by ids) and the goal + summary of every bank entry",
+        "src": "code react_agent_outline_write.py L146-L199",
+        "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/react_agent_outline_write.py#L146-L199"
+      },
+      {
+        "step": "Retrieve",
+        "round": 1,
+        "input": "ids the writer names for the next section",
+        "scores": "none (exact id lookup)",
+        "how": "returns the evidence of those entries (raw page re-fetched only if an id has no stored evidence), cut at 20,000 characters",
+        "params": {
+          "cap": "20,000 characters"
+        },
+        "src": "paper §3.3; code tool_retrieve.py L97-L170",
+        "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/tool/tool_retrieve.py#L97-L170"
+      },
+      {
+        "step": "Write and mask",
+        "round": 1,
+        "how": "writer thinks, writes the section in <write>; the preceding tool response is replaced by a placeholder",
+        "out": "24.78 writing steps, 26,127 output tokens per DRB report",
+        "src": "paper §3.3, Table 3; code react_agent_outline_write.py L229-L243",
+        "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/react_agent_outline_write.py#L229-L243"
+      }
+    ],
+    "answer_context": {
+      "sees": "outline + every page's goal and summary + evidence of the ids cited for the current section",
+      "format": "instruction, <material><id_n>Goal/Summary</id_n>…</material>, <outline>…</outline>, query; then <tool_response> with <id_n>Content: evidence</id_n>",
+      "excludes": [
+        "raw web pages",
+        "evidence of earlier sections (masked)",
+        "the planner's reasoning trace"
+      ],
+      "includes": [
+        "all summaries (~15k tokens on DRB)",
+        "current section's evidence",
+        "sections already written"
+      ],
+      "src": "code react_agent_outline_write.py L146-L177, L229-L265",
+      "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/react_agent_outline_write.py#L146-L177"
+    },
+    "compression": [
+      {
+        "what": "planner context (summaries) vs stored evidence",
+        "kept": 15.0,
+        "of": 67.2,
+        "unit": "k tokens",
+        "basis": "Table 3 # Summary token 14,980 vs # Evidence token 67,237 per DRB task (Claude-sonnet-4); these are different texts, not a ratio of one text",
+        "src": "paper Table 3",
+        "url": "https://arxiv.org/pdf/2509.13312"
+      },
+      {
+        "what": "stored evidence vs raw pages",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported. Each page is cut to 24k tokens before extraction; raw page lengths are not given.",
+        "src": "code tool_visit.py L44, L275",
+        "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/tool/tool_visit.py#L275"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Hierarchical vs brute-force writer, DRB overall",
+        "value": "50.58 vs 46.02",
+        "src": "paper Fig. 10"
+      },
+      {
+        "label": "Citation accuracy, hierarchical vs brute-force",
+        "value": "93.37 vs 86.73",
+        "src": "paper Fig. 10"
+      },
+      {
+        "label": "Outline quality (LLM judge) round 1 → 3, DRB",
+        "value": "81.9 → 92.3",
+        "src": "paper Fig. 8, §4.3"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "What the bank holds",
+        "paper": "§2: raw pages retrieved via citations; §3.2: extracted evidence",
+        "code": "LLM-extracted evidence per URL; raw page re-fetched only when an id has no stored evidence",
+        "src": "tool_retrieve.py L135-L158",
+        "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/tool/tool_retrieve.py#L135-L158"
+      },
+      {
+        "topic": "Writer context",
+        "paper": "only the relevant evidence for each section",
+        "code": "the first writer prompt also includes goal + summary of every bank entry",
+        "src": "react_agent_outline_write.py L146-L177",
+        "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/react_agent_outline_write.py#L146-L177"
+      },
+      {
+        "topic": "Default models",
+        "paper": "Claude-sonnet-4 default; gpt-oss-120b for URL selection, summary, evidence",
+        "code": "scripts default to qwen3-235b-a22b-instruct-2507; summary model set by SUMMARY_MODEL_PATH",
+        "src": "run_search.sh, run_write.sh",
+        "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/run_write.sh"
+      },
+      {
+        "topic": "Retrieval cap",
+        "paper": "not stated",
+        "code": "retrieved evidence cut to 20,000 characters when over 20,000 tokens",
+        "src": "tool_retrieve.py L105, L164-L168",
+        "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/tool/tool_retrieve.py#L164-L168"
+      }
+    ],
+    "open_questions": [
+      "The brute-force baseline changes two things at once (whole bank in context and no per-section retrieval), so the gain cannot be split between focused context and outline-guided citation.",
+      "The outline-round study uses only tasks that ran three rounds and compares their own intermediate outlines, so it does not show what a one-round policy would score on all tasks."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 240",
+        "body": "<rect class=\"gi-llm\" x=\"4\" y=\"20\" width=\"64\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"36.0\" y=\"40.0\" text-anchor=\"middle\">Planner</text><text class=\"fig-s\" x=\"36.0\" y=\"53.0\" text-anchor=\"middle\">LLM agent</text><path class=\"gi-a\" d=\"M68 42 L71 42\"/><polygon class=\"gi-ah\" points=\"78,42 71,38 71,46\"/><rect class=\"gi-v fig-soft\" x=\"78\" y=\"20\" width=\"76\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"116.0\" y=\"40.0\" text-anchor=\"middle\">Search</text><text class=\"fig-s\" x=\"116.0\" y=\"53.0\" text-anchor=\"middle\">top 10 / query</text><path class=\"gi-a\" d=\"M154 42 L155 42\"/><polygon class=\"gi-ah\" points=\"162,42 155,38 155,46\"/><rect class=\"gi-llm\" x=\"162\" y=\"20\" width=\"70\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"197.0\" y=\"40.0\" text-anchor=\"middle\">Pick URLs</text><text class=\"fig-s\" x=\"197.0\" y=\"53.0\" text-anchor=\"middle\">titles, snippets</text><path class=\"gi-a\" d=\"M232 42 L233 42\"/><polygon class=\"gi-ah\" points=\"240,42 233,38 233,46\"/><rect class=\"gi-f\" x=\"240\" y=\"20\" width=\"66\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"273.0\" y=\"40.0\" text-anchor=\"middle\">Read page</text><text class=\"fig-s\" x=\"273.0\" y=\"53.0\" text-anchor=\"middle\">≤24k tokens</text><path class=\"gi-a\" d=\"M306 42 L309 42\"/><polygon class=\"gi-ah\" points=\"316,42 309,38 309,46\"/><rect class=\"gi-llm\" x=\"316\" y=\"20\" width=\"70\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"351.0\" y=\"40.0\" text-anchor=\"middle\">Extract</text><text class=\"fig-s\" x=\"351.0\" y=\"53.0\" text-anchor=\"middle\">gpt-oss-120b</text><path class=\"gi-a\" d=\"M386 42 L395 42\"/><polygon class=\"gi-ah\" points=\"402,42 395,38 395,46\"/><rect class=\"gi-ev\" x=\"402\" y=\"8\" width=\"152\" height=\"170\" rx=\"10\"/><text class=\"fig-t\" x=\"478\" y=\"25\" text-anchor=\"middle\">Memory bank</text><rect class=\"gi-ev\" x=\"410\" y=\"33\" width=\"136\" height=\"72\" rx=\"6\"/><text class=\"fig-s\" x=\"416\" y=\"47\" text-anchor=\"start\">&lt;id_1&gt; url, goal</text><rect class=\"gi-f\" x=\"416\" y=\"53\" width=\"124\" height=\"18\" rx=\"4\"/><text class=\"fig-s\" x=\"422\" y=\"66\" text-anchor=\"start\">summary</text><rect class=\"gi-hi\" x=\"416\" y=\"76\" width=\"124\" height=\"22\" rx=\"4\"/><text class=\"fig-s\" x=\"422\" y=\"91\" text-anchor=\"start\">evidence: quotes, data</text><rect class=\"gi-ev\" x=\"410\" y=\"111\" width=\"136\" height=\"24\" rx=\"6\"/><text class=\"fig-s\" x=\"416\" y=\"127\" text-anchor=\"start\">&lt;id_2&gt; …</text><rect class=\"gi-ev\" x=\"410\" y=\"140\" width=\"136\" height=\"24\" rx=\"6\"/><text class=\"fig-s\" x=\"416\" y=\"156\" text-anchor=\"start\">&lt;id_n&gt; …</text><path class=\"gi-a d\" d=\"M351 64 L351 90 L46 90 L46 71\"/><polygon class=\"gi-ah\" points=\"46,64 50,71 42,71\"/><text class=\"fig-s\" x=\"198\" y=\"84\" text-anchor=\"middle\">summary only → planner context</text><path class=\"gi-a\" d=\"M18 64 L18 168 L55 168\"/><polygon class=\"gi-ah\" points=\"62,168 55,164 55,172\"/><text class=\"fig-s\" x=\"22\" y=\"118\" text-anchor=\"start\">write</text><text class=\"fig-s\" x=\"22\" y=\"131\" text-anchor=\"start\">outline</text><rect class=\"gi-ev\" x=\"62\" y=\"104\" width=\"244\" height=\"112\" rx=\"10\"/><text class=\"fig-t\" x=\"184\" y=\"121\" text-anchor=\"middle\">Outline (rewritten each cycle)</text><rect class=\"gi-f\" x=\"72\" y=\"130\" width=\"224\" height=\"20\" rx=\"4\"/><text class=\"fig-s\" x=\"80\" y=\"144\" text-anchor=\"start\">1.1 Definition  &lt;id_1&gt;</text><rect class=\"gi-f\" x=\"72\" y=\"156\" width=\"224\" height=\"20\" rx=\"4\"/><text class=\"fig-s\" x=\"80\" y=\"170\" text-anchor=\"start\">1.2 Evolution  &lt;id_2&gt;, &lt;id_3&gt;</text><rect class=\"gi-f\" x=\"72\" y=\"182\" width=\"224\" height=\"20\" rx=\"4\"/><text class=\"fig-s\" x=\"80\" y=\"196\" text-anchor=\"start\">2.1 Framework  &lt;id_4&gt; …</text><line class=\"gi-e d\" x1=\"306\" y1=\"150\" x2=\"402\" y2=\"120\"/><text class=\"fig-s\" x=\"354\" y=\"150\" text-anchor=\"middle\">cites ids</text><text class=\"fig-s\" x=\"478\" y=\"196\" text-anchor=\"middle\">~112 pages, 67k evidence</text><text class=\"fig-s\" x=\"478\" y=\"209\" text-anchor=\"middle\">tokens per task (DRB)</text><text class=\"fig-s\" x=\"184\" y=\"232\" text-anchor=\"middle\">~16 searches · ~2.2 outline rewrites · ~4.9k-token outline</text>",
+        "text": [
+          "The planner searches the web; an LLM picks URLs, reads each page and stores a summary plus extracted evidence under a new id in the memory bank.",
+          "Only summaries return to the planner, which rewrites an outline whose subsections cite bank ids."
+        ],
+        "src": "paper §2, §3.2, Table 3; code react_agent_search_id.py, tool_visit.py",
+        "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/react_agent_search_id.py#L138-L230"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 232",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"40\" width=\"92\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"50.0\" y=\"60.0\" text-anchor=\"middle\">Outline</text><text class=\"fig-s\" x=\"50.0\" y=\"73.0\" text-anchor=\"middle\">+ every summary</text><path class=\"gi-a\" d=\"M96 62 L99 62\"/><polygon class=\"gi-ah\" points=\"106,62 99,58 99,66\"/><rect class=\"gi-llm\" x=\"106\" y=\"40\" width=\"72\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"142.0\" y=\"60.0\" text-anchor=\"middle\">Writer</text><text class=\"fig-s\" x=\"142.0\" y=\"73.0\" text-anchor=\"middle\">next section</text><path class=\"gi-a\" d=\"M178 62 L181 62\"/><polygon class=\"gi-ah\" points=\"188,62 181,58 181,66\"/><rect class=\"gi-f\" x=\"188\" y=\"40\" width=\"78\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"227.0\" y=\"60.0\" text-anchor=\"middle\">Retrieve</text><text class=\"fig-s\" x=\"227.0\" y=\"73.0\" text-anchor=\"middle\">cited ids</text><path class=\"gi-a\" d=\"M266 62 L269 62\"/><polygon class=\"gi-ah\" points=\"276,62 269,58 269,66\"/><rect class=\"gi-hi\" x=\"276\" y=\"40\" width=\"74\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"313.0\" y=\"60.0\" text-anchor=\"middle\">Evidence</text><text class=\"fig-s\" x=\"313.0\" y=\"73.0\" text-anchor=\"middle\">≤20k chars</text><path class=\"gi-a\" d=\"M350 62 L353 62\"/><polygon class=\"gi-ah\" points=\"360,62 353,58 353,66\"/><rect class=\"gi-llm\" x=\"360\" y=\"40\" width=\"72\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"396.0\" y=\"60.0\" text-anchor=\"middle\">Think, write</text><text class=\"fig-s\" x=\"396.0\" y=\"73.0\" text-anchor=\"middle\">one section</text><path class=\"gi-a\" d=\"M432 62 L439 62\"/><polygon class=\"gi-ah\" points=\"446,62 439,58 439,66\"/><polygon class=\"gi-llm\" points=\"486,34.0 526.0,62 486,90.0 446.0,62\"/><text class=\"fig-t\" x=\"486\" y=\"61\" text-anchor=\"middle\">Done?</text><text class=\"fig-s\" x=\"486\" y=\"73\" text-anchor=\"middle\">writer</text><rect class=\"gi-f fig-soft\" x=\"181\" y=\"130\" width=\"92\" height=\"36\" rx=\"8\"/><text class=\"fig-t\" x=\"227.0\" y=\"152.0\" text-anchor=\"middle\">Memory bank</text><path class=\"gi-a\" d=\"M227 130 L227 91\"/><polygon class=\"gi-ah\" points=\"227,84 231,91 223,91\"/><text class=\"fig-s\" x=\"233\" y=\"112\" text-anchor=\"start\">exact id lookup</text><path class=\"gi-a\" d=\"M486 34 L486 18 L142 18 L142 33\"/><polygon class=\"gi-ah\" points=\"142,40 146,33 138,33\"/><text class=\"fig-no\" x=\"494\" y=\"28\" text-anchor=\"start\">No</text><text class=\"fig-s\" x=\"314\" y=\"13\" text-anchor=\"middle\">mask that evidence, go to next section</text><path class=\"gi-a\" d=\"M486 90 L486 169\"/><polygon class=\"gi-ah\" points=\"486,176 490,169 482,169\"/><text class=\"fig-yes\" x=\"494\" y=\"132\" text-anchor=\"start\">Yes</text><rect class=\"gi-hi\" x=\"430\" y=\"176\" width=\"112\" height=\"46\" rx=\"8\"/><text class=\"fig-t\" x=\"486.0\" y=\"197.0\" text-anchor=\"middle\">Report</text><text class=\"fig-s\" x=\"486.0\" y=\"210.0\" text-anchor=\"middle\">+ reference list</text><text class=\"fig-s\" x=\"8\" y=\"196\" text-anchor=\"start\">~25 write steps, ~26k-token report (DRB, Table 3)</text><text class=\"fig-s\" x=\"8\" y=\"210\" text-anchor=\"start\">writer context capped at 100k tokens</text><text class=\"fig-s\" x=\"8\" y=\"224\" text-anchor=\"start\">ablation: brute-force writer reads the whole bank</text>",
+        "text": [
+          "The writer starts from the outline and every page summary, then for each section retrieves the evidence of the cited ids by exact lookup.",
+          "After writing a section its evidence is masked, and the loop continues until the report is done."
+        ],
+        "src": "paper §3.3; code react_agent_outline_write.py L146-L265, tool_retrieve.py L97-L170",
+        "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/react_agent_outline_write.py#L207-L268"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Search results per query",
+        "value": "top 10",
+        "src": "code tool_search.py L21",
+        "section": "construction"
+      },
+      {
+        "label": "Page length before extraction",
+        "value": "≤24,000 tokens",
+        "src": "code tool_visit.py L44",
+        "section": "construction"
+      },
+      {
+        "label": "Pages saved per task",
+        "value": "112 (DRB) · 103 (DRGym)",
+        "src": "paper Table 3",
+        "section": "construction"
+      },
+      {
+        "label": "Evidence / summary tokens per task",
+        "value": "67k / 15k (DRB)",
+        "src": "paper Table 3",
+        "section": "construction"
+      },
+      {
+        "label": "Search steps / outline rounds",
+        "value": "15.7 / 2.16 (DRB)",
+        "src": "paper Table 3",
+        "section": "method"
+      },
+      {
+        "label": "Writer retrieval",
+        "value": "exact id lookup, ≤20,000 characters per call",
+        "src": "code tool_retrieve.py L105-L170",
+        "section": "method"
+      },
+      {
+        "label": "Writing steps / report length",
+        "value": "24.8 / 26k tokens (DRB)",
+        "src": "paper Table 3",
+        "section": "results"
+      },
+      {
+        "label": "Planner / writer context caps",
+        "value": "84k / 100k tokens",
+        "src": "code react_agent_search_id.py L235; react_agent_outline_write.py L183",
+        "section": "method"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "DeepResearch Bench (RACE overall)",
+        "DeepResearch Bench (citation acc.)",
+        "DeepResearchGym (avg)"
+      ],
+      "rows": [
+        [
+          "Hierarchical writer (full)",
+          "50.58",
+          "93.37",
+          "96.77"
+        ],
+        [
+          "Brute-force writer, whole bank (LongWriter-style)",
+          "46.02",
+          "86.73",
+          "91.52"
+        ],
+        [
+          "Outline round 1 (3-round subset)",
+          "48.15",
+          "–",
+          "95.68"
+        ],
+        [
+          "Outline round 2 (3-round subset)",
+          "49.26",
+          "–",
+          "96.00"
+        ],
+        [
+          "Outline round 3 (3-round subset)",
+          "49.55",
+          "–",
+          "96.32"
+        ]
+      ],
+      "src": "paper Figs. 6-7, 10-11 (Claude-sonnet-4); outline rows use only tasks with three rounds"
+    },
+    "components": [
+      {
+        "role": "Planner (search, outline)",
+        "model": "Claude-sonnet-4, Qwen3-235B-A22B, GPT-oss-120b or Qwen3-30B-A3B",
+        "kind": "llm",
+        "src": "paper §4.1"
+      },
+      {
+        "role": "Web search",
+        "model": "Serper Google search API (code)",
+        "kind": "retriever",
+        "src": "code tool_search.py",
+        "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/tool/tool_search.py#L38-L107"
+      },
+      {
+        "role": "URL selection, summary, evidence",
+        "model": "gpt-oss-120b",
+        "kind": "llm",
+        "src": "paper §4.1; code tool_select_url.py, tool_visit.py",
+        "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/tool/tool_visit.py#L27-L41"
+      },
+      {
+        "role": "Retrieve by id",
+        "model": "dictionary lookup",
+        "kind": "rule",
+        "src": "code tool_retrieve.py L121",
+        "url": "https://github.com/Alibaba-NLP/DeepResearch/blob/f72f75d8c3eb842f2bbbab096a12206ff66e270f/WebAgent/WebWeaver/tool/tool_retrieve.py#L121"
+      },
+      {
+        "role": "Writer",
+        "model": "same backbone as planner",
+        "kind": "llm",
+        "src": "paper §4.1; code run_write.sh"
+      }
+    ],
+    "discussion": {
+      "takeaway": "For long web-research reports, keep gathered evidence out of the model's context in an id-keyed bank, let an outline that is rewritten as evidence arrives decide which ids each section needs, and write one section at a time. This gives the paper's best DeepResearch Bench, DeepConsult and DeepResearchGym scores, notably 93.37% citation accuracy.",
+      "claims": [
+        {
+          "claim": "State of the art on open-ended deep research.",
+          "evidence": "DRB RACE 50.62 (Qwen3-235B) and 50.58 (Claude-sonnet-4) vs 49.71 Gemini-2.5-pro deep research; DeepConsult win 66.86%; DRGym avg 96.77 vs 96.02. Tables 1-2"
+        },
+        {
+          "claim": "Outline-guided, per-section retrieval raises citation accuracy.",
+          "evidence": "C. acc. 93.37 vs 78.30 (Gemini) and 75.01 (OpenAI); 86.73 with the brute-force writer. Table 1, Fig. 10"
+        },
+        {
+          "claim": "Iterative outline optimization improves reports and outlines.",
+          "evidence": "DRB overall 48.15 → 49.55 over three rounds; outline judge score 81.9 → 92.3 (DRB), 77.2 → 88.2 (DRGym). Figs. 6-9"
+        },
+        {
+          "claim": "Section-wise writing beats writing from the whole bank.",
+          "evidence": "Insight 42.72 → 50.02, readability 43.82 → 49.79 on DRB. Fig. 10, §4.3"
+        },
+        {
+          "claim": "WebWeaver-3k SFT teaches a small model the workflow.",
+          "evidence": "Qwen3-30B-A3B citation accuracy 25.00 → 85.90, DRGym 77.27 → 90.89, DeepConsult 4.57 → 6.09. Fig. 14"
+        }
+      ],
+      "limits": [],
+      "limits_src": "The paper has no limitations section.",
+      "reading": [
+        "The 'memory' is per-task working memory for one report, filled from the web; there is no long-term or cross-task memory, so it is not comparable with conversational memory systems.",
+        "The writer's first prompt contains every page's summary (about 15k tokens on DRB), so each section is written with the whole summary set in view, not only its cited evidence.",
+        "The brute-force ablation removes both focused context and id-based retrieval at once.",
+        "In the outline-round study readability drops slightly on DRB (48.73 → 48.58) and clarity on DRGym (91.36 → 90.42) at round 3; the gains are in comprehensiveness, insight and support.",
+        "The text reports DRGym support 90.95 → 98.73 for brute-force vs hierarchical, while Fig. 11 labels the brute-force bar 91.82.",
+        "Proprietary baselines on DRB are copied from the leaderboard; whether the DeepConsult and DRGym baseline rows were rerun is not stated.",
+        "Released code (Feb 2026) defaults to Qwen3-235B for planner and writer, not the paper's Claude-sonnet-4."
+      ]
+    },
+    "abstract": {
+      "text": "WebWeaver targets open-ended deep research, where an agent must turn hundreds of web pages into a long, cited report. A planner alternates between web search and rewriting an outline, and every visited page is reduced to a summary and extracted evidence stored under an id in a memory bank that the outline cites. A writer then composes the report section by section, retrieving only the evidence cited for each section and dropping it afterwards. The system reports state-of-the-art results on DeepResearch Bench, DeepConsult and DeepResearchGym, and a 3k-trajectory SFT set lets a 30B model learn the workflow.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2509.13312"
+    },
+    "sections": {
+      "Memory architecture": "§2, §3",
+      "Results": "§4.2",
+      "Ablation": "§4.3",
+      "Discussion": "§4.3, §6",
+      "Details": "§2, §4.1, App. A-B"
+    }
+  }
+}

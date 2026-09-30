@@ -1,0 +1,605 @@
+{
+  "id": "hipporag",
+  "name": "HippoRAG",
+  "paper": {
+    "title": "HippoRAG: Neurobiologically Inspired Long-Term Memory for Large Language Models",
+    "arxiv": "2405.14831",
+    "url": "https://arxiv.org/abs/2405.14831",
+    "venue": "NeurIPS 2024",
+    "venue_short": "NeurIPS",
+    "track": "main",
+    "year": 2024,
+    "code": "https://github.com/OSU-NLP-Group/HippoRAG"
+  },
+  "design": {
+    "construction": {
+      "unit": "passage (kept verbatim) plus open-IE triples extracted from it",
+      "kept_as": "verbatim passages; LLM-extracted (noun phrase, relation, noun phrase) triples as the index",
+      "processing": "1-shot NER on each passage, then 1-shot OpenIE given those entities; phrases lower-cased and stripped of punctuation",
+      "trigger": "offline-batch",
+      "writer": "GPT-3.5-turbo-1106 (Llama-3.1-8B/70B and REBEL in ablations)"
+    },
+    "organization": {
+      "structure": "schemaless KG: phrase nodes, triple edges and synonymy edges, plus node-to-passage links",
+      "stores": "passage corpus; KG; passage-triple-phrase matrices",
+      "index": "retrieval-encoder vectors of node phrases (ColBERTv2 or Contriever); synonymy edges between phrases with similarity ≥ 0.8"
+    },
+    "management": {
+      "operations": "new passages add nodes and edges; nothing is summarised or rewritten",
+      "conflicts": null,
+      "forgetting": null,
+      "timing": "offline"
+    },
+    "retrieval": {
+      "query": "LLM extracts named entities from the question (1-shot)",
+      "candidates": "each query entity linked to its single most similar KG node; Personalized PageRank from these seeds, weighted by node specificity (1/#passages)",
+      "selection": "passages ranked by the PPR probability of the phrases in their triples; top-k",
+      "budget": "top-5 passages to the reader; top-10 per step inside IRCoT"
+    },
+    "use": {
+      "context": "top-5 retrieved passages (title + text)",
+      "reasoning": "1-shot CoT reader; optionally inside IRCoT (2-4 retrieve-reason steps)"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "fixed-rule",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "graph",
+    "index": "vector",
+    "management": "append-only",
+    "candidates": "graph walk",
+    "decides": "top-k rule",
+    "note": "Dense vectors only link query entities to one node each; the ranking itself comes from PageRank over the graph, then a plain top-k of passages."
+  },
+  "tags": {
+    "fidelity": "verbatim+derived",
+    "structure": [
+      "graph"
+    ],
+    "write_time": [
+      "extract",
+      "link"
+    ],
+    "selection": [
+      "dense",
+      "graph-expansion"
+    ],
+    "memory_type": [
+      "semantic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "A fixed corpus of passages (all candidate passages of 1,000 dev questions per dataset) is indexed offline in one batch.",
+    "construction": "An LLM first lists the named entities of each passage, then extracts open-IE triples that should contain those entities; the triples' subject and object phrases become KG nodes.",
+    "organization": "Nodes are joined by triple edges (weighted by how often the pair co-occurs in triples) and by synonymy edges between phrases whose encoder similarity is at least 0.8; each node keeps links to the passages it came from.",
+    "update": "The paper argues new passages can be added by adding nodes and edges, without re-summarising; the experiments index a fixed corpus once.",
+    "retrieval": "Query entities from a 1-shot LLM NER are linked to their closest nodes, seeded with weight 1/#passages, and Personalized PageRank (damping 0.5) spreads probability over the KG; passages are scored by the probability of their phrases.",
+    "answer": "The top-5 passages go to a 1-shot CoT reader (GPT-3.5-turbo-1106); in IRCoT mode each reasoning step's thought is used as the next query.",
+    "learning": ""
+  },
+  "summary": "Retrieval memory modelled on hippocampal indexing: an LLM turns every passage into an open knowledge graph, and a question's entities seed Personalized PageRank over that graph so passages linked through shared entities are found in one step.",
+  "verified": false,
+  "notes": "Venue: NeurIPS 2024 main track, verified on papers.nips.cc (hash 6ddc001d07ca4f319af96a3024f6dbd1, Abstract-Conference) and the arXiv v3 footer ('38th Conference on Neural Information Processing Systems (NeurIPS 2024)'). The id 'hipporag' was already an extra_systems baseline; this file annotates the same system (HippoRAG 2 is the separate id hipporag-v2).\nDESIGN: §2.2-2.3 (indexing, retrieval, node specificity), §3.4 and App. H (settings), App. I (prompts). Code: the repo's main branch is HippoRAG 2; the v1 code is the 'legacy' branch, tagged v1.0.0. management.timing is 'offline' because indexing is a batch step and nothing changes at question time.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2405.14831v3 (PDF read 2026-09-30)",
+      "code": "https://github.com/OSU-NLP-Group/HippoRAG/tree/b144c46df14cabe5f5822d8caded4bec5f709461/",
+      "code_note": "Tag v1.0.0 = commit b144c46d (2025-02-25), head of the 'legacy' branch that holds the NeurIPS version; main now holds HippoRAG 2. hipporag.py and create_graph.py last changed on 2024-07-04 (ColBERTv2 fixes), after paper v1 and before the camera-ready v3; the tag is taken as the paper's code, though the first-version runs may predate those fixes. Main runs use run_hipporag_main_exps.sh (damping 0.5, sim threshold 0.8, top 10)."
+    },
+    "headline": [
+      "The graph is only an index: the reader gets the top-5 original passages, never triples, nodes or PPR scores.",
+      "Each query entity is linked to exactly one node; everything else reached comes from PageRank spreading over triple and synonymy edges.",
+      "Relation labels are extracted but not used in scoring: graph edges carry only co-occurrence counts or similarity."
+    ],
+    "units": [
+      {
+        "name": "Passage",
+        "role": "retrieval unit and what the reader reads",
+        "made_by": "the corpus, unchanged",
+        "fields": [
+          {
+            "name": "title + text",
+            "what": "original passage",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code qa_reader.py L98-L100",
+            "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/b144c46df14cabe5f5822d8caded4bec5f709461/src/qa/qa_reader.py#L98-L100"
+          }
+        ]
+      },
+      {
+        "name": "Phrase node",
+        "role": "a noun phrase or named entity from the triples",
+        "made_by": "GPT-3.5-turbo-1106 (NER then OpenIE)",
+        "fields": [
+          {
+            "name": "phrase",
+            "what": "subject or object of a triple, lower-cased, punctuation removed",
+            "kept_as": "extracted",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §2.3; code processing.py L39-L40",
+            "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/b144c46df14cabe5f5822d8caded4bec5f709461/src/processing.py#L39-L40"
+          },
+          {
+            "name": "phrase vector",
+            "what": "ColBERTv2 or Contriever encoding, used to link query entities and to add synonymy edges",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §2.3; code hipporag.py L559-L632",
+            "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/b144c46df14cabe5f5822d8caded4bec5f709461/src/hipporag.py#L559-L632"
+          },
+          {
+            "name": "node specificity",
+            "what": "1 / number of passages the phrase occurs in; weights seed nodes",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §2.3; code hipporag.py L417-L420",
+            "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/b144c46df14cabe5f5822d8caded4bec5f709461/src/hipporag.py#L417-L420"
+          }
+        ]
+      },
+      {
+        "name": "Edge",
+        "role": "link between two phrase nodes",
+        "made_by": "triples (OpenIE) or encoder similarity",
+        "fields": [
+          {
+            "name": "triple edge weight",
+            "what": "number of triples joining the two phrases; undirected in PPR",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code create_graph.py L211-L221",
+            "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/b144c46df14cabe5f5822d8caded4bec5f709461/src/create_graph.py#L211-L221"
+          },
+          {
+            "name": "synonymy edge weight",
+            "what": "encoder similarity, added for up to ~100 nearest phrases with score ≥ 0.8",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §2.3; code create_graph.py L266-L294",
+            "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/b144c46df14cabe5f5822d8caded4bec5f709461/src/create_graph.py#L266-L294"
+          },
+          {
+            "name": "relation label",
+            "what": "the triple's predicate text; kept in a dictionary for logs, not in the graph",
+            "kept_as": "extracted",
+            "used_for": [],
+            "src": "code create_graph.py L81; hipporag.py L441-L467",
+            "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/b144c46df14cabe5f5822d8caded4bec5f709461/src/hipporag.py#L441-L467"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Passage NER",
+        "how": "1-shot prompt lists the named entities of each passage (JSON)",
+        "src": "paper §2.3, App. I Fig. 7",
+        "url": "https://arxiv.org/pdf/2405.14831"
+      },
+      {
+        "step": "OpenIE",
+        "how": "1-shot prompt given the passage and its entity list returns triples that should contain at least one, preferably two, of those entities; pronouns resolved",
+        "out": "107,448 / 50,671 / 98,709 unique triples (MuSiQue / 2Wiki / HotpotQA)",
+        "src": "paper §2.3, Table 1, App. I Fig. 9",
+        "url": "https://arxiv.org/pdf/2405.14831"
+      },
+      {
+        "step": "Build graph",
+        "how": "subject and object phrases become nodes; each triple adds 1 to the weight of the edge between them; document-triple and triple-phrase matrices kept",
+        "out": "91,729 nodes on MuSiQue",
+        "src": "paper Table 1; code create_graph.py L180-L245",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/b144c46df14cabe5f5822d8caded4bec5f709461/src/create_graph.py#L180-L245"
+      },
+      {
+        "step": "Synonymy edges",
+        "how": "for each phrase with more than 2 letters or digits, add edges to its nearest phrases (encoder kNN) while similarity ≥ 0.8, up to about 100",
+        "params": {
+          "τ": "0.8"
+        },
+        "out": "191,636 ColBERTv2 synonym edges on MuSiQue",
+        "src": "paper §2.3, §3.4, Table 1; code create_graph.py L266-L294",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/b144c46df14cabe5f5822d8caded4bec5f709461/src/create_graph.py#L266-L294"
+      }
+    ],
+    "read": [
+      {
+        "step": "Query NER",
+        "round": 1,
+        "input": "question",
+        "how": "1-shot LLM prompt lists the important named entities; temperature 0",
+        "src": "paper §2.3, App. I Fig. 8; code named_entity_extraction_parallel.py L39-L57",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/b144c46df14cabe5f5822d8caded4bec5f709461/src/named_entity_extraction_parallel.py#L39-L57"
+      },
+      {
+        "step": "Link nodes",
+        "round": 1,
+        "scores": "query entity text vs node phrase text",
+        "how": "each entity is linked to its single nearest node (ColBERTv2 search k=1, or Contriever argmax)",
+        "params": {
+          "per entity": "1 node"
+        },
+        "src": "paper §2.3; code hipporag.py L559-L632",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/b144c46df14cabe5f5822d8caded4bec5f709461/src/hipporag.py#L559-L632"
+      },
+      {
+        "step": "Seed",
+        "round": 1,
+        "how": "reset vector: 1/#passages at each linked node (node specificity), 0 elsewhere",
+        "src": "paper §2.3; code hipporag.py L583-L592",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/b144c46df14cabe5f5822d8caded4bec5f709461/src/hipporag.py#L583-L592"
+      },
+      {
+        "step": "PPR",
+        "round": 1,
+        "how": "igraph personalized PageRank (prpack) over the undirected weighted KG",
+        "params": {
+          "damping": "0.5"
+        },
+        "src": "paper §2.3, §3.4; code hipporag.py L524-L538, run_hipporag_main_exps.sh L4-L5",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/b144c46df14cabe5f5822d8caded4bec5f709461/src/hipporag.py#L524-L538"
+      },
+      {
+        "step": "Score passages",
+        "round": 1,
+        "how": "sum node probabilities over each triple's two phrases, then over the passage's triples; min-max normalise; sort",
+        "params": {
+          "returned": "top 10",
+          "to reader": "5"
+        },
+        "src": "paper §2.3; code hipporag.py L229-L231, L286-L294",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/b144c46df14cabe5f5822d8caded4bec5f709461/src/hipporag.py#L229-L231"
+      }
+    ],
+    "answer_context": {
+      "sees": "5 retrieved passages, verbatim",
+      "format": "system instruction + 1 CoT demonstration, then each of the 5 passages as 'Wikipedia Title: {title}\\n{text}', then 'Question: …\\nThought: '",
+      "excludes": [
+        "triples",
+        "KG nodes and edges",
+        "PPR scores",
+        "query entities"
+      ],
+      "includes": [
+        "top-5 passages (title + text)"
+      ],
+      "note": "In IRCoT mode the reader is replaced by IRCoT's interleaved reasoning, with HippoRAG as its retriever (top 10 per step).",
+      "src": "paper App. H; code qa_reader.py L38-L70, L85-L104",
+      "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/b144c46df14cabe5f5822d8caded4bec5f709461/src/qa/qa_reader.py#L38-L104"
+    },
+    "compression": [
+      {
+        "what": "reader context vs the retrieval corpus",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported as tokens. The reader reads 5 of 11,656 / 6,119 / 9,221 passages (Table 1, App. H); passage lengths are not given.",
+        "src": "paper Table 1, App. H",
+        "url": "https://arxiv.org/pdf/2405.14831"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "R@5 single-step, 2Wiki",
+        "value": "89.1 vs 68.2 ColBERTv2",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "R@5 single-step, MuSiQue",
+        "value": "51.9 vs 49.2 ColBERTv2",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "R@5 single-step, HotpotQA",
+        "value": "77.7 vs 79.3 ColBERTv2",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "All supporting passages in top 5, 2Wiki",
+        "value": "75.7% vs 37.1%",
+        "src": "paper Table 6"
+      },
+      {
+        "label": "Online retrieval, 1,000 queries",
+        "value": "$0.1, 3 min (IRCoT $1-3, 20-40 min)",
+        "src": "paper Table 17"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Passage score",
+        "paper": "PPR node probabilities times a node x passage count matrix",
+        "code": "probabilities summed through triples (each phrase counted once per triple it is in), then min-max normalised",
+        "src": "hipporag.py L229-L231",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/b144c46df14cabe5f5822d8caded4bec5f709461/src/hipporag.py#L229-L231"
+      },
+      {
+        "topic": "Synonymy edges",
+        "paper": "all phrase pairs with similarity above τ",
+        "code": "only among each phrase's nearest ~100 neighbours, skipping phrases with 2 or fewer letters/digits; edge weight = similarity",
+        "src": "create_graph.py L266-L294",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/b144c46df14cabe5f5822d8caded4bec5f709461/src/create_graph.py#L266-L294"
+      },
+      {
+        "topic": "Damping",
+        "paper": "0.5",
+        "code": "default 0.1 in the class and CLI; the main-experiment script passes 0.5",
+        "src": "hipporag.py L33; run_hipporag_main_exps.sh L4-L5",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/b144c46df14cabe5f5822d8caded4bec5f709461/src/run_hipporag_main_exps.sh#L4-L5"
+      }
+    ],
+    "open_questions": [
+      "HotpotQA R@5 stays below ColBERTv2 (77.7 vs 79.3); the paper attributes this to weaker multi-hop requirements and the concept-context trade-off (App. B, F.2).",
+      "Scalability beyond ~10k-passage corpora is untested, by the authors' own statement."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 242",
+        "body": "<text class=\"fig-t\" x=\"52\" y=\"16\" text-anchor=\"middle\">Passages</text><rect class=\"gi-ev\" x=\"10\" y=\"26\" width=\"84\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"18\" y1=\"35.0\" x2=\"80\" y2=\"35.0\"/><rect class=\"gi-ev\" x=\"10\" y=\"50\" width=\"84\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"18\" y1=\"59.0\" x2=\"80\" y2=\"59.0\"/><rect class=\"gi-ev\" x=\"10\" y=\"74\" width=\"84\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"18\" y1=\"83.0\" x2=\"80\" y2=\"83.0\"/><rect class=\"gi-ev\" x=\"10\" y=\"98\" width=\"84\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"18\" y1=\"107.0\" x2=\"80\" y2=\"107.0\"/><text class=\"fig-s\" x=\"52\" y=\"134\" text-anchor=\"middle\">kept verbatim</text><text class=\"fig-s\" x=\"52\" y=\"147\" text-anchor=\"middle\">for the reader</text><path class=\"gi-a\" d=\"M96.0 58.0 L107.0 58.0\"/><polygon class=\"gi-ah\" points=\"114.0,58.0 107.0,62.0 107.0,54.0\"/><rect class=\"gi-llm\" x=\"114\" y=\"36\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"158.0\" y=\"56.0\" text-anchor=\"middle\">Passage NER</text><text class=\"fig-s\" x=\"158.0\" y=\"69.0\" text-anchor=\"middle\">1-shot</text><path class=\"gi-a\" d=\"M158 80 L158 89\"/><polygon class=\"gi-ah\" points=\"158,96 154,89 162,89\"/><rect class=\"gi-llm\" x=\"114\" y=\"96\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"158.0\" y=\"116.0\" text-anchor=\"middle\">OpenIE</text><text class=\"fig-s\" x=\"158.0\" y=\"129.0\" text-anchor=\"middle\">NER-conditioned</text><text class=\"fig-s\" x=\"158\" y=\"158\" text-anchor=\"middle\">GPT-3.5-turbo-1106</text><path class=\"gi-a\" d=\"M202.0 118.0 L215.0 118.0\"/><polygon class=\"gi-ah\" points=\"222.0,118.0 215.0,122.0 215.0,114.0\"/><rect class=\"gi-ev\" x=\"222\" y=\"92\" width=\"104\" height=\"54\" rx=\"8\"/><text class=\"fig-t\" x=\"274\" y=\"110\" text-anchor=\"middle\">Triples</text><text class=\"fig-s\" x=\"274\" y=\"124\" text-anchor=\"middle\">(s, r, o)</text><text class=\"fig-s\" x=\"274\" y=\"137\" text-anchor=\"middle\">107k on MuSiQue</text><path class=\"gi-a d\" d=\"M274 146 L274 165\"/><polygon class=\"gi-ah\" points=\"274,172 270,165 278,165\"/><rect class=\"gi-w\" x=\"242\" y=\"174\" width=\"11\" height=\"11\" rx=\"2\"/><rect class=\"gi-w\" x=\"255\" y=\"174\" width=\"11\" height=\"11\" rx=\"2\"/><rect class=\"gi-w\" x=\"268\" y=\"174\" width=\"11\" height=\"11\" rx=\"2\"/><rect class=\"gi-w\" x=\"281\" y=\"174\" width=\"11\" height=\"11\" rx=\"2\"/><rect class=\"gi-w\" x=\"294\" y=\"174\" width=\"11\" height=\"11\" rx=\"2\"/><rect class=\"gi-w\" x=\"242\" y=\"187\" width=\"11\" height=\"11\" rx=\"2\"/><rect class=\"gi-w\" x=\"255\" y=\"187\" width=\"11\" height=\"11\" rx=\"2\"/><rect class=\"gi-w\" x=\"268\" y=\"187\" width=\"11\" height=\"11\" rx=\"2\"/><rect class=\"gi-w\" x=\"281\" y=\"187\" width=\"11\" height=\"11\" rx=\"2\"/><rect class=\"gi-w\" x=\"294\" y=\"187\" width=\"11\" height=\"11\" rx=\"2\"/><text class=\"fig-s\" x=\"274\" y=\"216\" text-anchor=\"middle\">node ↔ passage links</text><path class=\"gi-a\" d=\"M326.0 118.0 L343.0 118.0\"/><polygon class=\"gi-ah\" points=\"350.0,118.0 343.0,122.0 343.0,114.0\"/><text class=\"fig-t\" x=\"452\" y=\"16\" text-anchor=\"middle\">Open KG (hippocampal index)</text><line class=\"gi-e\" x1=\"378\" y1=\"56\" x2=\"426\" y2=\"40\"/><line class=\"gi-e\" x1=\"426\" y1=\"40\" x2=\"474\" y2=\"66\"/><line class=\"gi-e\" x1=\"378\" y1=\"56\" x2=\"408\" y2=\"100\"/><line class=\"gi-e\" x1=\"408\" y1=\"100\" x2=\"458\" y2=\"120\"/><line class=\"gi-e\" x1=\"474\" y1=\"66\" x2=\"520\" y2=\"96\"/><line class=\"gi-e\" x1=\"474\" y1=\"66\" x2=\"528\" y2=\"46\"/><line class=\"gi-e\" x1=\"458\" y1=\"120\" x2=\"520\" y2=\"96\"/><line class=\"gi-e\" x1=\"408\" y1=\"100\" x2=\"380\" y2=\"146\"/><line class=\"gi-e d\" x1=\"520\" y1=\"96\" x2=\"522\" y2=\"150\"/><line class=\"gi-e d\" x1=\"378\" y1=\"56\" x2=\"380\" y2=\"146\"/><circle class=\"gi-n\" cx=\"378\" cy=\"56\" r=\"6\"/><circle class=\"gi-n\" cx=\"426\" cy=\"40\" r=\"6\"/><circle class=\"gi-n\" cx=\"474\" cy=\"66\" r=\"6\"/><circle class=\"gi-n\" cx=\"408\" cy=\"100\" r=\"6\"/><circle class=\"gi-n\" cx=\"458\" cy=\"120\" r=\"6\"/><circle class=\"gi-n\" cx=\"520\" cy=\"96\" r=\"6\"/><circle class=\"gi-n\" cx=\"528\" cy=\"46\" r=\"6\"/><circle class=\"gi-n\" cx=\"522\" cy=\"150\" r=\"6\"/><circle class=\"gi-n\" cx=\"380\" cy=\"146\" r=\"6\"/><text class=\"fig-s\" x=\"372\" y=\"38\" text-anchor=\"middle\">phrase node</text><line class=\"gi-e\" x1=\"362\" y1=\"182\" x2=\"386\" y2=\"182\"/><text class=\"fig-s\" x=\"392\" y=\"186\" text-anchor=\"start\">triple edge, weight = count</text><line class=\"gi-e d\" x1=\"362\" y1=\"200\" x2=\"386\" y2=\"200\"/><text class=\"fig-s\" x=\"392\" y=\"204\" text-anchor=\"start\">synonym edge, cos ≥ 0.8</text><text class=\"fig-s\" x=\"280\" y=\"236\" text-anchor=\"middle\">no summaries: new passages only add nodes and edges</text>",
+        "text": [
+          "An LLM lists each passage's entities, then extracts triples; their phrases become KG nodes and each triple adds weight to an edge.",
+          "Encoder similarity ≥ 0.8 adds synonym edges, and every node remembers its passages. The passages themselves stay unchanged."
+        ],
+        "src": "paper §2.2-2.3, Fig. 2, Table 1; code create_graph.py L180-L294",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/b144c46df14cabe5f5822d8caded4bec5f709461/src/create_graph.py#L180-L294"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 246",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"34\" width=\"62\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"35.0\" y=\"60.0\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M66.0 56.0 L69.0 56.0\"/><polygon class=\"gi-ah\" points=\"76.0,56.0 69.0,60.0 69.0,52.0\"/><rect class=\"gi-llm\" x=\"76\" y=\"34\" width=\"80\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"116.0\" y=\"54.0\" text-anchor=\"middle\">Query NER</text><text class=\"fig-s\" x=\"116.0\" y=\"67.0\" text-anchor=\"middle\">LLM, 1-shot</text><path class=\"gi-a\" d=\"M156.0 56.0 L159.0 56.0\"/><polygon class=\"gi-ah\" points=\"166.0,56.0 159.0,60.0 159.0,52.0\"/><rect class=\"gi-v fig-soft\" x=\"166\" y=\"34\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"210.0\" y=\"54.0\" text-anchor=\"middle\">Link nodes</text><text class=\"fig-s\" x=\"210.0\" y=\"67.0\" text-anchor=\"middle\">top-1 per entity</text><text class=\"fig-s\" x=\"210\" y=\"92\" text-anchor=\"middle\">ColBERTv2</text><text class=\"fig-s\" x=\"210\" y=\"105\" text-anchor=\"middle\">or Contriever</text><path class=\"gi-a\" d=\"M254.0 56.0 L257.0 56.0\"/><polygon class=\"gi-ah\" points=\"264.0,56.0 257.0,60.0 257.0,52.0\"/><rect class=\"gi-w fig-soft\" x=\"264\" y=\"34\" width=\"86\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"307.0\" y=\"54.0\" text-anchor=\"middle\">Seed weights</text><text class=\"fig-s\" x=\"307.0\" y=\"67.0\" text-anchor=\"middle\">1 / #passages</text><text class=\"fig-s\" x=\"307\" y=\"92\" text-anchor=\"middle\">node specificity</text><path class=\"gi-a\" d=\"M350.0 56.0 L353.0 56.0\"/><polygon class=\"gi-ah\" points=\"360.0,56.0 353.0,60.0 353.0,52.0\"/><rect class=\"gi-f\" x=\"360\" y=\"34\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"404.0\" y=\"54.0\" text-anchor=\"middle\">PPR on KG</text><text class=\"fig-s\" x=\"404.0\" y=\"67.0\" text-anchor=\"middle\">damping 0.5</text><text class=\"fig-s\" x=\"404\" y=\"92\" text-anchor=\"middle\">undirected,</text><text class=\"fig-s\" x=\"404\" y=\"105\" text-anchor=\"middle\">edge weights</text><path class=\"gi-a\" d=\"M448.0 56.0 L451.0 56.0\"/><polygon class=\"gi-ah\" points=\"458.0,56.0 451.0,60.0 451.0,52.0\"/><rect class=\"gi-f\" x=\"458\" y=\"34\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"506.0\" y=\"54.0\" text-anchor=\"middle\">Score passages</text><text class=\"fig-s\" x=\"506.0\" y=\"67.0\" text-anchor=\"middle\">sum of node probs</text><text class=\"fig-s\" x=\"506\" y=\"92\" text-anchor=\"middle\">no reranker</text><path class=\"gi-a\" d=\"M506 110 L506 161\"/><polygon class=\"gi-ah\" points=\"506,168 502,161 510,161\"/><rect class=\"gi-hi\" x=\"458\" y=\"168\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"506.0\" y=\"188.0\" text-anchor=\"middle\">Top-5</text><text class=\"fig-s\" x=\"506.0\" y=\"201.0\" text-anchor=\"middle\">raw passages</text><path class=\"gi-a\" d=\"M458 190 L337 190\"/><polygon class=\"gi-ah\" points=\"330,190 337,186 337,194\"/><rect class=\"gi-llm\" x=\"210\" y=\"168\" width=\"120\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"270.0\" y=\"188.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"270.0\" y=\"201.0\" text-anchor=\"middle\">1-shot CoT reader</text><path class=\"gi-a d\" d=\"M210 190 L35 190 L35 85\"/><polygon class=\"gi-ah\" points=\"35,78 39,85 31,85\"/><text class=\"fig-s\" x=\"122\" y=\"184\" text-anchor=\"middle\">IRCoT option:</text><text class=\"fig-s\" x=\"122\" y=\"206\" text-anchor=\"middle\">thought = next query</text><text class=\"fig-s\" x=\"280\" y=\"236\" text-anchor=\"middle\">the reader never sees triples, the graph or PPR scores</text>",
+        "text": [
+          "Entities in the question are linked to one node each and seed Personalized PageRank, weighted by how rare each node is.",
+          "Passages are scored by the probability of their phrases and the top 5 raw passages go to the reader; with IRCoT the loop repeats."
+        ],
+        "src": "paper §2.3, §3.4, App. H; code hipporag.py L173-L294, L524-L632",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/b144c46df14cabe5f5822d8caded4bec5f709461/src/hipporag.py#L173-L294"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Passages per corpus",
+        "value": "11,656 · 6,119 · 9,221",
+        "src": "paper Table 1",
+        "section": "construction"
+      },
+      {
+        "label": "KG nodes · triples (MuSiQue)",
+        "value": "91,729 · 107,448",
+        "src": "paper Table 1",
+        "section": "construction"
+      },
+      {
+        "label": "Synonym edges (MuSiQue)",
+        "value": "191,636 ColBERTv2 · 145,990 Contriever",
+        "src": "paper Table 1",
+        "section": "construction"
+      },
+      {
+        "label": "Indexing 10k passages",
+        "value": "$15, ~60 min (GPT-3.5-turbo-1106)",
+        "src": "paper Table 18",
+        "section": "construction"
+      },
+      {
+        "label": "Synonymy threshold · damping",
+        "value": "0.8 · 0.5 (tuned on 100 MuSiQue train questions)",
+        "src": "paper §3.4",
+        "section": "method"
+      },
+      {
+        "label": "Seed nodes",
+        "value": "1 per query entity",
+        "src": "paper §2.3; code hipporag.py L571",
+        "section": "method"
+      },
+      {
+        "label": "Passages to the reader",
+        "value": "5",
+        "src": "paper App. H",
+        "section": "method"
+      },
+      {
+        "label": "Online retrieval, 1,000 queries",
+        "value": "$0.1, 3 min vs IRCoT $1-3, 20-40 min",
+        "src": "paper Table 17",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "MuSiQue R@2",
+        "MuSiQue R@5",
+        "2Wiki R@2",
+        "2Wiki R@5",
+        "HotpotQA R@2",
+        "HotpotQA R@5"
+      ],
+      "rows": [
+        [
+          "HippoRAG (ColBERTv2)",
+          "40.9",
+          "51.9",
+          "70.7",
+          "89.1",
+          "60.5",
+          "77.7"
+        ],
+        [
+          "OpenIE by REBEL",
+          "31.7",
+          "39.6",
+          "63.1",
+          "76.5",
+          "43.9",
+          "59.2"
+        ],
+        [
+          "OpenIE by Llama-3.1-8B",
+          "40.8",
+          "51.9",
+          "62.5",
+          "77.5",
+          "59.9",
+          "75.1"
+        ],
+        [
+          "OpenIE by Llama-3.1-70B",
+          "41.8",
+          "53.7",
+          "68.8",
+          "85.3",
+          "60.8",
+          "78.6"
+        ],
+        [
+          "query nodes only (no PPR)",
+          "37.1",
+          "41.0",
+          "59.1",
+          "61.4",
+          "55.9",
+          "66.2"
+        ],
+        [
+          "query nodes + neighbours (no PPR)",
+          "25.4",
+          "38.5",
+          "53.4",
+          "74.7",
+          "47.8",
+          "64.5"
+        ],
+        [
+          "without node specificity",
+          "37.6",
+          "50.2",
+          "70.1",
+          "88.8",
+          "56.3",
+          "73.7"
+        ],
+        [
+          "without synonymy edges",
+          "40.2",
+          "50.2",
+          "69.2",
+          "85.6",
+          "59.1",
+          "75.7"
+        ]
+      ],
+      "src": "paper Table 5"
+    },
+    "components": [
+      {
+        "role": "Passage NER and OpenIE",
+        "model": "GPT-3.5-turbo-1106, temperature 0, 1-shot",
+        "kind": "llm",
+        "src": "paper §2.3, §3.4"
+      },
+      {
+        "role": "Query NER",
+        "model": "GPT-3.5-turbo-1106, 1-shot",
+        "kind": "llm",
+        "src": "paper §2.3, App. I"
+      },
+      {
+        "role": "Node linking and synonymy edges",
+        "model": "ColBERTv2 or Contriever",
+        "kind": "retriever",
+        "src": "paper §3.4"
+      },
+      {
+        "role": "Spreads relevance over the KG",
+        "model": "Personalized PageRank (python-igraph, prpack)",
+        "kind": "rule",
+        "src": "paper App. H; code hipporag.py L524-L538",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/b144c46df14cabe5f5822d8caded4bec5f709461/src/hipporag.py#L524-L538"
+      },
+      {
+        "role": "Answer",
+        "model": "GPT-3.5-turbo-1106, 1-shot CoT reader over 5 passages",
+        "kind": "llm",
+        "src": "paper App. H; code qa_reader.py L151-L153",
+        "url": "https://github.com/OSU-NLP-Group/HippoRAG/blob/b144c46df14cabe5f5822d8caded4bec5f709461/src/qa/qa_reader.py#L151-L153"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Indexing a corpus as an LLM-built open knowledge graph and ranking passages with Personalized PageRank from the question's entities retrieves multi-hop evidence in a single step, beating dense retrievers on MuSiQue and 2WikiMultiHopQA and matching iterative IRCoT at far lower online cost.",
+      "claims": [
+        {
+          "claim": "Single-step retrieval beats standard and LLM-augmented retrievers on multi-hop QA.",
+          "evidence": "R@5 2Wiki 89.1 vs 68.2 (ColBERTv2), MuSiQue 51.9 vs 50.1 (best baseline); HotpotQA slightly lower (77.7 vs 79.3). Table 2, §4."
+        },
+        {
+          "claim": "HippoRAG and iterative retrieval are complementary.",
+          "evidence": "IRCoT + HippoRAG R@5 57.6 / 93.9 / 83.0 vs IRCoT + ColBERTv2 53.7 / 74.4 / 82.0. Table 3."
+        },
+        {
+          "claim": "Better retrieval gives better QA.",
+          "evidence": "F1 with a GPT-3.5 reader: 2Wiki 59.5 vs 43.3 (ColBERTv2); IRCoT + HippoRAG best on all three (33.3 / 62.7 / 59.2). Table 4."
+        },
+        {
+          "claim": "PPR is what makes the graph useful.",
+          "evidence": "Query nodes only: average R@5 56.2 vs 72.9 with PPR. Table 5."
+        },
+        {
+          "claim": "Single-step multi-hop: all supporting passages retrieved more often.",
+          "evidence": "AR@5 75.7 vs 37.1 on 2Wiki, 22.4 vs 16.1 on MuSiQue. Table 6."
+        },
+        {
+          "claim": "Much cheaper and faster than iterative retrieval online.",
+          "evidence": "$0.1 and 3 min per 1,000 queries vs $1-3 and 20-40 min for IRCoT. Table 17, App. G."
+        }
+      ],
+      "limits": [
+        "All components are used off the shelf; most errors come from NER and OpenIE (48% and 28% of 100 MuSiQue errors), which fine-tuning could reduce.",
+        "PPR errors remain; letting relations guide the graph walk is left for future work.",
+        "OpenIE quality drops on longer passages.",
+        "Scalability to much larger indexes is not yet shown."
+      ],
+      "limits_src": "paper §7, App. F",
+      "reading": [
+        "The reader only ever sees raw passages; the KG changes which passages are chosen, not what is read.",
+        "Relation labels are not used anywhere in scoring (edges carry counts or similarity), which matches the authors' note that relations do not yet guide the walk.",
+        "Query NER keeps only entities, so non-entity cues in the question are lost; this is the largest error class (48%, Table 11).",
+        "Main results use corpora built from the candidate passages of 1,000 dev questions each (6k-12k passages), much smaller than open-domain settings.",
+        "QA is reported only for the ColBERTv2 variant and against ColBERTv2 and IRCoT, not the LLM-augmented baselines (RAPTOR, Propositionizer)."
+      ]
+    },
+    "abstract": {
+      "text": "HippoRAG is a retrieval framework modelled on the hippocampal indexing theory of long-term memory. Offline, an LLM turns every passage into open knowledge-graph triples, and a retrieval encoder adds edges between similar phrases, forming an index over the corpus. Online, the question's named entities are linked to graph nodes and Personalized PageRank spreads relevance from them, so passages connected through shared entities are found in one retrieval step. On multi-hop QA (MuSiQue, 2WikiMultiHopQA, HotpotQA) it beats standard retrievers by up to 20% and rivals iterative retrieval at a fraction of the cost and time.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2405.14831"
+    },
+    "sections": {
+      "Memory architecture": "§2.2-2.3",
+      "Results": "§4",
+      "Ablation": "§5.1",
+      "Discussion": "§5.2-5.3, §7",
+      "Details": "§3, App. A, G, H, I"
+    }
+  }
+}

@@ -1,0 +1,515 @@
+{
+  "id": "reasoning-on-graphs",
+  "name": "RoG (Reasoning on Graphs)",
+  "paper": {
+    "title": "Reasoning on Graphs: Faithful and Interpretable Large Language Model Reasoning",
+    "arxiv": "2310.01061",
+    "url": "https://openreview.net/forum?id=ZGNWW7xZ6Q",
+    "venue": "ICLR 2024",
+    "venue_short": "ICLR",
+    "track": "main",
+    "year": 2024,
+    "code": "https://github.com/RManLuo/reasoning-on-graphs"
+  },
+  "design": {
+    "construction": {
+      "unit": "KG triple (head, relation, tail) of an existing Freebase subgraph; relation-path knowledge tuned into the LLM",
+      "kept_as": "verbatim KG triples; which relation sequences exist is learned into LLaMA2-Chat-7B weights",
+      "processing": "offline only: shortest paths between question and answer entities of training questions give relation-path labels; one LLM is instruction-tuned on planning and on answering from retrieved paths",
+      "trigger": "offline-batch",
+      "writer": "instruction tuning of LLaMA2-Chat-7B (3 epochs, 2 A100-80G, 38 h)"
+    },
+    "organization": {
+      "structure": "knowledge graph of entities and relations (Freebase subgraph; one subgraph per question in the released data)",
+      "stores": "KG triples; fine-tuned LLM weights",
+      "index": "none beyond the graph: exact relation-name match starting from labelled question entities"
+    },
+    "management": {
+      "operations": "none; the KG is fixed and nothing is written at question time",
+      "conflicts": null,
+      "forgetting": null,
+      "timing": "none"
+    },
+    "retrieval": {
+      "query": "the fine-tuned LLM writes 3 relation paths for the question (beam search)",
+      "candidates": "breadth-first search from each labelled question entity that follows each relation path hop by hop",
+      "selection": "none: every complete matching path goes to the reasoner (shuffled and cut only if the prompt would exceed ~4k tokens)",
+      "budget": "K = 3 relation paths; no cap on reasoning paths; prompt limit 3,996 tokens in code"
+    },
+    "use": {
+      "context": "reasoning paths as 'e0 -> r1 -> e1 -> ...' lines, then the question",
+      "reasoning": "single call to the same fine-tuned LLM returning all answers as a list; any other LLM can read the same paths"
+    },
+    "control": {
+      "construction": "none",
+      "management": "none",
+      "retrieval": "learned-sft"
+    }
+  },
+  "classify": {
+    "structure": "graph",
+    "index": "exact match",
+    "management": "not stated",
+    "candidates": "graph walk",
+    "decides": "LLM decides",
+    "note": "The KG is given and never changed, so there is no management to place. The walk is planned by the fine-tuned LLM's relation paths, and the same LLM then picks answers from all matched paths; no score or top-k cut sits in between."
+  },
+  "tags": {
+    "fidelity": "verbatim",
+    "structure": [
+      "graph",
+      "parametric"
+    ],
+    "write_time": [
+      "learned"
+    ],
+    "selection": [
+      "graph-expansion",
+      "planner"
+    ],
+    "memory_type": [
+      "semantic"
+    ],
+    "learning": "sft",
+    "domain": [
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "Questions arrive with their topic entities already linked to Freebase; the KG is a Freebase subgraph of triples within the maximum hop count of the question entities (2.57M entities, 8.31M triples).",
+    "construction": "Nothing is written at run time. Offline, the shortest paths between question and answer entities of WebQSP and CWQ training questions give relation-path labels, and LLaMA2-Chat-7B is instruction-tuned for 3 epochs to generate such paths and to answer from retrieved paths.",
+    "organization": "The KG stays a plain set of triples; the tuned model holds which relation sequences lead from question to answer.",
+    "update": "",
+    "retrieval": "The tuned LLM writes the top-3 relation paths by beam search; a breadth-first search from each question entity follows each path's relations in order and keeps every complete match.",
+    "answer": "All matched reasoning paths are written as 'entity -> relation -> entity' lines before the question, and the same LLM lists the answers; ChatGPT, Alpaca, LLaMA2-Chat or Flan-T5 can read the same paths instead.",
+    "learning": "Joint instruction tuning on planning (216,006 examples), retrieval-reasoning (30,465) and explanation data (2,000 answers written by ChatGPT)."
+  },
+  "summary": "Treats a knowledge graph as the memory and teaches an LLM its relation vocabulary: the model writes relation paths as plans, the plans are executed on the KG, and the same model answers from the entity paths they retrieve.",
+  "verified": false,
+  "notes": "Venue: ICLR 2024 main conference, verified on proceedings.iclr.cc (hash 3e2aeb66481dd63a32421bf032b70384, listed under 'ICLR 2024 Conference') and the PDF header 'Published as a conference paper at ICLR 2024'; arXiv 2310.01061 (v2, comment 'Accepted by ICLR 2024') was confirmed with the arXiv API. The OpenReview PDF sits behind a bot challenge, so the proceedings PDF was read. data/extra_systems.json already has the id 'rog' for this same system (used in rrp-2506.10508 results); this file uses the id given for the task, so the two should be merged.\nDESIGN: §3-4 (framework, planning, retrieval-reasoning), §5.1 and App. A.4-A.6 (data, training, K=3), App. A.3 (Algorithm 1), App. A.10 (prompts). Memory here is the KG itself plus relation-path knowledge distilled into the LLM; write_time 'learned' and structure 'parametric' refer to that tuning, since no memory is written per question. Question entities are assumed labelled and linked (§3), so retrieval starts from gold entities.",
+  "mechanism": {
+    "sources": {
+      "paper": "ICLR 2024 proceedings PDF (proceedings.iclr.cc, hash 3e2aeb66481dd63a32421bf032b70384), read 2026-09-30; same paper as arXiv 2310.01061",
+      "code": "https://github.com/RManLuo/reasoning-on-graphs/tree/ccf8ec847bf61005a1b27cc9e5aff5c8ead7a24b/",
+      "code_note": "Latest commit ccf8ec84 (2025-03-05) only edits scripts/plug-and-play.sh. The planning, retrieval, prompt and evaluation code (src/qa_prediction, src/utils, prompts) last changed on 2023-11-20 (fdc5939), before the camera-ready, so it is taken as the paper's code. The graphs come from the released Hugging Face datasets rmanluo/RoG-webqsp and rmanluo/RoG-cwq (one subgraph per question), which were not downloaded here."
+    },
+    "headline": [
+      "The memory is an existing KG and RoG writes nothing to it; what it learns is which relation sequences to follow, stored in the LLM's weights.",
+      "Retrieval starts from question entities the dataset already labels and matches relation names exactly; there is no embedding search.",
+      "Every path matching one of the 3 planned relation paths reaches the reasoner, so precision rests on the reasoning LLM (without it, WebQSP precision falls from 74.77 to 46.90)."
+    ],
+    "units": [
+      {
+        "name": "KG triple",
+        "role": "one fact of the Freebase subgraph the question comes with",
+        "made_by": "the dataset (Freebase), unchanged",
+        "fields": [
+          {
+            "name": "entity names",
+            "what": "head and tail entities; question entities are the starting points",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code graph_utils.py L5-L10",
+            "url": "https://github.com/RManLuo/reasoning-on-graphs/blob/ccf8ec847bf61005a1b27cc9e5aff5c8ead7a24b/src/utils/graph_utils.py#L5-L10"
+          },
+          {
+            "name": "relation name",
+            "what": "Freebase relation label, e.g. people.person.nationality; matched exactly against the plan",
+            "kept_as": "verbatim",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "code graph_utils.py L13-L36",
+            "url": "https://github.com/RManLuo/reasoning-on-graphs/blob/ccf8ec847bf61005a1b27cc9e5aff5c8ead7a24b/src/utils/graph_utils.py#L13-L36"
+          }
+        ]
+      },
+      {
+        "name": "Relation-path planner",
+        "role": "knowledge of which relation sequences exist in the KG",
+        "made_by": "instruction tuning of LLaMA2-Chat-7B on 216,006 planning examples",
+        "fields": [
+          {
+            "name": "tuned weights",
+            "what": "generate '<PATH> r1 <SEP> r2 </PATH>' for a question",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §4.3, Table 11",
+            "url": "https://proceedings.iclr.cc/paper_files/paper/2024/file/3e2aeb66481dd63a32421bf032b70384-Paper-Conference.pdf"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Cut subgraph",
+        "how": "keep Freebase triples within the maximum hop count of the question entities of WebQSP and CWQ",
+        "out": "2,566,291 entities, 7,058 relations, 8,309,195 triples",
+        "src": "paper App. A.4, Table 10",
+        "url": "https://proceedings.iclr.cc/paper_files/paper/2024/file/3e2aeb66481dd63a32421bf032b70384-Paper-Conference.pdf"
+      },
+      {
+        "step": "Label paths",
+        "how": "all shortest paths between question and answer entities; their relation sequences become the plan labels",
+        "src": "paper §4.2 Eq. 4; code gen_rule_path.py L132-L138, graph_utils.py L38-L64",
+        "url": "https://github.com/RManLuo/reasoning-on-graphs/blob/ccf8ec847bf61005a1b27cc9e5aff5c8ead7a24b/src/utils/graph_utils.py#L38-L64"
+      },
+      {
+        "step": "Build tuning data",
+        "how": "planning: question → relation path; retrieval-reasoning: paths found with the gold relation paths + question → answers; explanations: 1,000 questions per dataset answered by ChatGPT",
+        "out": "216,006 / 30,465 / 2,000 examples",
+        "src": "paper App. A.4, Table 11; code preprocess_qa.py L28-L50",
+        "url": "https://github.com/RManLuo/reasoning-on-graphs/blob/ccf8ec847bf61005a1b27cc9e5aff5c8ead7a24b/src/joint_training/preprocess_qa.py#L28-L50"
+      },
+      {
+        "step": "Tune",
+        "how": "LLaMA2-Chat-7B on both tasks jointly, batch 4, lr 2e-5, cosine schedule, warmup 0.03",
+        "params": {
+          "epochs": "3",
+          "hardware": "2 × A100-80G, 38 h"
+        },
+        "src": "paper App. A.6; code train.sh L1-L21",
+        "url": "https://github.com/RManLuo/reasoning-on-graphs/blob/ccf8ec847bf61005a1b27cc9e5aff5c8ead7a24b/scripts/train.sh#L1-L21"
+      }
+    ],
+    "read": [
+      {
+        "step": "Plan",
+        "round": 1,
+        "input": "question",
+        "how": "the tuned LLM gets 'Please generate a valid relation path…' + question; beam search returns 3 sequences, each parsed into a relation list",
+        "params": {
+          "K": "3 beams"
+        },
+        "src": "paper §4.3, §5.1; code gen_rule_path.py L23, L71-L99; planning.sh L6",
+        "url": "https://github.com/RManLuo/reasoning-on-graphs/blob/ccf8ec847bf61005a1b27cc9e5aff5c8ead7a24b/src/qa_prediction/gen_rule_path.py#L71-L99"
+      },
+      {
+        "step": "Walk",
+        "round": 1,
+        "input": "labelled question entities",
+        "scores": "relation name at each hop, exact string equality",
+        "how": "breadth-first search from every question entity; at hop i keep neighbours whose edge label equals r_i; paths that reach full length are kept",
+        "params": {
+          "cap": "none (max_p = 10 is commented out)"
+        },
+        "src": "paper App. A.3, Algorithm 1; code graph_utils.py L13-L36, build_qa_input.py L35-L41",
+        "url": "https://github.com/RManLuo/reasoning-on-graphs/blob/ccf8ec847bf61005a1b27cc9e5aff5c8ead7a24b/src/utils/graph_utils.py#L13-L36"
+      },
+      {
+        "step": "Fit",
+        "round": 1,
+        "how": "paths written as 'e0 -> r1 -> e1 -> …'; if prompt plus paths exceed the limit, paths are shuffled and added one by one until it is reached",
+        "params": {
+          "limit": "4,096 − 100 tokens (LLaMA)"
+        },
+        "src": "code build_qa_input.py L118-L134, llama.py L17",
+        "url": "https://github.com/RManLuo/reasoning-on-graphs/blob/ccf8ec847bf61005a1b27cc9e5aff5c8ead7a24b/src/qa_prediction/build_qa_input.py#L118-L134"
+      },
+      {
+        "step": "Reason",
+        "round": 1,
+        "how": "the same tuned LLM is asked for all possible answers as a list; an explanation template adds few-shot examples and 'explain why'",
+        "src": "paper §4.4, App. A.10; code build_qa_input.py L12, L108-L116",
+        "url": "https://github.com/RManLuo/reasoning-on-graphs/blob/ccf8ec847bf61005a1b27cc9e5aff5c8ead7a24b/src/qa_prediction/build_qa_input.py#L108-L116"
+      }
+    ],
+    "answer_context": {
+      "sees": "every reasoning path matched by the 3 relation paths, then the question",
+      "format": "[INST] <<SYS>> <</SYS>> {instruction}\\n\\nReasoning Paths:\\n{e0 -> r1 -> e1 -> …, one per line}\\n\\nQuestion:\\n{question} [/INST]",
+      "excludes": [
+        "the relation paths themselves",
+        "triples off the matched paths",
+        "path counts or scores"
+      ],
+      "includes": [
+        "all matched entity-relation paths (cut only past ~4k tokens)",
+        "the question"
+      ],
+      "note": "In the plug-and-play runs (Table 3) the same paths go to ChatGPT, Alpaca-7B, LLaMA2-Chat-7B or Flan-T5-xl with their own templates.",
+      "src": "code build_qa_input.py L108-L116; prompts/llama2_predict.txt",
+      "url": "https://github.com/RManLuo/reasoning-on-graphs/blob/ccf8ec847bf61005a1b27cc9e5aff5c8ead7a24b/src/qa_prediction/build_qa_input.py#L108-L116"
+    },
+    "compression": [
+      {
+        "what": "reasoner context vs the question's KG subgraph",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported in tokens. Fig. 3 plots the average number of retrieved paths per K only as bars; the code caps the prompt at 3,996 tokens.",
+        "src": "paper Fig. 3; code llama.py L17",
+        "url": "https://github.com/RManLuo/reasoning-on-graphs/blob/ccf8ec847bf61005a1b27cc9e5aff5c8ead7a24b/src/llms/language_models/llama.py#L17"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Hits@1 / F1, WebQSP",
+        "value": "85.7 / 70.8",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "Hits@1 / F1, CWQ",
+        "value": "62.6 / 56.2",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "F1 without planning",
+        "value": "49.69 WebQSP · 33.76 CWQ",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "ChatGPT + RoG planning, WebQSP Hits@1",
+        "value": "81.51 vs 66.77 alone",
+        "src": "paper Table 3"
+      },
+      {
+        "label": "Trained on one dataset only",
+        "value": "81.5 WebQSP · 59.1 CWQ Hits@1",
+        "src": "paper Tables 14-15"
+      },
+      {
+        "label": "MetaQA-3hop after 2 h transfer tuning",
+        "value": "88.98 Hits@1 (84.81 from scratch)",
+        "src": "paper Tables 12-13"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Edge direction",
+        "paper": "Algorithm 1 expands a triple (s, r, t) from s to t",
+        "code": "the graph is an undirected networkx Graph, so a relation can be followed tail to head, and when two triples join the same entity pair only the last relation is kept",
+        "src": "graph_utils.py L5-L10",
+        "url": "https://github.com/RManLuo/reasoning-on-graphs/blob/ccf8ec847bf61005a1b27cc9e5aff5c8ead7a24b/src/utils/graph_utils.py#L5-L10"
+      },
+      {
+        "topic": "Hits@1",
+        "paper": "share of questions whose top-1 predicted answer is correct",
+        "code": "a hit if any gold answer appears (normalised substring) anywhere in the whole generated answer list",
+        "src": "evaluate_results.py L33-L37, L95-L97",
+        "url": "https://github.com/RManLuo/reasoning-on-graphs/blob/ccf8ec847bf61005a1b27cc9e5aff5c8ead7a24b/src/qa_prediction/evaluate_results.py#L33-L37"
+      },
+      {
+        "topic": "Paths given to the reasoner",
+        "paper": "all retrieved paths are used",
+        "code": "all, unless the prompt would pass 3,996 tokens; then a random subset that fits",
+        "src": "build_qa_input.py L118-L134",
+        "url": "https://github.com/RManLuo/reasoning-on-graphs/blob/ccf8ec847bf61005a1b27cc9e5aff5c8ead7a24b/src/qa_prediction/build_qa_input.py#L118-L134"
+      }
+    ],
+    "open_questions": [
+      "RoG differs from the LLM baselines in fine-tuning as well as in retrieval; Table 16 (LLaMA2-Chat-7B fine-tuned without paths: 73.89 / 53.49 Hits@1) is the closer control than the zero-shot rows.",
+      "The non-LLM baselines are copied from UniKGQA and DECAF, so their answer extraction and Hits@1 definition may differ from RoG's substring-based scoring.",
+      "No run feeds the reasoner random paths of the same number, so how much of the gain is precise paths versus simply more KG text is not isolated (random plans retrieve different paths and also change their number)."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 240",
+        "body": "<text class=\"fig-t\" x=\"66\" y=\"16\" text-anchor=\"middle\">Freebase subgraph</text><line class=\"gi-e\" x1=\"26\" y1=\"62\" x2=\"58\" y2=\"104\"/><line class=\"gi-e\" x1=\"58\" y1=\"104\" x2=\"104\" y2=\"132\"/><line class=\"gi-e\" x1=\"58\" y1=\"104\" x2=\"22\" y2=\"132\"/><line class=\"gi-e\" x1=\"70\" y1=\"40\" x2=\"120\" y2=\"30\"/><line class=\"gi-e\" x1=\"112\" y1=\"72\" x2=\"104\" y2=\"132\"/><line class=\"gi-e\" x1=\"26\" y1=\"62\" x2=\"22\" y2=\"132\"/><path class=\"gi-a\" d=\"M26 62 L70 40 L112 72\"/><circle class=\"gi-hi\" cx=\"26\" cy=\"62\" r=\"7\"/><circle class=\"gi-n\" cx=\"70\" cy=\"40\" r=\"6\"/><circle class=\"gi-n\" cx=\"58\" cy=\"104\" r=\"6\"/><circle class=\"gi-hi\" cx=\"112\" cy=\"72\" r=\"7\"/><circle class=\"gi-n\" cx=\"22\" cy=\"132\" r=\"6\"/><circle class=\"gi-n\" cx=\"104\" cy=\"132\" r=\"6\"/><circle class=\"gi-n\" cx=\"120\" cy=\"30\" r=\"6\"/><text class=\"fig-s\" x=\"26\" y=\"48\" text-anchor=\"middle\">question</text><text class=\"fig-s\" x=\"112\" y=\"94\" text-anchor=\"middle\">answer</text><text class=\"fig-s\" x=\"66\" y=\"162\" text-anchor=\"middle\">triples near the</text><text class=\"fig-s\" x=\"66\" y=\"175\" text-anchor=\"middle\">question entities</text><text class=\"fig-s\" x=\"66\" y=\"194\" text-anchor=\"middle\">2.6M entities,</text><text class=\"fig-s\" x=\"66\" y=\"207\" text-anchor=\"middle\">8.3M triples</text><path class=\"gi-a\" d=\"M134 70 L145 70\"/><polygon class=\"gi-ah\" points=\"152,70 145,66 145,74\"/><rect class=\"gi-f\" x=\"152\" y=\"48\" width=\"116\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"210.0\" y=\"68.0\" text-anchor=\"middle\">Shortest paths</text><text class=\"fig-s\" x=\"210.0\" y=\"81.0\" text-anchor=\"middle\">question → answer</text><path class=\"gi-a\" d=\"M210 92 L210 111\"/><polygon class=\"gi-ah\" points=\"210,118 206,111 214,111\"/><rect class=\"gi-ev\" x=\"152\" y=\"118\" width=\"116\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"210.0\" y=\"138.0\" text-anchor=\"middle\">Relation path</text><text class=\"fig-s\" x=\"210.0\" y=\"151.0\" text-anchor=\"middle\">r1 → r2, labels only</text><text class=\"fig-s\" x=\"210\" y=\"180\" text-anchor=\"middle\">training questions of</text><text class=\"fig-s\" x=\"210\" y=\"193\" text-anchor=\"middle\">WebQSP and CWQ</text><path class=\"gi-a\" d=\"M268 70 L284 70 L284 58 L291 58\"/><polygon class=\"gi-ah\" points=\"298,58 291,54 291,62\"/><path class=\"gi-a\" d=\"M268 140 L284 140 L284 146 L291 146\"/><polygon class=\"gi-ah\" points=\"298,146 291,142 291,150\"/><rect class=\"gi-llm\" x=\"298\" y=\"36\" width=\"124\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"360.0\" y=\"56.0\" text-anchor=\"middle\">Planning task</text><text class=\"fig-s\" x=\"360.0\" y=\"69.0\" text-anchor=\"middle\">question → path</text><text class=\"fig-s\" x=\"360\" y=\"96\" text-anchor=\"middle\">216,006 examples</text><rect class=\"gi-llm\" x=\"298\" y=\"124\" width=\"124\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"360.0\" y=\"144.0\" text-anchor=\"middle\">Reasoning task</text><text class=\"fig-s\" x=\"360.0\" y=\"157.0\" text-anchor=\"middle\">paths → answers</text><text class=\"fig-s\" x=\"360\" y=\"184\" text-anchor=\"middle\">30,465 (+2,000 with</text><text class=\"fig-s\" x=\"360\" y=\"197\" text-anchor=\"middle\">ChatGPT explanations)</text><path class=\"gi-a\" d=\"M422 58 L436 58 L436 92 L441 92\"/><polygon class=\"gi-ah\" points=\"448,92 441,88 441,96\"/><path class=\"gi-a\" d=\"M422 146 L436 146 L436 112 L441 112\"/><polygon class=\"gi-ah\" points=\"448,112 441,108 441,116\"/><rect class=\"gi-hi\" x=\"448\" y=\"80\" width=\"104\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"500.0\" y=\"100.0\" text-anchor=\"middle\">RoG</text><text class=\"fig-s\" x=\"500.0\" y=\"113.0\" text-anchor=\"middle\">LLaMA2-Chat-7B</text><text class=\"fig-s\" x=\"500\" y=\"140\" text-anchor=\"middle\">one model, both tasks</text><text class=\"fig-s\" x=\"500\" y=\"153\" text-anchor=\"middle\">3 epochs, 2 A100s, 38 h</text><text class=\"fig-s\" x=\"280\" y=\"230\" text-anchor=\"middle\">the KG is read as it is; only the LLM's weights change</text>",
+        "text": [
+          "The memory is a Freebase subgraph that RoG never rewrites. From training questions, the relation labels on shortest question-to-answer paths become targets.",
+          "One LLaMA2-Chat-7B is tuned to write such relation paths and to answer from the paths they retrieve."
+        ],
+        "src": "paper §4.2, App. A.4, A.6, Tables 10-11; code gen_rule_path.py L132-L138",
+        "url": "https://proceedings.iclr.cc/paper_files/paper/2024/file/3e2aeb66481dd63a32421bf032b70384-Paper-Conference.pdf"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 248",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"34\" width=\"60\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"34.0\" y=\"60.0\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M64 56 L67 56\"/><polygon class=\"gi-ah\" points=\"74,56 67,52 67,60\"/><rect class=\"gi-llm\" x=\"74\" y=\"34\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"118.0\" y=\"54.0\" text-anchor=\"middle\">Plan</text><text class=\"fig-s\" x=\"118.0\" y=\"67.0\" text-anchor=\"middle\">fine-tuned RoG</text><text class=\"fig-s\" x=\"118\" y=\"92\" text-anchor=\"middle\">beam search</text><path class=\"gi-a\" d=\"M162 56 L165 56\"/><polygon class=\"gi-ah\" points=\"172,56 165,52 165,60\"/><rect class=\"gi-ev\" x=\"172\" y=\"34\" width=\"86\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"215.0\" y=\"54.0\" text-anchor=\"middle\">3 paths</text><text class=\"fig-s\" x=\"215.0\" y=\"67.0\" text-anchor=\"middle\">r1 → r2 → …</text><text class=\"fig-s\" x=\"215\" y=\"92\" text-anchor=\"middle\">relation labels</text><path class=\"gi-a\" d=\"M258 56 L261 56\"/><polygon class=\"gi-ah\" points=\"268,56 261,52 261,60\"/><rect class=\"gi-f\" x=\"268\" y=\"34\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"316.0\" y=\"54.0\" text-anchor=\"middle\">Walk the KG</text><text class=\"fig-s\" x=\"316.0\" y=\"67.0\" text-anchor=\"middle\">breadth-first</text><text class=\"fig-s\" x=\"316\" y=\"92\" text-anchor=\"middle\">from the labelled</text><text class=\"fig-s\" x=\"316\" y=\"105\" text-anchor=\"middle\">question entity,</text><text class=\"fig-s\" x=\"316\" y=\"118\" text-anchor=\"middle\">exact relation match</text><path class=\"gi-a\" d=\"M364 56 L367 56\"/><polygon class=\"gi-ah\" points=\"374,56 367,52 367,60\"/><rect class=\"gi-f\" x=\"374\" y=\"34\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"418.0\" y=\"54.0\" text-anchor=\"middle\">All matches</text><text class=\"fig-s\" x=\"418.0\" y=\"67.0\" text-anchor=\"middle\">no top-k</text><path class=\"gi-a\" d=\"M462 56 L508 56 L508 153\"/><polygon class=\"gi-ah\" points=\"508,160 504,153 512,153\"/><rect class=\"gi-llm\" x=\"452\" y=\"160\" width=\"104\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"504.0\" y=\"180.0\" text-anchor=\"middle\">Reason</text><text class=\"fig-s\" x=\"504.0\" y=\"193.0\" text-anchor=\"middle\">same RoG model</text><text class=\"fig-s\" x=\"504\" y=\"222\" text-anchor=\"middle\">prompt cut only</text><text class=\"fig-s\" x=\"504\" y=\"235\" text-anchor=\"middle\">past ~4k tokens</text><path class=\"gi-a\" d=\"M452 182 L387 182\"/><polygon class=\"gi-ah\" points=\"380,182 387,178 387,186\"/><rect class=\"gi-hi\" x=\"290\" y=\"160\" width=\"90\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"335.0\" y=\"180.0\" text-anchor=\"middle\">Answers</text><text class=\"fig-s\" x=\"335.0\" y=\"193.0\" text-anchor=\"middle\">as a list</text><path class=\"gi-a d\" d=\"M418 78 L418 138 L190 138 L190 153\"/><polygon class=\"gi-ah\" points=\"190,160 186,153 194,153\"/><text class=\"fig-s\" x=\"200\" y=\"153\" text-anchor=\"start\">plug-and-play</text><rect class=\"gi-llm fig-soft\" x=\"128\" y=\"160\" width=\"124\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"190.0\" y=\"180.0\" text-anchor=\"middle\">Or another LLM</text><text class=\"fig-s\" x=\"190.0\" y=\"193.0\" text-anchor=\"middle\">ChatGPT, Alpaca…</text><path class=\"gi-a d\" d=\"M252 182 L283 182\"/><polygon class=\"gi-ah\" points=\"290,182 283,178 283,186\"/><text class=\"fig-s\" x=\"64\" y=\"176\" text-anchor=\"middle\">paths shown</text><text class=\"fig-s\" x=\"64\" y=\"189\" text-anchor=\"middle\">as lines:</text><text class=\"fig-s\" x=\"64\" y=\"202\" text-anchor=\"middle\">e0 → r1 → e1 …</text><text class=\"fig-s\" x=\"260\" y=\"240\" text-anchor=\"middle\">no embeddings: planned relation names must equal the KG's</text>",
+        "text": [
+          "The tuned model writes 3 relation paths; a breadth-first walk from the labelled question entity keeps every KG path whose relations match exactly.",
+          "All matches go, as entity-relation lines, to the same model or to any other LLM, which lists the answers."
+        ],
+        "src": "paper §4.3-4.4, App. A.3; code gen_rule_path.py L71-L99, graph_utils.py L13-L36, build_qa_input.py L35-L134",
+        "url": "https://github.com/RManLuo/reasoning-on-graphs/blob/ccf8ec847bf61005a1b27cc9e5aff5c8ead7a24b/src/utils/graph_utils.py#L13-L36"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Freebase subgraph",
+        "value": "2.57M entities · 7,058 relations · 8.31M triples",
+        "src": "paper Table 10",
+        "section": "construction"
+      },
+      {
+        "label": "Tuning data",
+        "value": "216,006 planning · 30,465 reasoning · 2,000 explanation",
+        "src": "paper Table 11",
+        "section": "construction"
+      },
+      {
+        "label": "Tuning cost",
+        "value": "3 epochs on 2 A100-80G, 38 h",
+        "src": "paper App. A.6",
+        "section": "construction"
+      },
+      {
+        "label": "Relation paths per question",
+        "value": "3 (beam search)",
+        "src": "paper §5.1; code planning.sh L6",
+        "section": "method"
+      },
+      {
+        "label": "Reasoning paths kept",
+        "value": "all matches; prompt cap 3,996 tokens",
+        "src": "code graph_utils.py L13-L36, llama.py L17",
+        "section": "method"
+      },
+      {
+        "label": "Path retrieval time",
+        "value": "under 3 ms per question for K ≤ 5",
+        "src": "paper Fig. 4 (axis in 10⁻³ s)",
+        "section": "results"
+      },
+      {
+        "label": "Transfer to Wiki-Movies KG",
+        "value": "2 h of extra tuning vs 38 h on Freebase",
+        "src": "paper Table 13",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "WebQSP precision",
+        "WebQSP recall",
+        "WebQSP F1",
+        "CWQ precision",
+        "CWQ recall",
+        "CWQ F1"
+      ],
+      "rows": [
+        [
+          "RoG",
+          "74.77",
+          "75.84",
+          "70.81",
+          "57.69",
+          "58.19",
+          "56.17"
+        ],
+        [
+          "without planning (question only)",
+          "57.26",
+          "50.16",
+          "49.69",
+          "35.35",
+          "34.77",
+          "33.76"
+        ],
+        [
+          "without reasoning (all path ends as answers)",
+          "46.90",
+          "79.85",
+          "49.56",
+          "18.88",
+          "67.89",
+          "22.26"
+        ],
+        [
+          "random plans",
+          "38.66",
+          "38.31",
+          "35.24",
+          "38.99",
+          "39.29",
+          "37.64"
+        ],
+        [
+          "majority vote instead of reasoning",
+          "54.80",
+          "60.44",
+          "47.96",
+          "22.92",
+          "47.98",
+          "26.52"
+        ]
+      ],
+      "src": "paper Table 2"
+    },
+    "components": [
+      {
+        "role": "Writes relation paths",
+        "model": "LLaMA2-Chat-7B fine-tuned as RoG, beam search 3",
+        "kind": "llm",
+        "src": "paper §5.1; code gen_rule_path.py L71-L99",
+        "url": "https://github.com/RManLuo/reasoning-on-graphs/blob/ccf8ec847bf61005a1b27cc9e5aff5c8ead7a24b/src/qa_prediction/gen_rule_path.py#L71-L99"
+      },
+      {
+        "role": "Follows the paths in the KG",
+        "model": "breadth-first search, exact relation match",
+        "kind": "rule",
+        "src": "paper App. A.3; code graph_utils.py L13-L36",
+        "url": "https://github.com/RManLuo/reasoning-on-graphs/blob/ccf8ec847bf61005a1b27cc9e5aff5c8ead7a24b/src/utils/graph_utils.py#L13-L36"
+      },
+      {
+        "role": "Answers from the paths",
+        "model": "the same RoG model (ChatGPT, Alpaca-7B, LLaMA2-Chat-7B or Flan-T5-xl in plug-and-play)",
+        "kind": "llm",
+        "src": "paper §4.4, §5.3"
+      },
+      {
+        "role": "Writes explanation training data",
+        "model": "ChatGPT",
+        "kind": "llm",
+        "src": "paper App. A.4"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Use relation paths as plans: an LLM tuned to write paths that exist in the KG retrieves exact entity chains, and reading them lifts a 7B model above earlier KGQA systems on WebQSP and CWQ.",
+      "claims": [
+        {
+          "claim": "State of the art on KGQA.",
+          "evidence": "Hits@1 85.7 on WebQSP vs 82.1 for DECAF (+4.4%); 62.6 on CWQ vs 51.2 for UniKGQA (+22.3%), CWQ F1 56.2 vs 49.1. Table 1, §5.2."
+        },
+        {
+          "claim": "Both planning and reasoning are needed.",
+          "evidence": "F1 without planning 49.69 / 33.76, without reasoning 49.56 / 22.26, random plans 35.24 / 37.64, vs 70.81 / 56.17 for RoG. Table 2."
+        },
+        {
+          "claim": "The planning module plugs into other LLMs without retraining them.",
+          "evidence": "WebQSP Hits@1: ChatGPT 66.77 → 81.51, LLaMA2-Chat-7B 64.37 → 74.20, Flan-T5-xl 30.95 → 67.87. Table 3."
+        },
+        {
+          "claim": "Generated relation paths are faithful: more of them cover more answers.",
+          "evidence": "Answer coverage of retrieved paths rises with K = 1…5 while reasoning F1 levels off; K = 3 chosen. Fig. 3, §5.4."
+        },
+        {
+          "claim": "RoG transfers to another KG cheaply.",
+          "evidence": "MetaQA-3hop 88.98 Hits@1 after tuning from the Freebase model vs 84.81 from scratch; 2 h vs 38 h. Tables 12-13."
+        }
+      ],
+      "limits": [
+        "The paper has no limitations section; it notes only that larger K brings more noise and retrieval time (§5.4, App. A.7.4) and that more Freebase QA data could help further (App. A.7.2)."
+      ],
+      "limits_src": "paper §5.4, App. A.7.2, A.7.4",
+      "reading": [
+        "Question and answer entities are assumed labelled and linked to the KG (§3), so retrieval starts from gold entities; systems that must find entities themselves face a harder task.",
+        "The non-LLM baselines are copied from UniKGQA and DECAF (App. A.6) and the LLM baselines are zero-shot without KG access; fine-tuned LLMs without paths (Table 16) reach 73.89 / 53.49, closer to RoG.",
+        "The text reports Hits@1 gains of 8.5%, 15.3% and 119.3% for four LLMs, but Table 3 gives +22% for ChatGPT; in Table 3 the WebQSP cells of Alpaca + RoG (56.16 / 74.20) and LLaMA2 + RoG (74.20 / 56.16) look swapped.",
+        "RoG is tuned on WebQSP and CWQ together; trained on one dataset it scores 81.5 and 59.1 Hits@1 (Tables 14-15).",
+        "In the code the KG is an undirected simple graph, so a path can run against a relation's direction and parallel relations between two entities collapse to one.",
+        "Hits@1 in the code is a substring hit over the whole answer list, not the top-1 answer, which favours long answer lists."
+      ]
+    },
+    "abstract": {
+      "text": "RoG targets LLM question answering over knowledge graphs, where models lack current facts and invent reasoning steps. It plans with relation paths: a fine-tuned LLM writes sequences of KG relations that could lead from the question to the answer, the paths are executed on the KG to retrieve concrete entity chains, and the LLM reasons over those chains to answer and explain. The model is trained on two instruction tasks distilled from the KG, planning and reasoning over retrieved paths, and its planner can also feed other LLMs. It reports state-of-the-art results on WebQSP and CWQ with interpretable answers.",
+      "note": "Summary in our words; the original abstract is on OpenReview and arXiv.",
+      "url": "https://arxiv.org/abs/2310.01061"
+    },
+    "sections": {
+      "Memory architecture": "§4",
+      "Results": "§5.2-5.3",
+      "Ablation": "§5.2 (Table 2)",
+      "Discussion": "§5.4, §6",
+      "Details": "§5.1, App. A.3-A.7, A.10"
+    }
+  }
+}

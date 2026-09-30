@@ -1,6 +1,7 @@
 "use strict";
 
-const VIEWS = ["taxonomy", "map", "compare", "systems", "pipeline", "results", "papers", "method"];
+// systems, pipeline, results, papers and method are hidden for now (under review); add them back here to show them
+const VIEWS = ["taxonomy", "benchmarks"];
 const STAGE_LABEL = {
   ingestion: ["Ingestion", "segmenting the stream"],
   construction: ["Construction", "what gets written"],
@@ -52,14 +53,13 @@ const PAPER_FACETS = [
   ["deep_stage", "Graph-memory stage (DEEP-PolyU)", p => p.facets.deep_stage || []],
   ["yyy_tags", "Tags (yyyujintang)", p => p.facets.yyy_tags || []],
 ];
-const SOURCE_NAME = { liu: "Liu et al.", teleai: "TeleAI", deep: "DEEP-PolyU", yyy: "yyyujintang" };
+const SOURCE_NAME = { liu: "Liu et al.", teleai: "TeleAI", deep: "DEEP-PolyU", yyy: "yyyujintang", manual: "Added by hand" };
 
 let A = null;             // atlas.json
 const sysById = new Map();
 const S = {               // UI state
-  view: "taxonomy", mapStage: "retrieval", mapMore: false, mapOpen: null, mapHi: null,
-  taxQ: "", taxLearn: null, taxLow: true, tz: null, tzPaper: null, tzAllRows: false, tzMode: (() => { try { return localStorage.getItem("atlas.tzMode") || "iso"; } catch (_) { return "iso"; } })(),
-  cmpBench: null, cmpMetric: null, cmpAnswer: "any", cmpSort: { key: "median", dir: -1 }, cmpOpen: null, cmpScored: true, cmpBaselines: false, cmpColsOpen: false,
+  view: "taxonomy",
+  taxQ: "", taxLearn: null, taxAccepted: true, tz: null, tzPaper: null, tzAllRows: false, tzStep: null, tzMore: false,
   meta: {}, sort: "name", psort: "new",
   q: "", tags: {},        // systems/pipeline filters
   stage: null,
@@ -80,11 +80,11 @@ function sysName(id, variant) {
 }
 
 /* ---------------- boot ---------------- */
-fetch("atlas.json").then(r => r.json()).then(data => {
+fetch("atlas.json", { cache: "no-store" }).then(r => r.json()).then(data => {
   A = data;
   // papers the taxonomy marks as hidden (not about memory, theory) are dropped from every view
   const hidden = hiddenFams();
-  A.papers = A.papers.filter(p => !(p.tax && hidden.has(p.tax.family)));
+  A.papers = A.papers.filter(p => !(p.tax && hidden.has(p.tax.family)) && !notStated(p));
   for (const s of A.systems) sysById.set(s.id, { ...s, annotated: true });
   for (const s of A.extra_systems) if (!sysById.has(s.id)) sysById.set(s.id, { ...s, annotated: false });
   const benches = [...new Set(A.results.map(r => r.benchmark))];
@@ -92,6 +92,7 @@ fetch("atlas.json").then(r => r.json()).then(data => {
   const h = location.hash.slice(1).split("/");
   if (VIEWS.includes(h[0])) S.view = h[0];
   if (h[0] === "taxonomy") tzFromHash(h.slice(1));
+  if (h[0] === "benchmarks") bmFromHash(h.slice(1));
   $("#tabs").addEventListener("click", e => {
     const b = e.target.closest("button[data-view]");
     if (b) go(b.dataset.view);
@@ -99,6 +100,7 @@ fetch("atlas.json").then(r => r.json()).then(data => {
   window.addEventListener("hashchange", () => {
     const parts = location.hash.slice(1).split("/"), v = parts[0];
     if (v === "taxonomy") { tzFromHash(parts.slice(1)); S.view = v; render(); }
+    else if (v === "benchmarks") { bmFromHash(parts.slice(1)); S.view = v; render(); }
     else if (VIEWS.includes(v) && v !== S.view) { S.view = v; render(); }
   });
   document.addEventListener("keydown", e => { if (e.key === "Escape") { hideTip(); closeDrawer(); } });
@@ -109,6 +111,8 @@ fetch("atlas.json").then(r => r.json()).then(data => {
 
 function go(v) {
   S.view = v;
+  if (v === "benchmarks") S.tz = { level: 1, band: "benchmark" };
+  else if (v === "taxonomy" && S.tz?.band === "benchmark") S.tz = { level: 0 };
   try { history.replaceState(null, "", "#" + v); } catch (_) { /* sandboxed */ }
   render();
   window.scrollTo(0, 0);
@@ -116,13 +120,13 @@ function go(v) {
 
 function render() {
   const counts = {
-    taxonomy: A.papers.filter(p => p.tax).length, map: "", compare: "", systems: A.systems.length, pipeline: A.systems.length,
+    taxonomy: A.papers.filter(p => FORMS.includes(groupOf(p)) && (!S.taxAccepted || isAccepted(p))).length, benchmarks: A.papers.filter(p => groupOf(p) === "benchmark" && (!S.taxAccepted || isAccepted(p))).length, systems: A.systems.length, pipeline: A.systems.length,
     results: A.results.length, papers: A.papers.length, method: "",
   };
-  $("#tabs").innerHTML = [["taxonomy", "Taxonomy"], ["map", "Map"], ["compare", "Compare"], ["systems", "Systems"], ["pipeline", "Pipeline"], ["results", "Results"], ["papers", "Papers"], ["method", "Method"]]
+  $("#tabs").innerHTML = [["taxonomy", "Taxonomy"], ["benchmarks", "Benchmarks"], ["systems", "Systems"], ["pipeline", "Pipeline"], ["results", "Results"], ["papers", "Papers"], ["method", "Method"]].filter(([v]) => VIEWS.includes(v))
     .map(([v, l]) => `<button role="tab" data-view="${v}" aria-selected="${S.view === v}">${l}${counts[v] !== "" ? `<span class="n">${counts[v]}</span>` : ""}</button>`).join("");
   const main = $("#main");
-  ({ taxonomy: viewTaxonomy, map: viewMap, compare: viewCompare, systems: viewSystems, pipeline: viewPipeline, results: viewResults, papers: viewPapers, method: viewMethod })[S.view](main);
+  ({ taxonomy: viewTaxonomy, benchmarks: viewBenchmarks, systems: viewSystems, pipeline: viewPipeline, results: viewResults, papers: viewPapers, method: viewMethod })[S.view](main);
 }
 
 /* ---------------- shared system filtering ---------------- */
@@ -130,6 +134,15 @@ function tagVals(s, k) { const v = (s.tags || {})[k]; return v == null ? [] : Ar
 
 /* Venue, year and track: filters shared by Map and Systems, plus sort orders. */
 const TRACK_ORDER = ["main", "short", "findings", "journal", "workshop", "preprint"];
+/* A paper's venue, saying where it comes from: checked by us, looked up in a scholarly database, taken from a
+   source list, or not known (then only the year, marked "venue unknown"; it is not a claim that the paper is
+   unpublished). */
+function venueLabel(p) {
+  const v = p.venue, y = paperYear(p);
+  if (!v) return y ? `${y} · venue unknown` : "venue unknown";
+  const tag = venueTag(v);
+  return v.checked ? tag : v.source ? `${tag} · ${v.source}` : `${tag} · from list`;
+}
 const sysVenue = s => (s.paper?.venue_short ? { venue: s.paper.venue_short, year: s.paper.year, track: s.paper.track } : null);
 function venueTag(v) {
   if (!v) return "";
@@ -243,7 +256,16 @@ function resultSummary(id) {
    without opening it. */
 const CONF_TEXT = { high: "mechanism stated in the source", medium: "partly inferred", low: "title only or ambiguous" };
 const FORMS = ["token", "parametric", "latent"];
-const LEARN_BADGE = { experience: "exp", sft: "SFT", rl: "RL", "model-training": "trained" };
+/* learning labels come from data/taxonomy.json; "experience" with a reward is shown as its own kind */
+const learnName = id => A.taxonomy.learning.find(l => l.id === id)?.name || id;
+const REWARD_NAME = "Non-parametric: RL";
+/* filter keys: a learning id, "experience-reward", or a whole kind ("static", "non-parametric", "parametric") */
+function learnMatch(t, key) {
+  const k = learnKey(t), kind = A.taxonomy.learning.find(l => l.id === (t.learning || "none"))?.kind || "static";
+  if (key === "non-parametric" || key === "parametric" || key === "static") return kind === key;
+  if (key === "experience") return k === "experience";
+  return k === key;
+}
 const LEARN_ORDER = ["none", "experience", "sft", "rl", "model-training"];
 const learnKey = t => (t.learning === "experience" && (t.learning_also || []).includes("rl") ? "experience-reward" : t.learning || "unlabelled");
 const paperYear = p => p.venue?.year || (p.date ? +p.date.slice(0, 4) : null);
@@ -254,7 +276,8 @@ const rowOfPaper = p => (p.tax.function || [])[0] || "unspecified";
 function learnBadge(t) {
   if (!t.learning || t.learning === "none") return "";
   const k = learnKey(t);
-  return `<span class="lb lb-${esc(t.learning)}" title="${esc(k === "experience-reward" ? "learns from experience with a reward signal, no weights trained" : (A.taxonomy.learning.find(l => l.id === t.learning)?.name || ""))}">${esc(LEARN_BADGE[t.learning])}${k === "experience-reward" ? "·reward" : ""}</span>`;
+  const name = k === "experience-reward" ? REWARD_NAME : learnName(t.learning);
+  return `<span class="lb lb-${esc(t.learning)}" title="${esc(k === "experience-reward" ? A.taxonomy.learning_reward?.def || name : A.taxonomy.learning.find(l => l.id === t.learning)?.def || name)}">${esc(name)}</span>`;
 }
 /* stacked bar of how the papers in a set learn */
 function learnMix(list) {
@@ -274,7 +297,20 @@ function tzFromHash(parts) {
     : { level: 0 };
   S.tzPaper = null;
 }
+/* the Benchmarks tab is the taxonomy's benchmark band on its own: #benchmarks · #benchmarks/<family> */
+function bmFromHash(parts) {
+  S.tz = parts[0] ? { level: 2, band: "benchmark", fam: parts[0] } : { level: 1, band: "benchmark" };
+  S.tzPaper = null;
+}
+function viewBenchmarks(main) {
+  if (S.tz?.band !== "benchmark") S.tz = { level: 1, band: "benchmark" };
+  viewTaxonomy(main);
+}
+function groupOf(p) {
+  return p.tax && A.taxonomy.groups.find(g => g.families.some(f => f.id === p.tax.family))?.id;
+}
 function tzHash(z) {
+  if (z.band === "benchmark") return z.level === 2 ? `benchmarks/${z.fam}` : "benchmarks";
   return z.level === 0 ? "taxonomy"
     : z.band ? (z.level === 1 ? `taxonomy/b/${z.band}` : `taxonomy/bf/${z.band}/${z.fam}`)
     : z.level === 1 ? `taxonomy/c/${z.form}/${z.row}` : `taxonomy/f/${z.form}/${z.row}/${z.fam}`;
@@ -283,6 +319,7 @@ function tzHash(z) {
 function tzGo(z, from) {
   const apply = () => {
     S.tz = z; S.tzPaper = null; S.taxQ = ""; S.tzAllRows = false;
+    S.view = z.band === "benchmark" ? "benchmarks" : "taxonomy";
     try { history.pushState(null, "", "#" + tzHash(z)); } catch (_) { /* sandboxed */ }
     render(); window.scrollTo(0, 0);
   };
@@ -305,13 +342,17 @@ function tzGo(z, from) {
 
 function tzPapers() {
   const hidden = hiddenFams();
-  return A.papers.filter(p => p.tax && !hidden.has(p.tax.family) && (S.taxLow || p.tax.confidence !== "low"));
+  return A.papers.filter(p => p.tax && !hidden.has(p.tax.family) && (!S.taxAccepted || isAccepted(p)));
+}
+/* accepted = a named venue (conference, journal, findings or workshop); preprints and unknown venues are not */
+function isAccepted(p) {
+  return !!p.venue && p.venue.track !== "preprint";
 }
 
 function tzCrumbs(fams) {
   const z = S.tz, G = id => A.taxonomy.groups.find(g => g.id === id);
   const rowName = r => A.taxonomy.functions.find(f => f.id === r)?.name || "Not stated";
-  const items = [["Overview", { level: 0 }]];
+  const items = z.band === "benchmark" ? [] : [["Overview", { level: 0 }]];
   if (z.band) {
     items.push([G(z.band).name, { level: 1, band: z.band }]);
     if (z.level === 2 && G(z.band).families.filter(f => !f.hidden).length > 1) items.push([fams.get(z.fam)?.name, z]);
@@ -322,9 +363,7 @@ function tzCrumbs(fams) {
   }
   return `<nav class="tzcrumbs" aria-label="Zoom level">${items.map(([l, t], i) => i === items.length - 1
     ? `<span aria-current="page">${esc(l)}</span>` : `<button class="crumb" data-tz='${esc(JSON.stringify(t))}'>${esc(l)}</button><span aria-hidden="true">›</span>`).join("")}
-    <span class="tzmode" role="group" aria-label="How to show the map">
-      <button class="chip" data-mode="iso" aria-pressed="${S.tzMode === "iso"}">Isometric</button><button class="chip" data-mode="plain" aria-pressed="${S.tzMode === "plain"}">Plain text</button></span>
-    <label class="check" for="txl"><input id="txl" type="checkbox" ${S.taxLow ? "checked" : ""}> include low-confidence placements</label></nav>`;
+    <label class="check" for="txa"><input id="txa" type="checkbox" ${S.taxAccepted ? "checked" : ""}> accepted papers only</label></nav>`;
 }
 
 /* level 0: the whole map on one screen, as an isometric floor. Columns run along one edge (where memory
@@ -332,6 +371,20 @@ function tzCrumbs(fams) {
    Descriptions appear on hover so the picture stays readable. */
 const cellInfo = (f, r) => A.taxonomy.cells?.[`${f}|${r}`] || { text: "", note: "" };
 const cellText = (f, r) => [cellInfo(f, r).text, cellInfo(f, r).note].filter(Boolean).join(" ");
+/* Overview edge diagrams: where the memory lives (form) and what it holds (function), drawn with the
+   gi-* shapes of the axis icons, 120×60. */
+const OV_PICS = {
+  token: '<rect class="gi-ev" x="6" y="10" width="22" height="28" rx="2"/><line class="gi-t" x1="10" y1="17" x2="24" y2="17"/><line class="gi-t" x1="10" y1="23" x2="24" y2="23"/><line class="gi-t" x1="10" y1="29" x2="20" y2="29"/><rect class="gi-ev" x="14" y="22" width="22" height="28" rx="2"/><line class="gi-t" x1="18" y1="29" x2="32" y2="29"/><line class="gi-t" x1="18" y1="35" x2="32" y2="35"/><line class="gi-t" x1="18" y1="41" x2="28" y2="41"/><path class="gi-a" d="M42 32 L70 32"/><polygon class="gi-ah" points="70,35.5 76,32 70,28.5"/><rect class="gi-llm" x="80" y="20" width="34" height="24" rx="4"/><text class="gi-lbl" x="97" y="36" text-anchor="middle">LLM</text>',
+  parametric: '<rect class="gi-llm" x="22" y="6" width="76" height="48" rx="6"/><text class="gi-lbl" x="60" y="18" text-anchor="middle">LLM</text>' + [0, 1, 2, 3, 4, 5, 6, 7].flatMap(c => [0, 1, 2].map(r => `<rect class="gi-w" x="${32 + c * 7}" y="${24 + r * 7}" width="6" height="6"/>`)).join(""),
+  latent: [0, 1, 2, 3].map(r => [0, 1, 2].map(c => `<rect class="gi-v" x="${8 + c * 9}" y="${12 + r * 9}" width="8" height="8"/>`).join("")).join("") + '<path class="gi-a" d="M42 30 L70 30"/><polygon class="gi-ah" points="70,33.5 76,30 70,26.5"/><rect class="gi-llm" x="80" y="18" width="34" height="24" rx="4"/><text class="gi-lbl" x="97" y="34" text-anchor="middle">LLM</text>',
+  factual: '<rect class="gi-ev" x="4" y="6" width="112" height="22" rx="4"/><circle class="gi-n" cx="16" cy="17" r="6"/><text class="gi-lbl" x="28" y="21">user: vegan</text><rect class="gi-ev" x="4" y="33" width="112" height="22" rx="4"/><circle class="gi-v" cx="16" cy="44" r="6"/><text class="gi-lbl" x="28" y="48">Paris ∈ France</text>',
+  experiential: '<rect class="gi-ev" x="4" y="8" width="36" height="18" rx="3"/><text class="gi-lbl" x="22" y="21" text-anchor="middle">try 1</text><path class="gi-bad" d="M44 12 L52 22 M52 12 L44 22"/><rect class="gi-ev" x="4" y="34" width="36" height="18" rx="3"/><text class="gi-lbl" x="22" y="47" text-anchor="middle">try 2</text><path class="gi-ok" d="M44 44 L48 49 L54 38"/><path class="gi-a" d="M58 30 L68 30"/><polygon class="gi-ah" points="68,33.5 74,30 68,26.5"/><rect class="gi-hi" x="76" y="12" width="42" height="36" rx="4"/><text class="gi-lbl" x="97" y="27" text-anchor="middle">lesson</text><text class="gi-lbl" x="97" y="40" text-anchor="middle">skill</text>',
+  working: '<rect class="gi-ev d" x="2" y="4" width="116" height="52" rx="6"/><text class="gi-lbl" x="8" y="16">this task only</text><rect class="gi-f" x="8" y="24" width="30" height="24" rx="3"/><path class="gi-ok" d="M16 36 L21 41 L30 30"/><rect class="gi-f" x="45" y="24" width="30" height="24" rx="3"/><path class="gi-ok" d="M53 36 L58 41 L67 30"/><rect class="gi-hi" x="82" y="24" width="30" height="24" rx="3"/><text class="gi-lbl" x="97" y="40" text-anchor="middle">now</text>',
+};
+const OV_AXES = { form: "Location of memory", func: "Purpose of memory" };
+const OV_WHERE = { token: "outside the model, as text", parametric: "in the weights", latent: "inside, in hidden states" };
+const ovPic = (id, x, y, w) => OV_PICS[id] ? `<svg class="axicon ovpic" x="${x}" y="${y}" width="${w}" height="${w / 2}" viewBox="0 0 120 60">${OV_PICS[id]}</svg>` : "";
+
 function tzOverview(papers, fams) {
   const T = A.taxonomy, G = id => T.groups.find(g => g.id === id);
   const rows = [...T.functions.map(f => ({ id: f.id, name: f.name, def: f.def })), { id: "unspecified", name: "Not stated", def: "The source does not say what the memory is for." }]
@@ -349,7 +402,7 @@ function tzOverview(papers, fams) {
   const ox = nJ * cx + 40, oy = 150;
   const P = (i, j, z = 0) => [ox + (i - j) * cx, oy + (i + j) * cy - z];
   const pts = a => a.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
-  const W = (nI + nJ) * cx + 120, H = oy + (nI + nJ) * cy + 70, g = 0.09;
+  const W = (nI + nJ) * cx + 200, H = oy + (nI + nJ) * cy + 110, g = 0.09;
   const height = n => (n ? 14 + 86 * Math.sqrt(n / maxN) : 2);
   const cells = [];
   FORMS.forEach((f, i) => rows.forEach((r, j) => cells.push({ f, i, r, j, list: inCell(f, r.id) })));
@@ -377,20 +430,15 @@ function tzOverview(papers, fams) {
     + Array.from({ length: nJ + 1 }, (_, j) => `<line class="gl" x1="${P(0, j)[0]}" y1="${P(0, j)[1]}" x2="${P(nI, j)[0]}" y2="${P(nI, j)[1]}"/>`).join("")
     + Array.from({ length: nI + 1 }, (_, i) => `<line class="gl" x1="${P(i, 0)[0]}" y1="${P(i, 0)[1]}" x2="${P(i, nJ)[0]}" y2="${P(i, nJ)[1]}"/>`).join("");
   const formLabels = FORMS.map((f, i) => { const [x, y] = P(i + 0.5, nJ); const list = papers.filter(p => fams.get(p.tax.family)?.group.id === f);
-    return `<g class="axl f-${f}" tabindex="0" data-info="form|${f}"><rect x="${x - 78}" y="${y + 16}" width="156" height="30" rx="15"/><text x="${x}" y="${y + 36}" text-anchor="middle">${esc(G(f).name)}</text></g>`; }).join("");
+    return `<g class="axl f-${f}" tabindex="0" data-info="form|${f}"><rect x="${x - 88}" y="${y + 16}" width="176" height="42" rx="12"/><text x="${x}" y="${y + 34}" text-anchor="middle">${esc(G(f).name)}</text><text class="axw" x="${x}" y="${y + 50}" text-anchor="middle">${esc(OV_WHERE[f] || "")}</text></g>`; }).join("")
+    + `<text class="axt" x="${(P(0.5, nJ)[0] - 88).toFixed(1)}" y="${(P(nI - 0.5, nJ)[1] + 82).toFixed(1)}">${OV_AXES.form}</text>`;
   const rowLabels = rows.map((r, j) => { const [x, y] = P(nI, j + 0.5);
-    return `<g class="axl row" tabindex="0" data-info="row|${r.id}"><text x="${x + 22}" y="${y + 24}">${esc(r.name)}</text></g>`; }).join("");
-  const bandBox = gid => {
-    const gr = G(gid), list = papers.filter(p => fams.get(p.tax.family)?.group.id === gid);
-    return `<button class="obox band" data-go='${esc(JSON.stringify({ level: 1, band: gid }))}' data-info="band|${gid}">
-      <span class="oh"><b>${esc(gr.name)}</b><span class="bc">${list.length}</span></span>
-      <span class="ofams">${famList(list).slice(0, 4).map(([id, k]) => `<span>${esc(fams.get(id)?.name || id)} <b>${k}</b></span>`).join("")}</span></button>`;
-  };
+    return `<g class="axl row" tabindex="0" data-info="row|${r.id}"><text x="${x + 22}" y="${y + 24}">${esc(r.name)}</text></g>`; }).join("")
+    + `<text class="axt" x="${(P(nI, 0)[0] + 22).toFixed(1)}" y="${(P(nI, 0)[1] - 4).toFixed(1)}">${OV_AXES.func}</text>`;
   S.tzRows = rows;
-  return `<div class="ov3">
+  return `<div class="ov3"><svg class="ovcone" aria-hidden="true"><polygon/></svg>
     <div class="iso"><svg viewBox="0 0 ${W.toFixed(0)} ${H.toFixed(0)}" role="img" aria-label="Isometric map of memory papers: ${FORMS.map(f => G(f).name).join(", ")} across; ${rows.map(r => r.name).join(", ")} along the side">
-      <g class="floor">${floor}</g>${blocks}<g class="labels">${labels}</g>${formLabels}${rowLabels}</svg>
-      <div class="ovbands">${bandBox("surveys")}${bandBox("benchmark")}${bandBox("other")}</div></div>
+      <g class="floor">${floor}</g>${blocks}<g class="labels">${labels}</g>${formLabels}${rowLabels}</svg></div>
     <aside class="ovpanel" aria-live="polite">${tzPanel(null)}</aside>
   </div>`;
 }
@@ -403,6 +451,23 @@ function tzPanelPapers() {
     : papers.filter(p => fams.get(p.tax.family)?.group.id === z.form && rowOfPaper(p) === z.row);
   return { fams, papers, scope };
 }
+/* Hovering a block on the overview shows pictures, not prose: each family in the block with its paper count
+   and the diagrams of its types (the values of its first axis), named. */
+function cellPictures(form, row, papers, fams, rows) {
+  const G = id => A.taxonomy.groups.find(g => g.id === id), r = rows.find(x => x.id === row) || {};
+  const list = papers.filter(p => fams.get(p.tax.family)?.group.id === form && rowOfPaper(p) === row);
+  const by = new Map();
+  for (const p of list) by.set(p.tax.family, (by.get(p.tax.family) || 0) + 1);
+  const famBlock = ([id, n]) => {
+    const f = fams.get(id), ax = f?.axes?.[0];
+    const vals = ax ? ax.values.filter(v => list.some(p => p.tax.family === id && p.tax.x === v.id)) : [];
+    return `<div class="cp-fam"><div class="cp-head"><b>${esc(f?.name || id)}</b><span class="t-meta">${n}</span></div>
+      ${vals.length ? `<div class="cp-types">${vals.map(v => `<div class="cp-type">${axisIcon(id, ax.id, v.id) || ""}<span>${esc(v.name)}</span></div>`).join("")}</div>` : ""}</div>`;
+  };
+  return `<div class="cp"><h2 class="t-h2 cp-title">${esc(G(form).name.replace(/ memory$/, ""))} · ${esc(r.name || row)}</h2>
+    ${list.length ? [...by.entries()].sort((x, y) => y[1] - x[1]).map(famBlock).join("") : `<p class="t-meta">No papers</p>`}</div>`;
+}
+
 function tzPanel(info) {
   const T = A.taxonomy, G = id => T.groups.find(g => g.id === id), z = S.tz || { level: 0 };
   const { fams, papers, scope } = tzPanelPapers();
@@ -415,7 +480,8 @@ function tzPanel(info) {
     const max = Math.max(...by.values(), 1);
     return sec("Families", `<ul class="pbars">${[...by.entries()].sort((a, b) => b[1] - a[1]).map(([id, n]) => `<li><span>${esc(fams.get(id)?.name || id)}</span><i style="width:${n / max * 100}%"></i><b>${n}</b></li>`).join("")}</ul>`);
   };
-  const learn = list => list.some(p => p.tax.learning) ? sec("How they learn", `${learnMix(list)}<p class="lmleg t-meta">${LEARN_ORDER.map(k => { const n = list.filter(p => (p.tax.learning || "none") === k).length; return n ? `<span><i class="lm-${k}"></i>${esc(T.learning.find(l => l.id === k)?.name || k)} ${n}</span>` : ""; }).join("")}</p>`) : "";
+  const learn = list => list.some(p => p.tax.learning) ? sec("How they improve", `${learnMix(list)}<p class="lmleg t-meta">${LEARN_ORDER.map(k => { const n = list.filter(p => (p.tax.learning || "none") === k).length; return n ? `<span><i class="lm-${k}"></i>${esc(T.learning.find(l => l.id === k)?.name || k)} ${n}</span>` : ""; }).join("")}</p>`) : "";
+  const bigPic = id => OV_PICS[id] ? `<div class="ovbig">${ovPic(id, 0, 0, 240)}</div>` : "";
   const head = (title, n, text) => `<h2 class="t-h2">${esc(title)}</h2><p class="t-meta">${n} paper${n === 1 ? "" : "s"}</p><p class="t-body ptext">${esc(text)}</p>`;
   if (!info && z.level === 1) {
     const title = z.band ? G(z.band).name : `${G(z.form).name} · ${T.functions.find(f => f.id === z.row)?.name || "Not stated"}`;
@@ -423,27 +489,33 @@ function tzPanel(info) {
   }
   if (!info) {
     return `<h2 class="t-h2">Reading the map</h2>
-      ${sec("Left edge: where the memory lives", FORMS.map(f => `<p class="t-body"><b>${esc(G(f).name)}</b>. ${esc(G(f).def)}</p>`).join(""))}
-      ${sec("Right edge: what it is for", rows.filter(r => r.id !== "unspecified").map(r => `<p class="t-body"><b>${esc(r.name)}</b>: ${esc(r.def || "")}</p>`).join(""))}
+      ${sec(`${OV_AXES.form} (left edge)`, FORMS.map(f => `<div class="ovdef">${ovPic(f, 0, 0, 96)}<p class="t-body"><b>${esc(G(f).name)}</b> · <i>${esc(OV_WHERE[f] || "")}</i>. ${esc(G(f).def)}</p></div>`).join(""))}
+      ${sec(`${OV_AXES.func} (right edge)`, rows.filter(r => r.id !== "unspecified").map(r => `<div class="ovdef">${ovPic(r.id, 0, 0, 96)}<p class="t-body"><b>${esc(r.name)}</b>: ${esc(r.def || "")}</p></div>`).join(""))}
       <p class="t-meta ptail">Block height follows the number of papers.</p>`;
   }
   const [kind, a, b] = info.split("|");
+  if (kind === "cell" && z.level === 0) return cellPictures(a, b, papers, fams, rows);
   if (kind === "cell") {
     const r = rows.find(x => x.id === b) || {}, list = papers.filter(p => fams.get(p.tax.family)?.group.id === a && rowOfPaper(p) === b);
     return head(`${G(a).name} · ${r.name || b}`, list.length, cellInfo(a, b).text)
       + (cellInfo(a, b).note ? `<p class="pnote t-body">${esc(cellInfo(a, b).note)}</p>` : "") + (list.length ? bars(list) + learn(list) : "");
   }
-  if (kind === "form") { const list = papers.filter(p => fams.get(p.tax.family)?.group.id === a); return head(G(a).name, list.length, G(a).def) + bars(list) + learn(list); }
+  if (kind === "form") { const list = papers.filter(p => fams.get(p.tax.family)?.group.id === a); return head(G(a).name, list.length, `${OV_WHERE[a] ? `${OV_WHERE[a][0].toUpperCase()}${OV_WHERE[a].slice(1)}. ` : ""}${G(a).def}`) + bigPic(a) + bars(list) + learn(list); }
   if (kind === "row") {
     const r = rows.find(x => x.id === a) || {}, list = papers.filter(p => FORMS.includes(fams.get(p.tax.family)?.group.id) && rowOfPaper(p) === a);
-    return head(r.name || a, list.length, r.def || "") + bars(list) + learn(list);
+    return head(r.name || a, list.length, r.def ? r.def[0].toUpperCase() + r.def.slice(1) : "") + bigPic(a) + bars(list) + learn(list);
   }
   if (kind === "band") { const list = papers.filter(p => fams.get(p.tax.family)?.group.id === a); return head(G(a).name, list.length, G(a).def) + bars(list); }
   // a family inside the zoomed cell
   const f = fams.get(a), list = scope.filter(p => p.tax.family === a);
   const ex = [...list].sort((x, y) => (y.tax.confidence === "high") - (x.tax.confidence === "high") || (paperYear(y) || 0) - (paperYear(x) || 0)).slice(0, 6);
+  // pictures of the family's types on each of its two axes, with how many papers of this cell are of each type
+  const axisPics = (ax, key) => {
+    const vals = ax.values.map(v => [v, list.filter(p => p.tax[key] === v.id).length]).filter(([, n]) => n).sort((x, y) => y[1] - x[1]);
+    return vals.length ? sec(ax.name, `<div class="cp-types">${vals.map(([v, n]) => `<div class="cp-type">${axisIcon(a, ax.id, v.id) || ""}<span>${esc(v.name)} <b class="t-meta">${n}</b></span></div>`).join("")}</div>`) : "";
+  };
   return head(f.name, list.length, f.def)
-    + (f.axes ? sec("Split next by", `<dl class="pax">${f.axes.map(x => `<dt>${esc(x.name)}</dt><dd>${esc(x.def)}</dd>`).join("")}</dl>`) : "")
+    + (f.axes ? f.axes.map((ax, i) => axisPics(ax, i ? "y" : "x")).join("") : "")
     + learn(list)
     + sec("Examples", `<ul class="pex">${ex.map(p => `<li><b>${esc(p.tax.name)}</b>${paperYear(p) ? ` <span class="t-meta">${paperYear(p)}</span>` : ""}</li>`).join("")}${list.length > ex.length ? `<li class="t-meta">and ${list.length - ex.length} more</li>` : ""}</ul>`);
 }
@@ -494,61 +566,28 @@ function tzCell(papers, fams) {
     + Array.from({ length: nRows + 1 }, (_, j) => `<line class="gl" x1="${P(0, j)[0]}" y1="${P(0, j)[1]}" x2="${P(perRow, j)[0]}" y2="${P(perRow, j)[1]}"/>`).join("")
     + Array.from({ length: perRow + 1 }, (_, i) => `<line class="gl" x1="${P(i, 0)[0]}" y1="${P(i, 0)[1]}" x2="${P(i, nRows)[0]}" y2="${P(i, nRows)[1]}"/>`).join("");
   return `<div class="tzlevel" style="view-transition-name:tz-zoom">${head}
-    <div class="ov3"><div class="iso iso2"><svg viewBox="0 0 ${W.toFixed(0)} ${H.toFixed(0)}" role="img" aria-label="${esc(`${fs.length} families: ${fs.map(x => `${x.f.name} ${x.l.length}`).join(", ")}`)}">
+    <div class="ov3"><svg class="ovcone" aria-hidden="true"><polygon/></svg><div class="iso iso2"><svg viewBox="0 0 ${W.toFixed(0)} ${H.toFixed(0)}" role="img" aria-label="${esc(`${fs.length} families: ${fs.map(x => `${x.f.name} ${x.l.length}`).join(", ")}`)}">
       <g class="floor">${floor}</g>${blocks}<g class="labels">${labels}</g></svg></div>
     <aside class="ovpanel" aria-live="polite">${tzPanel(null)}</aside></div></div>`;
 }
 
-/* Plain-text versions of levels 0 and 1: the same grid and families as cards with every description
-   written out, for reading rather than scanning. Chosen with the switch in the breadcrumb bar. */
-function tzFamiliesText(list, fams) {
-  const by = new Map();
-  for (const p of list) by.set(p.tax.family, (by.get(p.tax.family) || 0) + 1);
-  return `<ul class="plfams">${[...by.entries()].sort((a, b) => b[1] - a[1]).map(([id, n]) => `<li><span>${esc(fams.get(id)?.name || id)}</span><b>${n}</b></li>`).join("")}</ul>`;
+/* Small diagrams that stand in for an axis value's written definition in the level-3 table headers
+   (data/axis_icons.json, keyed "<family>|<axis>|<value>"; drawn with the gi-* shapes in style.css).
+   A value without a drawing keeps its text definition; "not stated" values share one drawing. */
+function axisIcon(fam, axis, value) {
+  const d = A.axis_icons?.[`${fam}|${axis}|${value}`]
+    || (/^not[-_ ]?stated$/.test(value) ? { label: "Not stated", body: '<rect class="gi-ev d" x="30" y="8" width="60" height="44" rx="8"/><text class="gi-q" x="60" y="38" text-anchor="middle">?</text>' } : null);
+  return d ? `<svg class="axicon" viewBox="0 0 120 60" role="img" aria-label="${esc(d.label)}">${d.body}</svg>` : "";
 }
-function tzOverviewPlain(papers, fams) {
-  const T = A.taxonomy, G = id => T.groups.find(g => g.id === id);
-  const rows = [...T.functions.map(f => ({ id: f.id, name: f.name, def: f.def })), { id: "unspecified", name: "Not stated", def: "The source does not say what the memory is for." }]
-    .filter(r => r.id !== "unspecified" || papers.some(p => FORMS.includes(fams.get(p.tax.family)?.group.id) && rowOfPaper(p) === "unspecified"));
-  const inCell = (f, r) => papers.filter(p => fams.get(p.tax.family)?.group.id === f && rowOfPaper(p) === r);
-  const card = (f, r) => {
-    const list = inCell(f, r.id), c = cellInfo(f, r.id);
-    const body = `<h3 class="t-h3">${esc(G(f).name.replace(/ memory$/, ""))} · ${esc(r.name)}</h3>
-      <p class="t-meta">${list.length} paper${list.length === 1 ? "" : "s"}</p>
-      <p class="t-body">${esc(c.text)}</p>${c.note ? `<p class="t-body plnote">${esc(c.note)}</p>` : ""}
-      ${list.length ? `${tzFamiliesText(list, fams)}${learnMix(list)}` : ""}`;
-    return list.length ? `<button class="plcard f-${f}" data-go='${esc(JSON.stringify({ level: 1, form: f, row: r.id }))}'>${body}</button>` : `<div class="plcard empty">${body}</div>`;
-  };
-  const band = gid => { const list = papers.filter(p => fams.get(p.tax.family)?.group.id === gid);
-    return `<button class="plcard" data-go='${esc(JSON.stringify({ level: 1, band: gid }))}'><h3 class="t-h3">${esc(G(gid).name)}</h3><p class="t-meta">${list.length} papers</p><p class="t-body">${esc(G(gid).def)}</p>${tzFamiliesText(list, fams)}</button>`; };
-  return `<div class="plgrid" style="--cols:${FORMS.length}">
-      <div></div>${FORMS.map(f => `<div class="plcol"><h2 class="t-h2">${esc(G(f).name)}</h2><p class="t-body">${esc(G(f).def)}</p></div>`).join("")}
-      ${rows.map(r => `<div class="plrow"><h2 class="t-h2">${esc(r.name)}</h2><p class="t-body">${esc(r.def || "")}</p></div>${FORMS.map(f => card(f, r)).join("")}`).join("")}
-    </div>
-    <h2 class="t-h2 plother">Not on the grid</h2>
-    <div class="plbands">${band("surveys")}${band("benchmark")}${band("other")}</div>
-    <p class="t-meta plleg">How the papers learn: ${LEARN_ORDER.map(k => `<span><i class="lm-${k}"></i>${esc(A.taxonomy.learning.find(l => l.id === k)?.name || k)}</span>`).join(" ")}</p>`;
-}
-function tzCellPlain(papers, fams) {
-  const z = S.tz, G = id => A.taxonomy.groups.find(g => g.id === id);
-  const group = G(z.band || z.form);
-  const list = z.band ? papers.filter(p => fams.get(p.tax.family)?.group.id === z.band)
-    : papers.filter(p => fams.get(p.tax.family)?.group.id === z.form && rowOfPaper(p) === z.row);
-  const fs = group.families.filter(f => !f.hidden).map(f => ({ f, l: list.filter(p => p.tax.family === f.id) })).filter(x => x.l.length).sort((a, b) => b.l.length - a.l.length);
-  const head = z.band ? `<h1 class="t-h1">${esc(group.name)}</h1><p class="tzd t-body">${esc(group.def)}</p>`
-    : `<h1 class="t-h1">${esc(group.name)} · ${esc(A.taxonomy.functions.find(f => f.id === z.row)?.name || "Not stated")}</h1><p class="tzd t-body">${esc(cellText(z.form, z.row))}</p>`;
-  const learnLine = l => LEARN_ORDER.map(k => [k, l.filter(p => (p.tax.learning || "none") === k).length]).filter(([, n]) => n)
-    .map(([k, n]) => `<span><i class="lm-${k}"></i>${esc(A.taxonomy.learning.find(x => x.id === k)?.name || k)} ${n}</span>`).join("");
-  return `<div class="tzlevel" style="view-transition-name:tz-zoom">${head}
-    <div class="plfgrid">${fs.map(({ f, l }) => {
-      const ex = [...l].sort((a, b) => (b.tax.confidence === "high") - (a.tax.confidence === "high") || (paperYear(b) || 0) - (paperYear(a) || 0)).slice(0, 5);
-      return `<button class="plcard f-${z.form || "token"}" data-go='${esc(JSON.stringify({ ...z, level: 2, fam: f.id }))}'>
-        <h2 class="t-h2">${esc(f.name)}</h2><p class="t-meta">${l.length} paper${l.length === 1 ? "" : "s"}</p>
-        <p class="t-body">${esc(f.def)}</p>
-        ${f.axes ? `<section class="t-sec"><h3 class="t-h3">Split next by</h3><div class="t-indent">${f.axes.map(x => `<p class="t-body"><b>${esc(x.name)}</b>: ${esc(x.def)}</p>`).join("")}</div></section>` : ""}
-        ${l.some(p => p.tax.learning) ? `<section class="t-sec"><h3 class="t-h3">How they learn</h3><div class="t-indent">${learnMix(l)}<p class="lmleg t-meta">${learnLine(l)}</p></div></section>` : ""}
-        <section class="t-sec"><h3 class="t-h3">Examples</h3><div class="t-indent"><p class="t-body">${ex.map(p => esc(p.tax.name)).join(", ")}${l.length > ex.length ? ` <span class="t-meta">and ${l.length - ex.length} more</span>` : ""}</p></div></section>
-      </button>`; }).join("")}</div></div>`;
+
+/* the grouped "what adapts over time" filter: a chip per kind, and inside each kind a chip per value */
+function learnFilter(pool) {
+  const T = A.taxonomy, count = key => pool.filter(p => learnMatch(p.tax, key)).length;
+  const chip = (key, label, cls = "") => { const n = count(key); return n ? `<button class="chip lchip${cls}" data-learn="${key}" aria-pressed="${S.taxLearn === key}" title="${esc(key === "experience-reward" ? T.learning_reward.def : T.learning.find(l => l.id === key)?.def || T.learning_kinds.find(k => k.id === key)?.def || "")}">${label}<span class="c">${n}</span></button>` : ""; };
+  const dot = id => `<i class="lm-${id}"></i>`;
+  return `<span class="lgroup">${chip("static", dot("none") + "Static")}</span>
+    <span class="lgroup"><span class="lgname">Non-parametric</span>${chip("non-parametric", "all", " lall")}${chip("experience", dot("experience") + "lessons")}${chip("experience-reward", dot("experience") + "RL")}</span>
+    <span class="lgroup"><span class="lgname">Parametric</span>${chip("parametric", "all", " lall")}${chip("sft", dot("sft") + "SFT")}${chip("rl", dot("rl") + "RL")}${chip("model-training", dot("model-training") + "trained-in module")}</span>`;
 }
 
 /* level 2: a family's papers on the family's own two axes; a paper opens its details beside the grid */
@@ -559,11 +598,13 @@ function tzFamily(papers, fams) {
   let list = papers.filter(p => p.tax.family === f.id);
   const otherRows = z.band ? 0 : list.filter(p => rowOfPaper(p) !== z.row).length;
   if (!z.band && !S.tzAllRows) list = list.filter(p => rowOfPaper(p) === z.row);
-  if (S.taxLearn) list = list.filter(p => learnKey(p.tax) === S.taxLearn || (S.taxLearn === "experience" && learnKey(p.tax) === "experience-reward"));
+  const all = list;
+  if (S.taxLearn) list = list.filter(p => learnMatch(p.tax, S.taxLearn));
   if (q) list = list.filter(p => [p.title, p.tax.name, p.tax.what, p.tax.unique, p.tax.learns_what].join(" ").toLowerCase().includes(q));
   const ax = f.axes;
-  const card = p => `<button class="pcard${S.tzPaper === p.id ? " sel" : ""}" data-paper="${esc(p.id)}" aria-pressed="${S.tzPaper === p.id}">
-    <span class="ph"><b>${esc(p.tax.name || p.title)}</b><span class="lv">${esc(p.venue ? venueTag(p.venue) : paperYear(p) || "")}</span>${learnBadge(p.tax)}<span class="conf c-${esc(p.tax.confidence)}" title="${esc(CONF_TEXT[p.tax.confidence] || "")}"></span></span>
+  const card = p => `<button class="pcard${S.tzPaper === p.id ? " sel" : ""}${p.emblem ? " hasem" : ""}" data-paper="${esc(p.id)}" aria-pressed="${S.tzPaper === p.id}">
+    ${p.emblem ? `<svg class="axicon emblem" viewBox="0 0 160 90" role="img" aria-label="${esc(p.emblem.label)}">${p.emblem.body}</svg>` : ""}
+    <span class="ph"><b>${esc(p.tax.name || p.title)}</b><span class="lv">${esc(venueLabel(p))}</span>${learnBadge(p.tax)}<span class="conf c-${esc(p.tax.confidence)}" title="${esc(CONF_TEXT[p.tax.confidence] || "")}"></span></span>
     <span class="pu">${esc(p.tax.unique || p.tax.what || p.title)}</span></button>`;
   const sortP = l => [...l].sort((a, b) => (paperYear(b) || 0) - (paperYear(a) || 0) || (a.tax.name || "").localeCompare(b.tax.name || ""));
   let grid;
@@ -571,48 +612,299 @@ function tzFamily(papers, fams) {
     const xs = ax[0].values.filter(v => list.some(p => p.tax.x === v.id)), ys = ax[1].values.filter(v => list.some(p => p.tax.y === v.id));
     const unplaced = list.filter(p => !ax[0].values.some(v => v.id === p.tax.x) || !ax[1].values.some(v => v.id === p.tax.y));
     grid = `<div class="pgrid" style="--cols:${xs.length}">
-      <div class="pcorner"><span>${esc(ax[0].name)} →</span><span>${esc(ax[1].name)} ↓</span></div>
-      ${xs.map(v => `<div class="pcol" title="${esc(v.def)}"><b>${esc(v.name)}</b><span>${esc(v.def)}</span></div>`).join("")}
-      ${ys.map(yv => `<div class="prow" title="${esc(yv.def)}"><b>${esc(yv.name)}</b><span>${esc(yv.def)}</span></div>
+      <div class="paxcorner" aria-hidden="true"></div>
+      <div class="paxx" title="${esc(ax[0].def)}"><b>${esc(ax[0].name)}</b></div>
+      <div class="paxy" style="grid-row: 2 / span ${ys.length + 1}" title="${esc(ax[1].def)}"><b>${esc(ax[1].name)}</b></div>
+      <div class="pcorner" aria-hidden="true"></div>
+      ${xs.map(v => { const icon = axisIcon(f.id, ax[0].id, v.id);
+        return `<div class="pcol${icon ? " hasicon" : ""}" title="${esc(v.def)}"><b>${esc(v.name)}</b>${icon || `<span>${esc(v.def)}</span>`}</div>`; }).join("")}
+      ${ys.map(yv => { const icon = axisIcon(f.id, ax[1].id, yv.id);
+        return `<div class="prow${icon ? " hasicon" : ""}" title="${esc(yv.def)}"><b>${esc(yv.name)}</b>${icon || `<span>${esc(yv.def)}</span>`}</div>
         ${xs.map(xv => { const l = sortP(list.filter(p => p.tax.x === xv.id && p.tax.y === yv.id));
-          return `<div class="pcell${l.length ? "" : " empty"}"><span class="pxy">${esc(xv.name)} · ${esc(yv.name)}</span>${l.map(card).join("")}</div>`; }).join("")}`).join("")}
+          return `<div class="pcell${l.length ? "" : " empty"}"><span class="pxy">${esc(xv.name)} · ${esc(yv.name)}</span>${l.map(card).join("")}</div>`; }).join("")}`; }).join("")}
     </div>${unplaced.length ? `<div class="punplaced"><h3 class="t-h3">Not yet placed on this family's axes</h3>${sortP(unplaced).map(card).join("")}</div>` : ""}`;
   } else grid = `<div class="plist">${sortP(list).map(card).join("")}</div>`;
   const sel = list.find(p => p.id === S.tzPaper) || papers.find(p => p.id === S.tzPaper);
+  // the selected paper opens in a modal; one whose system has figures gets the wide modal so both figures fit
+  const selSys = sel?.system && A.systems.find(x => x.id === sel.system), full = !!selSys?.mechanism?.figures;
   return `<div class="tzlevel" style="view-transition-name:tz-zoom">
     <h1 class="t-h1">${esc(f.name)}</h1><p class="t-meta">${list.length} paper${list.length === 1 ? "" : "s"}</p><p class="tzd t-body">${esc(f.def)}</p>
-    ${ax ? `<section class="t-sec tzaxes"><h2 class="t-h2">Split by two axes</h2><div class="tzaxgrid">${ax.map((x, i) => `<div><h3 class="t-h3">${i ? "Rows" : "Columns"}: ${esc(x.name)}</h3><p class="t-body">${esc(x.def)}</p></div>`).join("")}</div></section>` : ""}
+
     <div class="cmpbar">
       <label class="search" for="txq"><input id="txq" type="search" placeholder="Search in this family" value="${esc(S.taxQ)}"></label>
-      <span class="mblabel">Learns by</span>
+      <span class="mblabel">What adapts over time</span>
       <button class="chip" data-learn="" aria-pressed="${!S.taxLearn}">all</button>
-      ${["experience", "experience-reward", "sft", "rl", "model-training", "none"].map(k => `<button class="chip" data-learn="${k}" aria-pressed="${S.taxLearn === k}">${k === "none" ? "does not learn" : k === "experience-reward" ? '<span class="lb lb-experience">exp·reward</span>' : `<span class="lb lb-${k}">${LEARN_BADGE[k]}</span>`}</button>`).join("")}
+      ${learnFilter(all)}
       ${otherRows ? `<label class="check" for="tzall"><input id="tzall" type="checkbox" ${S.tzAllRows ? "checked" : ""}> include ${otherRows} papers of this family from other rows</label>` : ""}
     </div>
-    <div class="pwrap${sel ? " withd" : ""}">
+    <div class="pwrap">
       <div class="pmain">${list.length ? grid : `<p class="empty-state">No paper with these filters.</p>`}</div>
-      ${sel ? `<aside class="pdetail" aria-label="Paper details">${tzDetail(sel, fams)}</aside>` : ""}
-    </div></div>`;
+    </div></div>
+    ${sel ? `<div class="pmodal" data-backdrop><div class="pmbox${full ? " wide" : ""}" role="dialog" aria-modal="true" aria-label="${esc(sel.tax?.name || sel.title)}" tabindex="-1">
+      <aside class="pdetail${full ? " pdfull" : ""}">${tzDetail(sel, fams)}</aside></div></div>` : ""}`;
+}
+
+/* The detail panel for an annotated system, in the order memory is used: what one item is, how memory is
+   built, how it is read, what happens when the first read is not enough, and what finally reaches the answer
+   model, then how much is kept, results, and what is easy to miss. Every claim links to its source. */
+/* The read path as one flow, steps 1-10, with the branch at the sufficiency check. Each step says who does it
+   (retriever, rule, cross-encoder, LLM), how, what it sees, how many items go in and out, and where in the code. */
+const ACTOR = {
+  retriever: ["Retriever", "Encodes the question and each memory separately and compares the vectors (bi-encoder), or matches words (BM25). Fast enough to scan every memory."],
+  rule: ["Rule", "Fixed code, no model."],
+  cross: ["Cross-encoder", "Reads the question and one candidate together in a single input and scores that pair. Slower but more precise, so it only sees a few dozen candidates."],
+  llm: ["LLM", "A prompted language model that reads several items at once and writes a judgement or text."],
+};
+function flowHTML(flow) {
+  const node = x => `<div class="fl-node a-${x.actor}${x.decision ? " decide" : ""}">
+      <div class="fl-head"><span class="fl-n">${x.n}</span><b class="fl-title">${esc(x.title)}</b><span class="fl-actor a-${x.actor}">${esc(ACTOR[x.actor]?.[0] || x.actor)}</span></div>
+      <div class="fl-io"><span>${esc(x.in)}</span><span class="fl-to" aria-hidden="true">→</span><b>${esc(x.out)}</b></div>
+      <p class="fl-method"><b>${esc(x.method)}</b>${x.model ? ` · ${esc(x.model)}` : ""}</p>
+      <p class="fl-sees">${esc(x.sees)}</p>
+      ${x.params && Object.keys(x.params).length ? `<div class="mparams">${Object.entries(x.params).map(([k, v]) => `<span class="tag">${esc(k)} ${esc(v)}</span>`).join("")}</div>` : ""}
+      ${x.decision ? `<div class="fl-branch"><div><span class="mf-yes">Yes</span>${esc(x.yes)}</div><div><span class="mf-no">No</span>${esc(x.no)}</div></div>` : ""}
+      <div class="fl-src">${msrc(x)}</div></div>`;
+  const down = `<div class="fl-down" aria-hidden="true">↓</div>`;
+  const r1 = flow.filter(x => x.round === 1), r2 = flow.filter(x => x.round === 2), end = flow.filter(x => !x.round);
+  const legend = `<div class="fl-legend">${Object.entries(ACTOR).filter(([k]) => flow.some(x => x.actor === k)).map(([k, [name, def]]) => `<div><span class="fl-actor a-${k}">${esc(name)}</span><span>${esc(def)}</span></div>`).join("")}</div>`;
+  return `${legend}
+    <div class="fl">
+      <p class="fl-lane">Round 1</p>
+      ${r1.map(node).join(down)}
+      ${r2.length ? `<div class="fl-split">
+        <div class="fl-yeslane"><span class="mf-yes">Yes</span> go straight to step ${end[0]?.n || ""} with these 10</div>
+        <div class="fl-nolane"><p class="fl-lane"><span class="mf-no">No</span> Round 2: reconstruction, runs once</p>${r2.map(node).join(down)}</div>
+      </div>` : ""}
+      ${end.length ? `<div class="fl-down" aria-hidden="true">↓</div>${end.map(node).join(down)}` : ""}
+    </div>`;
+}
+
+/* The same read path as a compact one-screen table: row 1 runs 1 to 5 left to right, the "no" branch drops
+   under 5 and runs 6 to 9 right to left, and 10 closes the loop at the bottom left. Clicking a step shows its
+   details underneath, so the whole path stays in view. */
+function compactFlow(flow, sel) {
+  const by = n => flow.find(x => x.n === n);
+  const decide = flow.find(x => x.decision);
+  const cell = (n, col, row) => { const x = by(n); if (!x) return "";
+    return `<button class="cf-node a-${x.actor}${x.decision ? " decide" : ""}${sel === n ? " sel" : ""}" style="grid-column:${col};grid-row:${row}" data-step="${n}" aria-pressed="${sel === n}">
+      <span class="cf-top"><span class="fl-n">${n}</span><span class="fl-actor a-${x.actor}">${esc(ACTOR[x.actor]?.[0] || x.actor)}</span></span>
+      <b>${esc(x.short || x.title)}</b><span class="cf-count">${esc(x.count || "")}</span></button>`; };
+  const arrow = (ch, col, row) => `<span class="cf-arr" style="grid-column:${col};grid-row:${row}" aria-hidden="true">${ch}</span>`;
+  const r2 = flow.some(x => x.round === 2);
+  return `<div class="cf" role="group" aria-label="Read path, steps 1 to ${flow.length}">
+    ${[1, 2, 3, 4, 5].map((n, i) => cell(n, 1 + i * 2, 1) + (i < 4 ? arrow("→", 2 + i * 2, 1) : "")).join("")}
+    ${r2 ? `<div class="cf-yes" style="grid-column:1/9;grid-row:2"><span class="cf-dash"></span><span><span class="mf-yes">Yes</span> ${esc((decide?.yes || "").replace(/\s*\(step \d+\)\.?$/, ""))} → step 10</span></div>
+      <div class="cf-no" style="grid-column:9;grid-row:2"><span aria-hidden="true">↓</span> <span class="mf-no">No</span> ${esc((decide?.no || "").match(/^\d+%/)?.[0] || "")}</div>
+      ${cell(10, 1, 3)}${arrow("←", 2, 3)}${cell(9, 3, 3)}${arrow("←", 4, 3)}${cell(8, 5, 3)}${arrow("←", 6, 3)}${cell(7, 7, 3)}${arrow("←", 8, 3)}${cell(6, 9, 3)}` : cell(10, 1, 2)}
+  </div>`;
+}
+function stepDetail(x) {
+  if (!x) return `<p class="t-meta cf-hint">Click a step for what it sees and where it is in the code.</p>`;
+  return `<div class="cf-detail"><div class="fl-head"><span class="fl-n">${x.n}</span><b class="fl-title">${esc(x.title)}</b><span class="fl-actor a-${x.actor}">${esc(ACTOR[x.actor]?.[0] || x.actor)}</span></div>
+    <p class="fl-method"><b>${esc(x.method)}</b>${x.model ? ` · ${esc(x.model)}` : ""}</p>
+    <div class="fl-io"><span>${esc(x.in)}</span><span class="fl-to" aria-hidden="true">→</span><b>${esc(x.out)}</b></div>
+    <p class="fl-sees">${esc(x.sees)}</p>
+    ${x.params && Object.keys(x.params).length ? `<div class="mparams">${Object.entries(x.params).map(([k, v]) => `<span class="tag">${esc(k)} ${esc(v)}</span>`).join("")}</div>` : ""}
+    ${x.decision ? `<div class="fl-branch"><div><span class="mf-yes">Yes</span>${esc(x.yes)}</div><div><span class="mf-no">No</span>${esc(x.no)}</div></div>` : ""}
+    <div class="fl-src">${msrc(x)}</div></div>`;
+}
+
+function mechanismFlow(sys) {
+  const m = sys.mechanism, T = A.taxonomy;
+  const sec = (n, title, inner) => `<section class="t-sec mf-sec"><h3 class="t-h3"><span class="mf-n">${n}</span>${esc(title)}</h3><div class="t-indent">${inner}</div></section>`;
+  const r1 = (m.read || []).filter(x => (x.round || 1) === 1), r2 = (m.read || []).filter(x => x.round === 2);
+  const check = r1.find(x => /sufficien/i.test(x.step));
+  const glance = m.glance?.length ? `<dl class="mf-glance">${m.glance.map(g => `<dt>${esc(g.q)}</dt><dd>${esc(g.a)} ${msrc(g)}</dd>`).join("")}</dl>` : "";
+  const units = (m.units || []).map(u => `<div class="munit"><p class="t-body"><b>${esc(u.name)}</b>: ${esc(u.role || "")}</p>
+    <table class="mfields"><thead><tr><th>Field</th><th>Kept as</th><th>Used for</th></tr></thead><tbody>
+    ${u.fields.map(f => `<tr><td><b>${esc(f.name)}</b><div class="dim">${esc(f.what || "")}</div></td><td><span class="kept ${KEPT_CLASS[f.kept_as] || ""}">${esc(f.kept_as)}</span></td>
+      <td>${f.used_for?.length ? f.used_for.map(x => `<span class="tag${x === "answer" ? " use-ans" : ""}">${esc(x)}</span>`).join("") : '<span class="tag unused">not used</span>'}</td></tr>`).join("")}
+    </tbody></table></div>`).join("");
+  const funnel = round => { const f = (m.funnel || []).find(x => x.round === round); if (!f) return "";
+    return `<div class="mf-funnel" aria-label="How many items at each step">${f.steps.map((x, i) => `${i ? '<span class="mf-arr" aria-hidden="true">→</span>' : ""}<div class="mf-fs${i === f.steps.length - 1 ? " last" : ""}"><b>${esc(x.n)}</b><span>${esc(x.what)}</span></div>`).join("")}</div><p class="t-meta">${msrc(f)}</p>`; };
+  const decision = check ? `<div class="mf-decide"><b>Enough evidence?</b>
+      <div><span class="mf-yes">Yes</span> go to step 5, the answer.</div>
+      <div><span class="mf-no">No</span> ${esc(check.out || "")}: reconstruct, step 4.</div></div>` : "";
+  const ac = m.answer_context;
+  const answer = ac ? `<div class="mans"><div class="mansees">${esc(ac.sees)}</div><code class="mfmt">${esc(ac.format)}</code>
+      <div class="mf-inout">
+        ${ac.includes?.length ? `<div><h4 class="mf-h4"><span class="mf-yes">In</span>Goes to the answer model</h4><ul>${ac.includes.map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}
+        ${ac.excludes?.length ? `<div><h4 class="mf-h4"><span class="mf-no">Out</span>Never goes to it</h4><ul>${ac.excludes.map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>` : ""}
+      </div>
+      ${ac.note ? `<p class="t-meta">${esc(ac.note)}</p>` : ""}${msrc(ac)}</div>` : "";
+  const rows = A.results.filter(r => r.system === sys.id && (r.category || "overall") === "overall")
+    .sort((a, b) => a.benchmark.localeCompare(b.benchmark) || b.score - a.score);
+  const results = rows.length ? `<table class="mnums"><thead><tr><th>Benchmark</th><th class="num">Score</th><th>Answer model</th><th>Reported by</th></tr></thead><tbody>
+      ${rows.slice(0, 10).map(r => `<tr><td>${esc(A.benchmarks.find(b => b.id === r.benchmark)?.name || r.benchmark)} <span class="dim">${esc(r.metric)}</span></td><td class="num">${fmt(r.score)}</td><td>${esc(r.answer_model || "not stated")}</td><td>${r.run_by === "self" ? "own paper" : esc(reporterShort(r.reporter))}</td></tr>`).join("")}
+    </tbody></table>${rows.length > 10 ? `<p class="t-meta">${rows.length - 10} more in Compare and Results.</p>` : ""}` : "";
+  const unused = (m.units || []).flatMap(u => u.fields.filter(f => !f.used_for?.length || f.used_for.every(x => x === "chat mode only" || x === "profile")).map(f => `${u.name} ${f.name}`));
+  const top = m.flow?.length ? `<section class="t-sec mf-sec cf-sec"><h3 class="t-h3">How a question is answered</h3>
+      <div class="fl-legend cf-legend">${Object.entries(ACTOR).filter(([k]) => m.flow.some(x => x.actor === k)).map(([k, [name, def]]) => `<div><span class="fl-actor a-${k}">${esc(name)}</span><span>${esc(def)}</span></div>`).join("")}</div>
+      ${compactFlow(m.flow, S.tzStep)}<div class="cf-slot">${stepDetail(m.flow.find(x => x.n === S.tzStep))}</div></section>` : "";
+  return `<div class="mflow t-noindent">
+    ${top}
+    ${glance ? sec("", "At a glance", glance) : ""}
+    ${sec(1, "Memory structure: what is stored", units)}
+    ${m.write?.length ? sec(2, "Building memory", mechSteps(m.write)) : ""}
+    ${m.flow?.length ? "" : `
+    ${r1.length ? sec(3, "Reading memory, first pass", funnel(1) + mechSteps(r1) + decision) : ""}
+    ${r2.length ? sec(4, "Reconstruction: when the first pass is not enough", funnel(2) + mechSteps(r2)) : ""}`}
+    ${answer ? sec(m.flow?.length ? 3 : 5, "What the answer model finally reads", answer) : ""}
+    ${m.compression?.length ? sec(m.flow?.length ? 4 : 6, "How much is kept", mechCompression(m)) : ""}
+    ${results || m.numbers?.length ? sec(m.flow?.length ? 5 : 7, "Results", `${results}${m.numbers?.length ? `<h4 class="mf-h4">Ablations and cost from the paper</h4><table class="mnums"><tbody>${m.numbers.map(n => `<tr><td>${esc(n.label)}</td><td class="num">${esc(n.value)}</td><td class="dim">${esc(n.src || "")}</td></tr>`).join("")}</tbody></table>` : ""}`) : ""}
+    ${sec(m.flow?.length ? 6 : 8, "Easy to miss", `
+      ${unused.length ? `<h4 class="mf-h4">Stored but not used in the evaluated setting</h4><p class="t-body">${unused.map(esc).join(", ")}.</p>` : ""}
+      ${m.paper_vs_code?.length ? `<h4 class="mf-h4">Where the paper and the code differ</h4>${m.paper_vs_code.map(d => `<div class="mdiff"><b>${esc(d.topic)}</b><div><span class="dim">paper</span> ${esc(d.paper)}</div><div><span class="dim">code</span> ${esc(d.code)}</div>${msrc(d)}</div>`).join("")}` : ""}
+      ${m.open_questions?.length ? `<h4 class="mf-h4">What the experiments cannot tell apart</h4><ul class="mq">${m.open_questions.map(q => `<li>${esc(q)}</li>`).join("")}</ul>` : ""}`)}
+    ${m.sources ? `<p class="t-meta msources">Sources: ${esc(m.sources.paper || "")}${m.sources.code ? ` · <a href="${esc(m.sources.code)}" target="_blank" rel="noopener">code at the cited commit ↗</a>` : ""}</p>` : ""}
+  </div>`;
+}
+
+/* Two figures, how memory is built and how a question is answered, each with a few sentences: the short
+   version of an annotated system. The full record stays in the system's profile. */
+function figuresHTML(sys) {
+  return (sys.mechanism.figures || []).map(f => `<figure class="mfig">
+      <h3 class="t-h3">${esc(f.title)}</h3>
+      <svg class="axicon mfig-svg" viewBox="${esc(f.viewBox)}" role="img" aria-label="${esc(f.title)}">${f.body}</svg>
+      <figcaption>${f.text.map(x => `<p class="t-body">${esc(x)}</p>`).join("")}<p class="t-meta">${msrc(f)}</p></figcaption>
+    </figure>`).join("");
+}
+
+/* An annotated system in the order of a paper, kept brief: memory architecture (two figures), construction
+   details, method, results, ablation. Tables only; every value carries its source. */
+function paperRecord(sys) {
+  const m = sys.mechanism;
+  const tbl = (head, rows, cls = "") => `<table class="ctbl ${cls}"><thead><tr>${head.map(h => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table>`;
+  const block = (title, body) => body ? `<section class="cblock"><h3 class="t-h3">${esc(title)}</h3>${body}</section>` : "";
+  const nums = section => { const l = (m.key_numbers || []).filter(n => n.section === section); return l.length ? tbl(["", "Value", "Source"], l.map(n => `<tr><td>${esc(n.label)}</td><td><b>${esc(n.value)}</b></td><td class="dim">${esc(n.src || "")}</td></tr>`)) : ""; };
+  const stored = tbl(["Item", "Kept as", "Used for"], (m.units || []).flatMap(u => u.fields.map(f =>
+    `<tr><td><b>${esc(f.name)}</b> <span class="dim">${esc(u.name)}</span></td><td><span class="kept ${KEPT_CLASS[f.kept_as] || ""}">${esc(f.kept_as)}</span></td><td>${f.used_for?.length ? f.used_for.map(x => `<span class="tag${x === "answer" ? " use-ans" : ""}">${esc(x)}</span>`).join("") : '<span class="tag unused">not used</span>'}</td></tr>`)));
+  const models = m.components?.length ? tbl(["Step", "Model", "Source"], m.components.map(c => `<tr><td>${esc(c.role)}</td><td><span class="fl-actor a-${esc(c.kind)}">${esc(ACTOR[c.kind]?.[0] || c.kind)}</span> ${esc(c.model)}</td><td class="dim">${msrc(c)}</td></tr>`)) : "";
+  const diff = m.paper_vs_code?.length ? tbl(["", "Paper", "Code"], m.paper_vs_code.map(d => `<tr><td><b>${esc(d.topic)}</b></td><td>${esc(d.paper)}</td><td>${esc(d.code)} ${msrc(d)}</td></tr>`)) : "";
+  const bname = id => A.benchmarks.find(b => b.id === id)?.name || id;
+  const rows = A.results.filter(r => r.system === sys.id && (r.category || "overall") === "overall")
+    .sort((a, b) => a.benchmark.localeCompare(b.benchmark) || b.score - a.score);
+  const resRow = (r, who) => `<tr><td><b>${esc(bname(r.benchmark))}</b>${r.benchmark_version && r.benchmark_version !== "original" ? ` <span class="dim">${esc(r.benchmark_version)}</span>` : ""}${r.variant ? ` <span class="tag">${esc(r.variant)}</span>` : ""}</td><td>${esc(r.metric)}</td><td>${esc(r.answer_model || "not stated")}</td><td class="num"><b>${fmt(r.score)}</b></td><td>${who ? `${esc(reporterShort(r.reporter))} <span class="dim">${r.run_by === "copied" ? "copied" : "re-run"}</span><br>` : ""}${sourceLink(r)}</td></tr>`;
+  const own = rows.filter(r => r.run_by === "self"), others = rows.filter(r => r.run_by !== "self");
+  const results = (own.length ? block("Reported by the authors", tbl(["Benchmark", "Metric", "Answer model", "Score", "Table"], own.map(r => resRow(r, false)))) : "")
+    + (others.length ? block("Measured or copied by other papers", tbl(["Benchmark", "Metric", "Answer model", "Score", "Paper, table"], others.map(r => resRow(r, true)))) : "");
+  const abl = m.ablation ? tbl(["", ...m.ablation.cols], m.ablation.rows.map(r => `<tr><td>${esc(r[0])}</td>${r.slice(1).map(v => `<td class="num">${esc(v)}</td>`).join("")}</tr>`)) + `<p class="t-meta">${esc(m.ablation.src)}</p>` : "";
+  const dsc = m.discussion;
+  const slug = x => "pr-" + x.toLowerCase().replace(/[^a-z]+/g, "-");
+  // same sections for every system, in the order of a paper; each heading names the paper section it comes from
+  const from = m.sections || {};
+  const part = (title, inner) => inner ? `<section class="prpart" id="${slug(title)}"><h2 class="t-h2">${esc(title)}${from[title] && m.paper_sections !== false ? ` <span class="t-meta prfrom">paper ${esc(from[title])}</span>` : ""}</h2>${inner}</section>` : "";
+  const parts = ["Abstract", "Memory architecture", "Results", "Ablation", "Discussion", "Details"]
+    .filter(x => x !== "Abstract" || m.abstract).filter(x => x !== "Ablation" || m.ablation).filter(x => x !== "Discussion" || m.discussion);
+  const toc = `<nav class="prtoc" aria-label="Contents"><span class="t-label">Contents</span><ol>${parts.map(x => `<li><button class="prtoc-link" data-toc="${slug(x)}">${esc(x)}</button></li>`).join("")}</ol></nav>`;
+  return `<div class="prec t-noindent">
+    ${toc}
+    ${m.abstract ? part("Abstract", `<p class="t-body prabs">${esc(m.abstract.text)}</p><p class="t-meta">${esc(m.abstract.note)} <a href="${esc(m.abstract.url)}" target="_blank" rel="noopener">arXiv abstract ↗</a></p>`) : ""}
+    ${part("Memory architecture", `<div class="cfigs">${figuresHTML(sys)}</div>`)}
+    ${part("Results", `<div class="ctables">${results}</div>`)}
+    ${part("Ablation", `<div class="ctables">${block("Removing parts of the system", abl)}</div>`)}
+    ${dsc ? part("Discussion", `<p class="t-body prtake">${esc(dsc.takeaway)}</p>
+      <div class="ctables">
+        ${block("What the paper claims", tbl(["Claim", "Evidence"], dsc.claims.map(c => `<tr><td>${esc(c.claim)}</td><td>${esc(c.evidence)}</td></tr>`)))}
+        <div>${block("Limits the authors state", `<ul class="prlist">${dsc.limits.map(x => `<li>${esc(x)}</li>`).join("")}</ul><p class="t-meta">${esc(dsc.limits_src || "")}</p>`)}
+        ${block("Our reading, not the paper's", `<ul class="prlist">${dsc.reading.map(x => `<li>${esc(x)}</li>`).join("")}</ul>`)}</div>
+      </div>`) : ""}
+    ${part("Details", `<div class="ctables">${block("What is stored", stored)}${block("Construction numbers", nums("construction"))}${block("Models", models)}${block("Retrieval settings", nums("method"))}${block("Cost", nums("results"))}</div>`)}
+  </div>`;
 }
 
 function tzDetail(p, fams) {
   const t = p.tax, f = fams.get(t.family), ax = f?.axes;
+  const figSys = p.system && A.systems.find(s => s.id === p.system);
+  if (figSys?.mechanism?.figures) {
+    return `<button class="dclose" data-close aria-label="Close details">×</button>
+      <h2 class="t-h2">${esc(t.name || p.title)} ${learnBadge(t)}</h2>
+      <p class="t-meta">${esc(venueLabel(p))}</p>
+      <p class="t-body pdtitle">${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.title)} ↗</a>` : esc(p.title)}${p.code ? ` · <a href="${esc(p.code)}" target="_blank" rel="noopener">code ↗</a>` : ""}</p>
+      ${paperRecord(figSys)}`;
+  }
   const lname = id => A.taxonomy.learning.find(l => l.id === id)?.name || id;
   const val = (i, id) => ax?.[i].values.find(v => v.id === id);
   const sys = p.system && A.systems.find(s => s.id === p.system);
   const sec = (title, inner) => `<section class="t-sec"><h3 class="t-h3">${esc(title)}</h3><div class="t-indent">${inner}</div></section>`;
   return `<button class="dclose" data-close aria-label="Close details">×</button>
     <h2 class="t-h2">${esc(t.name || p.title)} ${learnBadge(t)}</h2>
-    <p class="t-meta">${esc([p.venue ? venueTag(p.venue) : null, paperYear(p)].filter(Boolean).join(" · "))}</p>
+    <p class="t-meta">${esc(venueLabel(p))}</p>
     <p class="t-body pdtitle">${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.title)} ↗</a>` : esc(p.title)}${p.code ? ` · <a href="${esc(p.code)}" target="_blank" rel="noopener">code ↗</a>` : ""}</p>
+    ${sys?.mechanism ? `<div class="pdsys top">${mechanismFlow(sys)}<button class="jump" data-profile="${esc(sys.id)}">Open full profile</button></div><h2 class="t-h2 pdmore">In the paper index</h2>` : ""}
     ${t.unique ? sec("What sets it apart", `<p class="t-body">${esc(t.unique)}</p>`) : ""}
     ${t.what ? sec("How it works", `<p class="t-body">${esc(t.what)}</p>`) : ""}
     ${ax ? sec("Where it sits in this family", `<p class="t-body"><b>${esc(ax[0].name)}</b>: ${esc(val(0, t.x)?.name || "not placed")}</p><p class="t-body"><b>${esc(ax[1].name)}</b>: ${esc(val(1, t.y)?.name || "not placed")}</p>`) : ""}
-    ${t.learning ? sec("How it learns", `<p class="t-body">${esc(lname(t.learning))}${t.learning_also?.length ? ` + ${esc(t.learning_also.map(lname).join(", "))}` : ""}${t.learns_what ? `: ${esc(t.learns_what)}` : ""}</p>`) : ""}
+    ${t.learning ? sec("How it improves", `<p class="t-body">${esc(lname(t.learning))}${t.learning_also?.length ? ` + ${esc(t.learning_also.map(lname).join(", "))}` : ""}${t.learns_what ? `: ${esc(t.learns_what)}` : ""}</p>`) : ""}
     ${sec("Where it is filed", `<p class="t-body"><b>Family</b>: ${esc(f?.name || t.family)}${t.also?.length ? `; also ${esc(t.also.map(a => fams.get(a)?.name || a).join(", "))}` : ""}</p>${t.function?.length ? `<p class="t-body"><b>Function</b>: ${esc(t.function.join(", "))}</p>` : ""}
       <p class="t-meta">Placed from its ${esc(t.basis)} · confidence ${esc(t.confidence)}${t.checked ? " · checked by hand" : ""}</p>${t.fit ? `<p class="t-meta">Fits loosely: ${esc(t.fit)}</p>` : ""}`)}
     ${sec("How the source lists file it", `<ul class="txlists">${p.sources.map(s => `<li class="t-body"><span class="t-meta">${esc(SOURCE_NAME[s.list] || s.list)}</span> ${esc(s.section)}</li>`).join("")}</ul>`)}
-    ${sys ? `<div class="pdsys"><h3 class="t-h3">Annotated in depth</h3>${sys.mechanism ? mechanismHTML(sys) : `<p class="t-body">${esc(sys.summary || "")}</p>`}<button class="jump" data-profile="${esc(sys.id)}">Open full profile</button></div>` : ""}`;
+    ${sys && !sys.mechanism ? `<div class="pdsys"><h2 class="t-h2">Annotated in depth</h2><p class="t-body">${esc(sys.summary || "")}</p><button class="jump" data-profile="${esc(sys.id)}">Open full profile</button></div>` : ""}`;
+}
+
+/* level 3 keeps its headers in view: the axis row and the column headers stick under the site bar, and each
+   row header sticks under them while its row is on screen. The offsets depend on rendered heights. */
+function stickGrid(g) {
+  if (!g || !g.isConnected) return;
+  const bar = document.querySelector(".bar")?.offsetHeight || 0;
+  const axisRow = g.querySelector(".paxx")?.offsetHeight || 0;
+  const colRow = Math.max(0, ...[...g.querySelectorAll(".pcol, .pcorner")].map(el => el.offsetHeight));
+  g.style.setProperty("--st1", `${bar}px`);
+  g.style.setProperty("--st2", `${bar + axisRow}px`);
+  g.style.setProperty("--st3", `${bar + axisRow + colRow}px`);
+}
+window.addEventListener("resize", () => stickGrid(document.querySelector(".pgrid")));
+
+/* papers whose source does not say what their memory is for, or where they sit on their family's axes,
+   are left out of every view; papers tied to an annotated system stay */
+function notStated(p) {
+  const t = p.tax;
+  if (!t || p.system) return false;
+  const ns = v => /^not[-_ ]?stated$/.test(v || "");
+  const form = A.taxonomy.groups.find(g => g.families.some(f => f.id === t.family))?.id;
+  return ns(t.x) || ns(t.y) || (["token", "parametric", "latent"].includes(form) && !(t.function || []).length);
+}
+
+/* Overview search: type part of a paper's name or title; the list says where each match sits
+   (cell and family), its blocks light up on the map, and choosing one opens it in its family table. */
+function paperPlace(p) {
+  const g = groupOf(p), fam = A.taxonomy.groups.flatMap(x => x.families).find(f => f.id === p.tax.family);
+  if (g === "benchmark") return { where: `Benchmarks → ${fam?.name || p.tax.family}`, z: { level: 2, band: "benchmark", fam: p.tax.family } };
+  if (!FORMS.includes(g)) return null;
+  const G = A.taxonomy.groups.find(x => x.id === g), r = rowOfPaper(p), rn = A.taxonomy.functions.find(f => f.id === r)?.name || "Not stated";
+  return { where: `${G.name.replace(/ memory$/, "")} · ${rn} → ${fam?.name || p.tax.family}`, z: { level: 2, form: g, row: r, fam: p.tax.family }, cell: `cell|${g}|${r}` };
+}
+function wireSearch(main) {
+  const q = $("#ovq", main), list = $("#ovres", main);
+  if (!q) return;
+  const norm = t => (t || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  let hits = [];
+  const light = cells => main.querySelectorAll(".iso .blk").forEach(b => {
+    b.classList.toggle("hit", cells.has(b.dataset.info)); b.classList.toggle("dim", cells.size > 0 && !cells.has(b.dataset.info)); });
+  const show = () => {
+    const t = norm(q.value);
+    if (t.length < 2) { hits = []; list.hidden = true; light(new Set()); return; }
+    hits = A.papers.filter(p => p.tax && (norm(p.tax.name).includes(t) || norm(p.title).includes(t)))
+      .map(p => ({ p, at: paperPlace(p) })).filter(h => h.at)
+      .sort((a, b) => (norm(b.p.tax.name).startsWith(t)) - (norm(a.p.tax.name).startsWith(t)) || (b.p.system ? 1 : 0) - (a.p.system ? 1 : 0))
+      .slice(0, 10);
+    list.innerHTML = hits.length ? hits.map((h, i) => `<li role="option" data-i="${i}"><b>${esc(h.p.tax.name || h.p.title)}</b>
+        <span class="ovwhere">${esc(h.at.where)}</span><span class="t-meta">${esc(venueLabel(h.p))}${S.taxAccepted && !isAccepted(h.p) ? " · hidden by the accepted filter" : ""}</span></li>`).join("")
+      : `<li class="none t-meta">No paper matches “${esc(q.value)}”</li>`;
+    list.hidden = false;
+    light(new Set(hits.map(h => h.at.cell).filter(Boolean)));
+  };
+  const open = h => {
+    if (S.taxAccepted && !isAccepted(h.p)) S.taxAccepted = false;  // show the paper even if its venue is unknown
+    S.tz = h.at.z; S.view = h.at.z.band === "benchmark" ? "benchmarks" : "taxonomy";
+    S.taxQ = ""; S.tzAllRows = false; S.taxLearn = null;
+    try { history.pushState(null, "", "#" + tzHash(S.tz)); } catch (_) { /* sandboxed */ }
+    S.tzPaper = h.p.id; render(); window.scrollTo(0, 0); $(".pmbox")?.focus();
+  };
+  q.addEventListener("input", show);
+  q.addEventListener("focus", show);
+  q.addEventListener("keydown", e => { if (e.key === "Enter" && hits[0]) open(hits[0]); if (e.key === "Escape") { q.value = ""; show(); } });
+  list.addEventListener("click", e => { const li = e.target.closest("li[data-i]"); if (li) open(hits[+li.dataset.i]); });
 }
 
 function viewTaxonomy(main) {
@@ -620,17 +912,28 @@ function viewTaxonomy(main) {
   if (!S.tz) S.tz = { level: 0 };
   const papers = tzPapers();
   const z = S.tz;
-  main.innerHTML = `${z.level === 0 ? `<p class="lede t-body">Every memory paper in the index, by <b>where the memory lives</b> and <b>what it is for</b>. ${S.tzMode === "plain" ? "Click a card to zoom in." : "Hover a block for what it means; click to zoom in."}</p>` : ""}
+  main.innerHTML = `${z.level === 0 ? `<p class="lede t-body">Every memory paper in the index, by <b>where the memory lives</b> and <b>what it is for</b>. Hover a block for what it means; click to zoom in.</p>
+    <div class="ovsearch" role="search"><input id="ovq" type="search" placeholder="Find a paper by name, e.g. EverMemOS" autocomplete="off" aria-controls="ovres">
+      <ul id="ovres" class="ovres" role="listbox" hidden></ul></div>` : ""}
     ${tzCrumbs(fams)}
-    ${z.level === 0 ? (S.tzMode === "plain" ? tzOverviewPlain(papers, fams) : tzOverview(papers, fams))
-      : z.level === 1 ? (S.tzMode === "plain" ? tzCellPlain(papers, fams) : tzCell(papers, fams)) : tzFamily(papers, fams)}`;
+    ${z.level === 0 ? tzOverview(papers, fams) : z.level === 1 ? tzCell(papers, fams) : tzFamily(papers, fams)}`;
 
   const panel = $(".ovpanel", main);
   if (panel) {
     let cur = null;
-    const show = info => { if (info !== cur) { cur = info; panel.innerHTML = tzPanel(info); } };
-    main.querySelectorAll("[data-info]").forEach(el => { el.addEventListener("mouseenter", () => show(el.dataset.info)); el.addEventListener("focus", () => show(el.dataset.info)); });
-    main.querySelectorAll(".iso svg, .ovbands").forEach(el => el.addEventListener("mouseleave", () => show(null)));
+    const cone = $(".ovcone", main);
+    const drawCone = el => {
+      if (!cone) return;
+      const poly = cone.querySelector("polygon");
+      if (!el || !el.querySelector(".tp") || S.tz?.level > 1) { poly.setAttribute("points", ""); cone.classList.remove("on"); return; }
+      const box = cone.parentElement.getBoundingClientRect(), t = el.querySelector(".tp").getBoundingClientRect(), p = panel.getBoundingClientRect();
+      const X = x => x - box.left, Y = y => y - box.top;
+      poly.setAttribute("points", [[X(t.left + t.width / 2), Y(t.top)], [X(p.left), Y(p.top + 6)], [X(p.left), Y(p.bottom - 6)], [X(t.left + t.width / 2), Y(t.bottom)]].map(q => q.map(v => v.toFixed(1)).join(",")).join(" "));
+      cone.classList.add("on");
+    };
+    const show = (info, el) => { if (info !== cur) { cur = info; panel.innerHTML = tzPanel(info); } drawCone(info?.startsWith("cell|") || S.tz?.level === 1 ? el : null); };
+    main.querySelectorAll("[data-info]").forEach(el => { el.addEventListener("mouseenter", () => show(el.dataset.info, el)); el.addEventListener("focus", () => show(el.dataset.info, el)); });
+    main.querySelectorAll(".iso svg").forEach(el => el.addEventListener("mouseleave", () => show(null)));
   }
   main.querySelectorAll(".blk[data-go]").forEach(b => {
     const t = JSON.parse(b.dataset.go);
@@ -647,362 +950,38 @@ function viewTaxonomy(main) {
     tzGo(t.level === 1 && vis.length === 1 ? { level: 2, band: t.band, fam: vis[0].id } : t, b);
   }));
   main.querySelectorAll("[data-tz]").forEach(b => b.addEventListener("click", () => tzGo(JSON.parse(b.dataset.tz), null)));
-  main.querySelectorAll("[data-mode]").forEach(b => b.addEventListener("click", () => {
-    S.tzMode = b.dataset.mode;
-    try { localStorage.setItem("atlas.tzMode", S.tzMode); } catch (_) { /* private mode */ }
-    render();
-  }));
-  $("#txl", main).addEventListener("change", e => { S.taxLow = e.target.checked; render(); });
+  $("#txa", main).addEventListener("change", e => { S.taxAccepted = e.target.checked; render(); });
+  wireSearch(main);
   const q = $("#txq", main);
   q?.addEventListener("input", () => { S.taxQ = q.value; const pos = q.selectionStart; render(); const n = $("#txq"); n.focus(); n.setSelectionRange(pos, pos); });
   main.querySelectorAll("[data-learn]").forEach(b => b.addEventListener("click", () => { S.taxLearn = b.dataset.learn || null; render(); }));
   $("#tzall", main)?.addEventListener("change", e => { S.tzAllRows = e.target.checked; render(); });
   main.querySelectorAll("[data-paper]").forEach(b => b.addEventListener("click", () => {
-    S.tzPaper = S.tzPaper === b.dataset.paper ? null : b.dataset.paper; render();
-    if (S.tzPaper && innerWidth < 1100) $(".pdetail")?.scrollIntoView({ block: "start", behavior: "smooth" });
+    const y = scrollY;
+    S.tzPaper = b.dataset.paper; render(); window.scrollTo(0, y);
+    $(".pmbox", main)?.focus();
   }));
-  main.querySelector("[data-close]")?.addEventListener("click", () => { S.tzPaper = null; render(); });
+  const closePaper = () => { const y = scrollY; S.tzPaper = null; render(); window.scrollTo(0, y); };
+  main.querySelector("[data-close]")?.addEventListener("click", closePaper);
+  $(".pmodal", main)?.addEventListener("click", e => { if (e.target.matches("[data-backdrop]")) closePaper(); });
+  $(".pmodal", main)?.addEventListener("keydown", e => { if (e.key === "Escape") { e.stopPropagation(); closePaper(); } });
+  document.body.classList.toggle("modal-open", !!$(".pmodal", main));
+  main.querySelectorAll("[data-toc]").forEach(b => b.addEventListener("click", () => {
+    document.getElementById(b.dataset.toc)?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }));
+  const more = $(".pdmore2", main);
+  more?.addEventListener("toggle", () => { S.tzMore = more.open; });
+  main.querySelectorAll("[data-step]").forEach(b => b.addEventListener("click", () => {
+    const n = +b.dataset.step;
+    S.tzStep = S.tzStep === n ? null : n;
+    const sys = A.systems.find(x => x.id === A.papers.find(p => p.id === S.tzPaper)?.system);
+    main.querySelectorAll("[data-step]").forEach(x => { const on = +x.dataset.step === S.tzStep; x.classList.toggle("sel", on); x.setAttribute("aria-pressed", on); });
+    const slot = $(".cf-slot", main);
+    if (slot && sys) slot.innerHTML = stepDetail(sys.mechanism.flow.find(x => x.n === S.tzStep));
+  }));
   main.querySelectorAll("[data-profile]").forEach(b => b.addEventListener("click", () => openSystem(b.dataset.profile)));
-}
-
-/* ---------------- Map ----------------
-   A stage on the left spans out into a two-level tree. Both levels are single-valued, so each system sits
-   in exactly one place per stage (its path). Multi-valued features are shown by highlighting, not by
-   placing a system twice. Clicking a system opens its details in place under its branch. */
-const one = v => (v == null || v === "" ? "not stated" : v);
-function remembered(s) {
-  const t = tagVals(s, "memory_type"), conv = t.includes("episodic") || t.includes("working"), facts = t.includes("semantic");
-  return conv && facts ? "conversation and facts" : conv ? "the conversation" : facts ? "facts and knowledge" : "not stated";
-}
-const MAP_STAGES = [
-  { id: "type", n: "00", title: "What is remembered", sub: "memory type", group: null,
-    levels: [["What is kept", remembered], ["User profile", s => (tagVals(s, "memory_type").includes("profile") ? "keeps a user profile" : "no user profile")]],
-    features: ["Memory type", s => tagVals(s, "memory_type")], note: s => s.summary },
-  { id: "construction", n: "01", title: "Construction", sub: "writing memory", group: "construction", deep: "Extraction",
-    levels: [["Text kept as", s => one(s.tags?.fidelity)], ["Who writes", s => one(s.design?.control?.construction)]],
-    features: ["Write-time processing", s => tagVals(s, "write_time")],
-    note: s => [s.design?.construction?.unit, s.design?.construction?.processing].filter(Boolean).join(". ") },
-  { id: "organization", n: "02", title: "Organization", sub: "how items relate", group: "organization", deep: "Storage",
-    levels: [["Main structure", s => one(s.classify?.structure)], ["Index", s => one(s.classify?.index)]],
-    features: ["Also has", s => tagVals(s, "structure")],
-    note: s => [s.design?.organization?.structure, s.design?.organization?.stores].filter(Boolean).join(". ") },
-  { id: "management", n: "03", title: "Management", sub: "changing memory", group: "management", deep: "Evolution",
-    levels: [["What happens", s => one(s.classify?.management)], ["When", s => one(s.design?.management?.timing)]],
-    features: ["Who decides", s => [one(s.design?.control?.management)]],
-    note: s => [s.design?.management?.operations, s.design?.management?.conflicts].filter(Boolean).join(". ") },
-  { id: "retrieval", n: "04", title: "Retrieval", sub: "reading memory", group: "retrieval", deep: "Retrieval",
-    levels: [["How candidates are found", s => one(s.classify?.candidates)], ["Who picks the final set", s => one(s.classify?.decides)]],
-    features: ["Uses", s => tagVals(s, "selection")],
-    note: s => [s.design?.retrieval?.candidates, s.design?.retrieval?.selection].filter(Boolean).join(". ") },
-  { id: "learning", n: "05", title: "Learning", sub: "is anything trained?", group: null,
-    levels: [["Training", s => one(s.tags?.learning)]], features: null,
-    note: s => s.stages?.learning || "No trained component." },
-];
-const pathOf = (s, st) => st.levels.map(([, f]) => f(s));
-
-function mapSystems() {
-  return sortSystems(A.systems.filter(s => {
-    for (const [k, , get] of META) { const set = S.meta[k]; if (set && set.size && !get(s).some(v => set.has(v))) return false; }
-    return true;
-  }));
-}
-
-function leafHTML(s, st) {
-  const hi = S.mapHi && st.features && st.features[1](s).includes(S.mapHi);
-  const dim = S.mapHi && !hi;
-  return `<button class="leaf${hi ? " hi" : ""}${dim ? " dimmed" : ""}${S.mapOpen === s.id ? " open" : ""}" data-sys="${esc(s.id)}" aria-expanded="${S.mapOpen === s.id}"
-    data-label="${esc(s.name)} · ${esc(st.title.toLowerCase())}" data-note="${esc(st.note(s) || "")}">${esc(s.name)}<span class="lv">${esc(venueTag(sysVenue(s)))}</span></button>`;
-}
-
-function detailHTML(s, st) {
-  const p = s.paper || {};
-  const rows = A.results.filter(r => r.system === s.id && (r.category || "overall") === "overall")
-    .sort((a, b) => a.benchmark.localeCompare(b.benchmark) || b.score - a.score);
-  const nAll = A.results.filter(r => r.system === s.id).length;
-  const g = st.group && DESIGN.find(d => d[0] === st.group);
-  return `<div class="detail" role="region" aria-label="${esc(s.name)} details">
-    <button class="dclose" data-close aria-label="Close details">×</button>
-    <div class="dhead"><h2 class="t-h2">${esc(s.name)}</h2>
-      <span class="dim">${esc([p.venue_short && p.venue_short !== "arXiv" ? p.venue_short : null, p.track, p.year].filter(Boolean).join(" · "))}</span>
-      ${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">paper ↗</a>` : ""}${p.code ? `<a href="${esc(p.code)}" target="_blank" rel="noopener">code ↗</a>` : ""}</div>
-    ${s.summary ? `<p class="dsum">${esc(s.summary)}</p>` : ""}
-    <div class="dgrid">
-      <div>
-        <h3 class="t-h3">${esc(st.title)}</h3>
-        ${g ? `<dl class="kv">${g[3].map(([f, l]) => { const v = s.design?.[g[0]]?.[f]; return `<dt>${l}</dt><dd>${v == null || v === "" ? '<span class="dim">not stated</span>' : esc(v)}</dd>`; }).join("")}</dl>`
-            : `<p>${esc(st.note(s) || "")}</p>`}
-        ${s.classify?.note && ["organization", "management", "retrieval"].includes(st.id) ? `<p class="dnote">Placement: ${esc(s.classify.note)}</p>` : ""}
-      </div>
-      <div>
-        <h3 class="t-h3">Where it sits at every stage</h3>
-        <ol class="dpath">${MAP_STAGES.map(x => `<li><button class="jump${x.id === st.id ? " cur" : ""}" data-jump="${x.id}">${x.n} ${esc(x.title)}</button> ${pathOf(s, x).map(esc).join(" → ")}</li>`).join("")}</ol>
-      </div>
-    </div>
-    ${s.figure ? `<a class="dfig" href="${esc(s.figure)}" target="_blank" rel="noopener"><img src="${esc(s.figure)}" alt="${esc(s.name)} system figure from the paper"></a>` : ""}
-    <h3 class="t-h3">Reported results, overall <span class="t-meta">(${rows.length} of ${nAll} recorded; per-category scores are in Results)</span></h5>
-    ${rows.length ? `<div class="scroll"><table class="mini"><thead><tr><th>Benchmark</th><th class="num">Score</th><th>Metric</th><th>Answer model</th><th>Judge</th><th>Reported in</th></tr></thead><tbody>
-      ${rows.map(r => `<tr><td>${esc(A.benchmarks.find(b => b.id === r.benchmark)?.name || r.benchmark)}${r.benchmark_version ? ` <span class="dim">${esc(r.benchmark_version)}</span>` : ""}${r.variant ? ` <span class="tag">${esc(r.variant)}</span>` : ""}</td><td class="num">${fmt(r.score)}<sup>${RUN_MARK[r.run_by] || "?"}</sup></td><td>${esc(r.metric)}</td><td>${esc(r.answer_model || "?")}</td><td>${esc(r.judge || (r.metric === "llm-judge" ? "?" : "–"))}</td><td>${esc(reporterShort(r.reporter))}<br>${sourceLink(r)}</td></tr>`).join("")}
-    </tbody></table></div>` : `<p class="dim">No scores recorded.</p>`}
-  </div>`;
-}
-
-function viewMap(main) {
-  const st = MAP_STAGES.find(x => x.id === S.mapStage) || MAP_STAGES[4];
-  const systems = mapSystems();
-  // two-level grouping; each system lands in exactly one L1 and one L2 value
-  const tree = new Map();
-  for (const s of systems) {
-    const [a, b] = pathOf(s, st);
-    if (!tree.has(a)) tree.set(a, new Map());
-    const sub = tree.get(a), k = b ?? "";
-    (sub.get(k) || sub.set(k, []).get(k)).push(s);
-  }
-  const size = m => [...m.values()].reduce((n, l) => n + l.length, 0);
-  const l1 = [...tree.entries()].sort((x, y) => (x[0] === "not stated") - (y[0] === "not stated") || size(y[1]) - size(x[1]));
-  const feats = st.features ? [...new Set(systems.flatMap(st.features[1]))].sort() : [];
-  if (S.mapHi && !feats.includes(S.mapHi)) S.mapHi = null;
-
-  // DEEP-PolyU papers whose first stage in that list is this one (so each shows once), minus annotated systems
-  const trackSet = S.meta.track;
-  const deep = st.deep ? A.papers.filter(p => (p.facets.deep_stage || [])[0] === st.deep && !p.system
-    && (!trackSet || !trackSet.size || (p.venue && trackSet.has(p.venue.track)))) : [];
-  const deepGroups = new Map();
-  for (const p of deep) { const k = (p.facets.deep_data || ["other"])[0]; (deepGroups.get(k) || deepGroups.set(k, []).get(k)).push(p); }
-  const pyear = p => p.venue?.year || (p.date ? +p.date.slice(0, 4) : 0);
-  const orderPapers = ps => [...ps].sort(S.sort === "year-old" ? (a, b) => (pyear(a) || 9999) - (pyear(b) || 9999)
-    : S.sort === "venue" ? (a, b) => venueCmp(a.venue, b.venue) || pyear(b) - pyear(a)
-    : S.sort === "name" ? (a, b) => a.title.localeCompare(b.title) : (a, b) => pyear(b) - pyear(a));
-  const short = t => { const x = t.split(/:\s/)[0]; return x.length > 52 ? x.slice(0, 50) + "…" : x; };
-
-  const tracks = TRACK_ORDER.filter(t => A.systems.some(s => s.paper?.track === t));
-  const tset = S.meta.track || new Set();
-
-  main.innerHTML = `
-    <h1 class="t-h1 page-title">Pipeline map</h1><p class="lede t-body">Pick a stage of the memory pipeline. It spans out in two steps, and <b>each system sits in exactly one place per stage</b>. Click a system to open its details right there; its path through every other stage is listed so you can jump between stages. Highlight a feature to see every system that uses it, wherever it sits.</p>
-    <div class="mapbar">
-      ${sortSelect("msort")}
-      <span class="mblabel">Track</span>
-      <button class="chip" data-track="" aria-pressed="${!tset.size}">all</button>
-      ${tracks.map(t => `<button class="chip" data-track="${t}" aria-pressed="${tset.has(t)}">${t}<span class="c">${A.systems.filter(s => s.paper?.track === t).length}</span></button>`).join("")}
-      <span class="mblabel">${systems.length} of ${A.systems.length} systems</span>
-    </div>
-    <div class="map" id="map">
-      <svg class="wires" aria-hidden="true"></svg>
-      <ol class="mstages">${MAP_STAGES.map(x => `<li><button class="mstage" data-stage="${x.id}" aria-pressed="${x.id === st.id}">
-        <span class="mn">${x.n}</span><span class="mt">${esc(x.title)}</span><span class="ms">${esc(x.sub)}</span><span class="ma" aria-hidden="true">→</span></button></li>`).join("")}</ol>
-      <section class="fan" aria-label="${esc(st.title)}">
-        <div class="fanhead">
-          <h2 class="t-h2 fantitle">${esc(st.title)}</h2>
-          <span class="levels">${st.levels.map(([l]) => esc(l)).join(' <span aria-hidden="true">→</span> ')}</span>
-          ${feats.length ? `<div class="feats"><span class="mblabel">Highlight · ${esc(st.features[0])}</span>${feats.map(f => `<button class="chip" data-hi="${esc(f)}" aria-pressed="${S.mapHi === f}">${esc(f)}<span class="c">${systems.filter(s => st.features[1](s).includes(f)).length}</span></button>`).join("")}</div>` : ""}
-        </div>
-        ${l1.length ? l1.map(([a, sub]) => `<div class="l1">
-          <div class="bnode l1n${a === "not stated" ? " unk" : ""}">${esc(a)}<span class="bc">${size(sub)}</span></div>
-          <div class="l2s">${[...sub.entries()].sort((x, y) => y[1].length - x[1].length).map(([b, list]) => {
-            const open = list.find(s => s.id === S.mapOpen);
-            return `<div class="l2">
-              ${b ? `<div class="bnode l2n${b === "not stated" ? " unk" : ""}">${esc(b)}<span class="bc">${list.length}</span></div>` : `<div class="bnode l2n ghost" aria-hidden="true"></div>`}
-              <div class="leafbox"><div class="leaves">${list.map(s => leafHTML(s, st)).join("")}</div>${open ? detailHTML(open, st) : ""}</div>
-            </div>`; }).join("")}</div>
-        </div>`).join("") : `<p class="empty-state">No system matches the track filter.</p>`}
-        ${deep.length ? `<div class="deep">
-          <label class="check" for="mm"><input id="mm" type="checkbox" ${S.mapMore ? "checked" : ""}> More papers on ${esc(st.title.toLowerCase())}: ${deep.length} from the DEEP-PolyU graph-memory list, in that list's own categories</label>
-          ${S.mapMore ? [...deepGroups.entries()].sort((a, b) => b[1].length - a[1].length).map(([k, ps]) => `<div class="dgroup"><h3 class="t-h3">${esc(k)} <span class="t-meta">${ps.length}</span></h3>
-            <div class="leaves">${orderPapers(ps).map(p => `<a class="leaf paper" href="${esc(p.url || "#")}" target="_blank" rel="noopener" title="${esc(p.title)}">${esc(short(p.title))}${p.venue ? `<span class="lv">${esc(venueTag(p.venue))}</span>` : ""}${p.facets.deep_stage.length > 1 ? `<span class="lv">also ${esc(p.facets.deep_stage.slice(1).join(", "))}</span>` : ""}</a>`).join("")}</div></div>`).join("") : ""}
-        </div>` : ""}
-      </section>
-    </div>`;
-
-  main.querySelectorAll(".mstage").forEach(b => b.addEventListener("click", () => { S.mapStage = b.dataset.stage; S.mapHi = null; render(); }));
-  main.querySelectorAll("[data-hi]").forEach(b => b.addEventListener("click", () => { S.mapHi = S.mapHi === b.dataset.hi ? null : b.dataset.hi; render(); }));
-  main.querySelectorAll("[data-track]").forEach(b => b.addEventListener("click", () => {
-    const t = b.dataset.track;
-    if (!t) S.meta.track = new Set(); else toggleFacet("m:track", t);
-    render();
-  }));
-  $("#msort", main)?.addEventListener("change", e => { S.sort = e.target.value; render(); });
-  $("#mm", main)?.addEventListener("change", e => { S.mapMore = e.target.checked; render(); });
-  main.querySelectorAll("button.leaf").forEach(b => {
-    b.addEventListener("click", () => { hideTip(); S.mapOpen = S.mapOpen === b.dataset.sys ? null : b.dataset.sys; render(); });
-    b.addEventListener("mouseenter", () => main.querySelectorAll(`.leaf[data-sys="${CSS.escape(b.dataset.sys)}"]`).forEach(x => x.classList.add("same")));
-    b.addEventListener("mouseleave", () => main.querySelectorAll(".leaf.same").forEach(x => x.classList.remove("same")));
-  });
-  main.querySelector("[data-close]")?.addEventListener("click", () => { S.mapOpen = null; render(); });
-  main.querySelectorAll("[data-jump]").forEach(b => b.addEventListener("click", () => {
-    S.mapStage = b.dataset.jump; S.mapHi = null; render();
-    document.querySelector(".leaf.open")?.scrollIntoView({ block: "center", behavior: "smooth" });
-  }));
-  requestAnimationFrame(drawWires);
-  document.fonts?.ready.then(() => S.view === "map" && drawWires());
-}
-
-function drawWires() {
-  const root = $("#map");
-  if (!root) return;
-  const svg = root.querySelector("svg.wires");
-  const R = root.getBoundingClientRect();
-  svg.setAttribute("width", root.scrollWidth);
-  svg.setAttribute("height", root.scrollHeight);
-  const from = root.querySelector('.mstage[aria-pressed="true"]');
-  if (!from || getComputedStyle(svg).display === "none") { svg.innerHTML = ""; return; }
-  const mid = r => r.top + Math.min(r.height, 44) / 2 - R.top;
-  const curve = (x1, y1, x2, y2) => { const k = Math.max(24, (x2 - x1) / 2); return `M${x1},${y1} C${x1 + k},${y1} ${x2 - k},${y2} ${x2},${y2}`; };
-  const f = from.getBoundingClientRect();
-  let d = "";
-  root.querySelectorAll(".l1").forEach(block => {
-    const a = block.querySelector(".l1n").getBoundingClientRect();
-    d += curve(f.right - R.left, f.top + f.height / 2 - R.top, a.left - R.left, mid(a));
-    block.querySelectorAll(".l2").forEach(row => {
-      const n = row.querySelector(".l2n").getBoundingClientRect(), lv = row.querySelector(".leaves").getBoundingClientRect();
-      const ghost = row.querySelector(".l2n.ghost");
-      if (!ghost) d += curve(a.right - R.left, mid(a), n.left - R.left, mid(n));
-      const sx = ghost ? a.right - R.left : n.right - R.left, sy = ghost ? mid(a) : mid(n);
-      d += `M${sx},${sy} L${lv.left - R.left - 3},${sy}`;
-    });
-  });
-  svg.innerHTML = `<path d="${d}" class="w"/>`;
-}
-window.addEventListener("resize", () => S.view === "map" && drawWires());
-
-/* ---------------- Compare ----------------
-   One row per system, scored on one benchmark at a time. The benchmark, metric and answer model are
-   chosen, so the table never mixes incomparable numbers into one column by accident. Design columns
-   are chosen by the reader. A row opens the scores behind its numbers, for this benchmark only. */
-const CMP_COLS = [
-  ["venue", "Venue", s => venueTag(sysVenue(s))],
-  ["year", "Year", s => s.paper?.year],
-  ["write", "Who writes", s => s.design?.control?.construction],
-  ["change", "Who changes", s => s.design?.control?.management],
-  ["read", "Who reads", s => s.design?.control?.retrieval],
-  ["structure", "Structure", s => s.classify?.structure],
-  ["index", "Index", s => s.classify?.index],
-  ["management", "Management", s => s.classify?.management],
-  ["candidates", "Candidates", s => s.classify?.candidates],
-  ["decides", "Final set by", s => s.classify?.decides],
-  ["memory_type", "Memory type", s => tagVals(s, "memory_type").join(", ")],
-  ["domain", "Scenario", s => tagVals(s, "domain").join(", ")],
-  ["learning", "Training", s => s.tags?.learning],
-  ["summary", "What is new", s => s.summary],
-  ["answer_sees", "Answer sees", s => s.mechanism?.answer_context?.sees ?? s.design?.use?.context],
-  ["context_kept", "Context vs dialogue", s => { const c = s.mechanism?.compression?.find(x => x.kept != null); return c ? `${pct(c.kept, c.of)}% (${amount(c)})` : null; }],
-];
-const CMP_DEFAULT = ["venue", "structure", "candidates", "decides", "answer_sees"];
-let cmpCols;
-try { cmpCols = new Set(JSON.parse(localStorage.getItem("atlas.cmpCols") || "null") || CMP_DEFAULT); }
-catch (_) { cmpCols = new Set(CMP_DEFAULT); }
-const median = xs => { const v = [...xs].sort((a, b) => a - b), m = v.length >> 1; return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2; };
-
-function cmpRows() {
-  const all = A.results.filter(r => (r.category || "overall") === "overall" && r.benchmark === S.cmpBench);
-  const metrics = [...new Set(all.map(r => r.metric))].sort((a, b) => all.filter(r => r.metric === b).length - all.filter(r => r.metric === a).length);
-  if (!metrics.includes(S.cmpMetric)) S.cmpMetric = metrics[0] || null;
-  const inMetric = all.filter(r => r.metric === S.cmpMetric);
-  const answers = [...new Set(inMetric.map(r => r.answer_model || "not stated"))].sort((a, b) => inMetric.filter(r => (r.answer_model || "not stated") === b).length - inMetric.filter(r => (r.answer_model || "not stated") === a).length);
-  if (S.cmpAnswer !== "any" && !answers.includes(S.cmpAnswer)) S.cmpAnswer = "any";
-  const rows = inMetric.filter(r => S.cmpAnswer === "any" || (r.answer_model || "not stated") === S.cmpAnswer);
-  return { metrics, answers, rows };
-}
-
-function viewCompare(main) {
-  const benches = A.benchmarks.filter(b => A.results.some(r => r.benchmark === b.id && (r.category || "overall") === "overall"));
-  if (!benches.some(b => b.id === S.cmpBench)) S.cmpBench = benches.some(b => b.id === "locomo") ? "locomo" : benches[0]?.id;
-  const { metrics, answers, rows } = cmpRows();
-  const byS = new Map();
-  for (const r of rows) (byS.get(r.system) || byS.set(r.system, []).get(r.system)).push(r);
-  const tset = S.meta.track || new Set();
-  const pool = [...A.systems.map(s => sysById.get(s.id)), ...(S.cmpBaselines ? [...sysById.values()].filter(s => !s.annotated) : [])]
-    .filter(s => !tset.size || tset.has(s.paper?.track))
-    .filter(s => !S.cmpScored || byS.has(s.id));
-  const stat = s => {
-    const rs = byS.get(s.id) || [], xs = rs.map(r => r.score), own = rs.filter(r => r.run_by === "self").map(r => r.score);
-    return xs.length ? { own: own.length ? Math.max(...own) : null, median: median(xs), min: Math.min(...xs), max: Math.max(...xs), n: xs.length, papers: new Set(rs.map(r => r.reporter)).size } : { own: null, median: null, min: null, max: null, n: 0, papers: 0 };
-  };
-  const list = pool.map(s => ({ s, st: stat(s) }));
-  const cols = CMP_COLS.filter(([k]) => cmpCols.has(k));
-  const key = S.cmpSort.key, dir = S.cmpSort.dir;
-  const val = x => (["own", "median", "max", "n"].includes(key) ? x.st[key] : key === "name" ? x.s.name : CMP_COLS.find(c => c[0] === key)?.[2](x.s));
-  list.sort((a, b) => {
-    const va = val(a), vb = val(b);
-    if (va == null || va === "") return vb == null || vb === "" ? a.s.name.localeCompare(b.s.name) : 1;
-    if (vb == null || vb === "") return -1;
-    return (typeof va === "number" ? va - vb : String(va).localeCompare(String(vb))) * dir || a.s.name.localeCompare(b.s.name);
-  });
-  const bench = A.benchmarks.find(b => b.id === S.cmpBench);
-  const th = (k, label, cls = "", title = "") => {
-    const on = key === k;
-    return `<th class="${cls}" aria-sort="${on ? (dir > 0 ? "ascending" : "descending") : "none"}"${title ? ` title="${esc(title)}"` : ""}><button class="sorth" data-sort="${k}">${esc(label)}<span class="arr" aria-hidden="true">${on ? (dir > 0 ? "▲" : "▼") : "↕"}</span></button></th>`;
-  };
-  const ncol = 1 + cols.length + 3;
-  const tracks = TRACK_ORDER.filter(t => A.systems.some(s => s.paper?.track === t));
-  // range bars share one scale: the lowest to highest score in the table, widened to whole tens
-  const scored = list.filter(x => x.st.n);
-  const lo = Math.floor(Math.min(...scored.map(x => x.st.min), 100) / 10) * 10, hi = Math.ceil(Math.max(...scored.map(x => x.st.max), lo + 10) / 10) * 10;
-  const pos = v => (v - lo) / (hi - lo) * 100;
-
-  main.innerHTML = `
-    <h1 class="t-h1 page-title">Compare systems on one benchmark</h1><p class="lede t-body">Pick a benchmark and compare systems on it. <b>Median</b> is taken over every setting that reported the system (different answer models, judges and papers), so it is a rough guide. Fix the answer model to narrow it. <b>Own paper</b> is what the system's authors reported. Click a column to sort, and a row to see the scores behind it.</p>
-    <div class="cmpbar">
-      <label class="sortsel" for="cb">Benchmark <select id="cb">${benches.map(b => `<option value="${b.id}" ${b.id === S.cmpBench ? "selected" : ""}>${esc(b.name)}</option>`).join("")}</select></label>
-      <label class="sortsel" for="cmx">Metric <select id="cmx">${metrics.map(m => `<option ${m === S.cmpMetric ? "selected" : ""}>${esc(m)}</option>`).join("")}</select></label>
-      <label class="sortsel" for="cam">Answer model <select id="cam"><option value="any">any (${answers.length})</option>${answers.map(m => `<option ${m === S.cmpAnswer ? "selected" : ""}>${esc(m)}</option>`).join("")}</select></label>
-      <label class="check" for="csc"><input id="csc" type="checkbox" ${S.cmpScored ? "checked" : ""}> only systems with a score</label>
-      <label class="check" for="cbl"><input id="cbl" type="checkbox" ${S.cmpBaselines ? "checked" : ""}> include baselines not yet annotated</label>
-    </div>
-    <div class="cmpbar">
-      <span class="mblabel">Track</span>
-      <button class="chip" data-track="" aria-pressed="${!tset.size}">all</button>
-      ${tracks.map(t => `<button class="chip" data-track="${t}" aria-pressed="${tset.has(t)}">${t}</button>`).join("")}
-      <details class="colpick"><summary>Columns <span class="dim">${cols.length} shown</span></summary>
-        <div class="colopts">${CMP_COLS.map(([k, l]) => `<label class="check"><input type="checkbox" data-col="${k}" ${cmpCols.has(k) ? "checked" : ""}> ${esc(l)}</label>`).join("")}
-        <button class="jump" data-colreset>Reset</button></div></details>
-      <span class="mblabel">${list.length} systems · ${scored.reduce((n, x) => n + x.st.n, 0)} scores</span>
-    </div>
-    ${list.length ? `<div class="scroll"><table class="cmp">
-      <thead><tr>${th("name", "System", "sticky")}${cols.map(([k, l]) => th(k, l)).join("")}
-        ${th("own", "Own paper", "num", "Score reported by the system's own authors (highest, if they reported several)")}
-        ${th("median", "Median", "num", "Median over every setting shown")}
-        ${th("max", `Range ${fmt(lo)}–${fmt(hi)}`, "rng", "Lowest to highest score across settings; sorts by the highest")}</tr></thead>
-      <tbody>${list.map(({ s, st }) => {
-        const open = S.cmpOpen === s.id;
-        return `<tr class="click${open ? " open" : ""}" data-row="${esc(s.id)}" tabindex="0" aria-expanded="${open}">
-          <td class="name sticky">${esc(s.name)}${s.annotated ? "" : ' <span class="tag">baseline</span>'}</td>
-          ${cols.map(([k, , f]) => { const v = f(s); return v == null || v === "" ? '<td class="nd">–</td>' : `<td${k === "summary" ? ' class="wide"' : ""}>${k === "write" || k === "change" || k === "read" ? `<span class="tag">${esc(v)}</span>` : esc(v)}</td>`; }).join("")}
-          <td class="num">${st.own == null ? '<span class="dim">–</span>' : fmt(st.own)}</td>
-          <td class="num"><b>${st.median == null ? '<span class="dim">–</span>' : fmt(st.median)}</b></td>
-          <td class="rng">${st.n ? `<span class="bar" aria-hidden="true"><i style="left:${pos(st.min)}%;width:${Math.max(pos(st.max) - pos(st.min), 1.5)}%"></i></span><span class="num">${st.n > 1 ? `${fmt(st.min)}–${fmt(st.max)}` : fmt(st.min)}</span> <span class="dim">${st.n} score${st.n > 1 ? "s" : ""}, ${st.papers} paper${st.papers > 1 ? "s" : ""}</span>` : '<span class="dim">no score</span>'}</td>
-        </tr>${open ? `<tr class="cmpdetail"><td colspan="${ncol}">${cmpDetail(s, byS.get(s.id) || [], bench)}</td></tr>` : ""}`;
-      }).join("")}</tbody></table></div>` : `<p class="empty-state">No system has a ${esc(S.cmpMetric || "")} score on ${esc(bench?.name || "")} with these filters.</p>`}`;
-
-  $("#cb", main).addEventListener("change", e => { S.cmpBench = e.target.value; S.cmpOpen = null; render(); });
-  $("#cmx", main)?.addEventListener("change", e => { S.cmpMetric = e.target.value; render(); });
-  $("#cam", main)?.addEventListener("change", e => { S.cmpAnswer = e.target.value; render(); });
-  $("#csc", main).addEventListener("change", e => { S.cmpScored = e.target.checked; render(); });
-  $("#cbl", main).addEventListener("change", e => { S.cmpBaselines = e.target.checked; render(); });
-  main.querySelectorAll("[data-track]").forEach(b => b.addEventListener("click", () => {
-    const t = b.dataset.track;
-    if (!t) S.meta.track = new Set(); else toggleFacet("m:track", t);
-    render();
-  }));
-  const saveCols = () => { try { localStorage.setItem("atlas.cmpCols", JSON.stringify([...cmpCols])); } catch (_) { /* private mode */ } };
-  main.querySelectorAll("[data-col]").forEach(c => c.addEventListener("change", () => {
-    c.checked ? cmpCols.add(c.dataset.col) : cmpCols.delete(c.dataset.col); saveCols(); S.cmpColsOpen = true; render();
-  }));
-  $("[data-colreset]", main)?.addEventListener("click", () => { cmpCols = new Set(CMP_DEFAULT); saveCols(); S.cmpColsOpen = true; render(); });
-  const det = $(".colpick", main);
-  if (S.cmpColsOpen) det.open = true;
-  det.addEventListener("toggle", () => { S.cmpColsOpen = det.open; });
-  main.querySelectorAll("[data-sort]").forEach(b => b.addEventListener("click", () => {
-    const k = b.dataset.sort;
-    // numbers start high-to-low, text starts A-to-Z
-    S.cmpSort = S.cmpSort.key === k ? { key: k, dir: -S.cmpSort.dir } : { key: k, dir: ["own", "median", "max", "year"].includes(k) ? -1 : 1 };
-    render();
-  }));
-  main.querySelectorAll("tr[data-row]").forEach(tr => {
-    const t = () => { S.cmpOpen = S.cmpOpen === tr.dataset.row ? null : tr.dataset.row; render(); };
-    tr.addEventListener("click", e => { if (!e.target.closest("a, button")) t(); });
-    tr.addEventListener("keydown", e => { if (e.key === "Enter" && e.target === tr) t(); });
-  });
-  main.querySelectorAll("[data-profile]").forEach(b => b.addEventListener("click", () => openSystem(b.dataset.profile)));
+  const grid = $(".pgrid", main);
+  if (grid) { stickGrid(grid); document.fonts?.ready.then(() => stickGrid(grid)); }
 }
 
 /* ---------------- mechanism: how one system works, step by step ----------------
@@ -1073,39 +1052,6 @@ function mechanismHTML(s) {
       ${m.open_questions?.length ? `<section><h3 class="t-h3">Open questions</h3><ul class="mq">${m.open_questions.map(q => `<li>${esc(q)}</li>`).join("")}</ul></section>` : ""}
     </div>
     ${m.sources ? `<p class="dim msources">Sources: ${esc(m.sources.paper || "")}${m.sources.code ? ` · <a href="${esc(m.sources.code)}" target="_blank" rel="noopener">code at the cited commit ↗</a>` : ""}${m.sources.code_note ? `. ${esc(m.sources.code_note)}` : ""}</p>` : ""}
-  </div>`;
-}
-
-/* The scores behind one row: this benchmark and metric only, grouped by who ran them. */
-function cmpDetail(s, rows, bench) {
-  const p = s.paper || {};
-  const how = s.annotated && !s.mechanism ? [
-    ["Writes", s.design?.construction?.processing],
-    ["Stores", [s.design?.organization?.structure, s.design?.organization?.stores].filter(Boolean).join("; ")],
-    ["Changes", s.design?.management?.operations],
-    ["Reads", [s.design?.retrieval?.candidates, s.design?.retrieval?.selection].filter(Boolean).join("; ")],
-    ["Answer sees", s.design?.use?.context],
-  ].filter(([, v]) => v) : [];
-  const sorted = [...rows].sort((a, b) => b.score - a.score);
-  const versions = new Set(rows.map(r => `${r.benchmark_version}|${r.subset}`)).size > 1;
-  return `<div class="cmpd">
-    <div class="cmpd-top">
-      <div class="cmpd-about">
-        <div class="dhead"><h2 class="t-h2">${esc(s.name)}</h2>
-          ${p.url || s.url ? `<a href="${esc(p.url || s.url)}" target="_blank" rel="noopener">paper ↗</a>` : ""}${p.code ? `<a href="${esc(p.code)}" target="_blank" rel="noopener">code ↗</a>` : ""}
-          ${s.annotated ? `<button class="jump" data-profile="${esc(s.id)}">Full profile</button>` : ""}</div>
-        ${s.summary || s.note ? `<p class="dsum">${esc(s.summary || s.note)}</p>` : ""}
-        ${how.length ? `<dl class="kv">${how.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("")}</dl>
-          <p class="dim">Not yet written up step by step with sources.</p>` : ""}
-      </div>
-      <div class="cmpd-scores">
-        <h3 class="t-h3">${esc(bench?.name || "")} · ${esc(S.cmpMetric || "")}${S.cmpAnswer !== "any" ? ` · ${esc(S.cmpAnswer)}` : ""} <span class="t-meta">${rows.length} score${rows.length === 1 ? "" : "s"}</span></h3>
-        ${rows.length ? `<table class="mini"><thead><tr><th class="num">Score</th><th>Answer model</th><th>Judge</th>${versions ? "<th>Version</th>" : ""}<th>Run by</th><th>Reported in</th></tr></thead><tbody>
-          ${sorted.map(r => `<tr><td class="num"><b>${fmt(r.score)}</b></td><td>${esc(r.answer_model || "not stated")}${r.variant ? ` <span class="tag">${esc(r.variant)}</span>` : ""}</td><td>${esc(r.judge || (r.metric === "llm-judge" ? "not stated" : "–"))}</td>${versions ? `<td>${esc([r.benchmark_version, r.subset].filter(Boolean).join(" · "))}</td>` : ""}<td>${r.run_by === "self" ? "own authors" : r.run_by === "rerun" ? "re-run" : r.run_by === "copied" ? "copied" : "?"}</td><td>${esc(reporterShort(r.reporter))} · ${sourceLink(r)}</td></tr>`).join("")}
-        </tbody></table>` : `<p class="dim">No ${esc(S.cmpMetric || "")} score on ${esc(bench?.name || "")} with these filters.</p>`}
-      </div>
-    </div>
-    ${mechanismHTML(s)}
   </div>`;
 }
 
@@ -1429,7 +1375,7 @@ function viewPapers(main) {
           <div class="pitem">
             <div class="t">${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.title)}</a>` : esc(p.title)}</div>
             <div class="l">
-              <span class="tag">${esc(p.kind)}</span>${p.venue ? `<span class="tag ven${p.venue.track === "preprint" ? " pre" : ""}" title="${p.venue.checked ? "Checked against the paper" : "As listed by DEEP-PolyU"}">${esc(venueTag(p.venue))}${p.venue.track !== "main" && p.venue.track !== "preprint" ? "" : p.venue.track === "main" ? " main" : ""}</span>` : ""}${p.date ? `<span class="num">${esc(p.date)}</span>` : ""}
+              <span class="tag">${esc(p.kind)}</span>${p.venue ? `<span class="tag ven${p.venue.track === "preprint" ? " pre" : ""}" title="${p.venue.checked ? "Checked against the paper" : p.venue.source ? `Looked up in ${p.venue.source}` : "As listed by DEEP-PolyU"}">${esc(venueLabel(p))}${p.venue.track !== "main" && p.venue.track !== "preprint" ? "" : p.venue.track === "main" ? " main" : ""}</span>` : ""}${p.date ? `<span class="num">${esc(p.date)}</span>` : ""}
               ${p.arxiv ? `<span class="num">arXiv ${esc(p.arxiv)}</span>` : ""}
               ${p.code ? `<a href="${esc(p.code)}" target="_blank" rel="noopener">code</a>` : ""}
               ${p.system ? `<a href="#" data-open="${esc(p.system)}"><span class="flag acc">annotated · open</span></a>` : ""}
@@ -1485,6 +1431,20 @@ function viewMethod(main) {
   </div>`;
 }
 
+/* The compact record of an annotated system: the two figures, then four tables (what is stored, key numbers,
+   ablation, paper vs code). Everything else folds away under "All annotated fields". */
+function compactRecord(sys, tablesOnly = false) {
+  const m = sys.mechanism, tbl = (head, rows) => `<table class="ctbl"><thead><tr>${head.map(h => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table>`;
+  const stored = tbl(["Item", "Kept as", "Used for"], (m.units || []).flatMap(u => u.fields.map(f =>
+    `<tr><td><b>${esc(f.name)}</b> <span class="dim">${esc(u.name)}</span></td><td><span class="kept ${KEPT_CLASS[f.kept_as] || ""}">${esc(f.kept_as)}</span></td><td>${f.used_for?.length ? f.used_for.map(x => `<span class="tag${x === "answer" ? " use-ans" : ""}">${esc(x)}</span>`).join("") : '<span class="tag unused">not used</span>'}</td></tr>`)));
+  const nums = m.key_numbers?.length ? tbl(["", "Value", "Source"], m.key_numbers.map(n => `<tr><td>${esc(n.label)}</td><td><b>${esc(n.value)}</b></td><td class="dim">${esc(n.src || "")}</td></tr>`)) : "";
+  const abl = m.ablation ? tbl(["", ...m.ablation.cols], m.ablation.rows.map(r => `<tr><td>${esc(r[0])}</td>${r.slice(1).map(v => `<td class="num">${esc(v)}</td>`).join("")}</tr>`)) + `<p class="t-meta">${esc(m.ablation.src)}</p>` : "";
+  const diff = m.paper_vs_code?.length ? tbl(["", "Paper", "Code"], m.paper_vs_code.map(d => `<tr><td><b>${esc(d.topic)}</b></td><td>${esc(d.paper)}</td><td>${esc(d.code)} ${msrc(d)}</td></tr>`)) : "";
+  const block = (title, body) => body ? `<section class="cblock"><h3 class="t-h3">${esc(title)}</h3>${body}</section>` : "";
+  const tables = `<div class="ctables">${block("What is stored", stored)}${block("Key numbers", nums)}${block("Ablation", abl)}${block("Paper vs code", diff)}</div>`;
+  return tablesOnly ? tables : `<div class="crec t-noindent"><div class="cfigs">${figuresHTML(sys)}</div>${tables}</div>`;
+}
+
 /* ---------------- drawer ---------------- */
 function openSystem(id) {
   const s = sysById.get(id);
@@ -1499,6 +1459,21 @@ function openSystem(id) {
   d.className = "drawer";
   d.setAttribute("role", "dialog");
   d.setAttribute("aria-label", s.name);
+  if (s.mechanism?.figures) {
+    d.classList.add("wide");
+    d.innerHTML = `<button class="x" id="dx">Close</button>
+      <h2 class="t-h2">${esc(s.name)}</h2>
+      <div class="sub">${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${esc(p.title)}</a>` : esc(p.title || "")}${venueYear(p) ? ` · ${esc(venueYear(p))}` : ""}${p.code ? ` · <a href="${esc(p.code)}" target="_blank" rel="noopener">code</a>` : ""}</div>
+      ${compactRecord(s)}
+      <details class="call"><summary>All annotated fields</summary>
+        ${DESIGN.map(([g, label, , fields]) => `<h4 class="mf-h4">${label}</h4><dl class="kv">${fields.map(([f, l]) => { const v = s.design?.[g]?.[f]; return `<dt>${l}</dt><dd>${v == null || v === "" ? '<span class="dim">not stated</span>' : esc(v)}</dd>`; }).join("")}</dl>`).join("")}
+      </details>`;
+    document.body.append(scrim, d);
+    scrim.addEventListener("click", closeDrawer);
+    $("#dx", d).addEventListener("click", closeDrawer);
+    $("#dx", d).focus();
+    return;
+  }
   d.innerHTML = `
     <button class="x" id="dx">Close</button>
     <div class="sub">${s.verified ? '<span class="flag ok">checked</span>' : '<span class="flag warn">draft</span>'}</div>

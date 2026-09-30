@@ -1,0 +1,502 @@
+{
+  "id": "associa",
+  "name": "Associa",
+  "paper": {
+    "title": "Bridging Intuitive Associations and Deliberate Recall: Empowering LLM Personal Assistant with Graph-Structured Long-term Memory",
+    "arxiv": null,
+    "url": "https://aclanthology.org/2025.findings-acl.901/",
+    "venue": "Findings of ACL 2025",
+    "venue_short": "ACL",
+    "track": "findings",
+    "year": 2025,
+    "code": null
+  },
+  "design": {
+    "construction": {
+      "unit": "event-centric graph: utterance, event, event-time, entity and user nodes with six edge types",
+      "kept_as": "verbatim user utterances linked to LLM-extracted events, inferred times and (subject, relation, object) triplets",
+      "processing": "one LLM prompt per dialogue unit extracts events with an absolute time, a description and triplets; every node is linked to its source utterance",
+      "trigger": "other",
+      "writer": "Qwen-Turbo (API); Qwen2.5-7B/32B/72B-Instruct tested as alternatives"
+    },
+    "organization": {
+      "structure": "one graph per user history; events, entities and times hang off the utterances they came from",
+      "stores": "memory graph plus the utterance store it points to",
+      "index": "Contriever embeddings of nodes and edges; FAISS for duplicate detection"
+    },
+    "management": {
+      "operations": "merge near-duplicate events, entities and relations: FAISS similarity merge as memories arrive, plus agglomerative clustering in batches",
+      "conflicts": null,
+      "forgetting": null,
+      "timing": "both"
+    },
+    "retrieval": {
+      "query": "question; a fine-tuned 3B model names missing entities, each appended to the question for another search (max_iter 2)",
+      "candidates": "cosine prizes on nodes and edges, top-15 each with rank-decayed prizes; Prize-Collecting Steiner Tree gives a connected subgraph (edge cost 0.5)",
+      "selection": "personalized PageRank over the merged subgraph, seeded by prizes, ranks the utterances",
+      "budget": "top 5 / top 10 utterances in the retrieval evaluation; QA context size not stated"
+    },
+    "use": {
+      "context": "retrieved user utterances (how many is not stated)",
+      "reasoning": "single GPT-4o answer call"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "fixed-rule",
+      "retrieval": "learned-sft"
+    }
+  },
+  "classify": {
+    "structure": "graph",
+    "index": "vector",
+    "management": "consolidate",
+    "candidates": "graph walk",
+    "decides": "top-k rule",
+    "note": "Dense prizes seed a Steiner-tree subgraph and PageRank ranks utterances by a fixed top-k; the fine-tuned model only decides whether to search again, with which extra entities."
+  },
+  "tags": {
+    "fidelity": "verbatim+derived",
+    "structure": [
+      "graph"
+    ],
+    "write_time": [
+      "extract",
+      "link",
+      "consolidate"
+    ],
+    "selection": [
+      "dense",
+      "graph-expansion",
+      "planner"
+    ],
+    "memory_type": [
+      "episodic",
+      "semantic"
+    ],
+    "learning": "sft",
+    "domain": [
+      "conversation"
+    ]
+  },
+  "stages": {
+    "ingestion": "Only user-side turns are used; on LoCoMo two dialogue turns (four utterances) form one unit because single utterances carry little information.",
+    "construction": "An LLM (Qwen-Turbo) reads each timestamped unit and returns events with an inferred absolute time, a description and (subject, relation, object) triplets; entities cover objects, people, places, goals, interests, sentiments and more.",
+    "organization": "Events, times, entities, the user and the source utterances form one graph with six edge types (event-time, event-fact-utterance, event-entity, utterance-entity, user-asks-utterance, entity-relation-entity).",
+    "update": "Duplicate events, entities and relations are merged: incrementally with FAISS above a similarity threshold, and in batches with agglomerative clustering. Nothing is deleted.",
+    "retrieval": "Nodes and edges get cosine prizes against the question (top-15 each, decaying by rank); a Prize-Collecting Steiner Tree extracts a connected subgraph. A fine-tuned Qwen2.5-3B reads the subgraph and names missing entities; each is appended to the question and searched again (max_iter 2). Personalized PageRank then ranks the nodes.",
+    "answer": "GPT-4o answers from the retrieved utterances; the paper gives no QA prompt or context size.",
+    "learning": "The deliberating model is Qwen2.5-3B-Instruct fine-tuned on CoQA-derived samples labeled with qwen-plus: output {} when the subgraph holds the gold cue, otherwise the missing entities."
+  },
+  "summary": "Event-centric graph memory over a user's dialogue history, read by prize-collecting Steiner-tree subgraph search, a small fine-tuned model that asks for missing entities, and PageRank ranking of utterances.",
+  "verified": false,
+  "notes": "Venue: Findings of ACL 2025, pages 17533-17547, verified on the ACL Anthology page and the PDF footer. No arXiv version found. CODE: the paper gives no code link and a GitHub search found no official repository, so the record follows the paper only. The in-text citation for MemoRAG points to Izacard et al. 2021 (Contriever), an error in the paper.",
+  "mechanism": {
+    "sources": {
+      "paper": "ACL Anthology 2025.findings-acl.901 (PDF read 2026-09-30)",
+      "code": null,
+      "code_note": "No official code: the paper has no repository link, and a GitHub search for the method name and title found none. Everything below follows the paper; unstated settings (similarity thresholds, PageRank damping, QA context size) are left null."
+    },
+    "headline": [
+      "Utterances are kept verbatim; the LLM-extracted events, times and triplets act as a graph index pointing back to them.",
+      "Retrieval is a Steiner-tree subgraph over dense prizes, widened once by a fine-tuned 3B model that lists missing entities, then ranked by PageRank.",
+      "The gains are large on LongMemEval-S retrieval (R@5 0.87 vs 0.75 for BGE) but small on LoCoMo (0.74 vs 0.71) and on QA (0.81 vs 0.80)."
+    ],
+    "units": [
+      {
+        "name": "Utterance node",
+        "role": "the original user turn (LoCoMo: two turns)",
+        "made_by": "stored as is",
+        "fields": [
+          {
+            "name": "text",
+            "what": "the user's words with their timestamp",
+            "kept_as": "verbatim",
+            "used_for": [
+              "index",
+              "verifier",
+              "answer"
+            ],
+            "src": "paper §4.1, §5.2.1, App. E.1",
+            "url": "https://aclanthology.org/2025.findings-acl.901.pdf"
+          }
+        ]
+      },
+      {
+        "name": "Event node",
+        "role": "a user-related event, the hub of the graph",
+        "made_by": "LLM extraction (Qwen-Turbo)",
+        "fields": [
+          {
+            "name": "event + description",
+            "what": "short event name and a description",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "verifier"
+            ],
+            "src": "paper §4.1, App. E.2",
+            "url": "https://aclanthology.org/2025.findings-acl.901.pdf"
+          },
+          {
+            "name": "event time",
+            "what": "absolute time inferred from the utterance timestamp; stored as its own node",
+            "kept_as": "extracted",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §4.1, App. E.2",
+            "url": "https://aclanthology.org/2025.findings-acl.901.pdf"
+          }
+        ]
+      },
+      {
+        "name": "Entity and relation",
+        "role": "objects, people, places, goals, interests, sentiments in the event",
+        "made_by": "LLM extraction as (subject, relation, object) triplets",
+        "fields": [
+          {
+            "name": "triplets",
+            "what": "entity nodes joined by relation edges; also linked to their event and utterance",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "verifier"
+            ],
+            "src": "paper §4.1, App. E",
+            "url": "https://aclanthology.org/2025.findings-acl.901.pdf"
+          }
+        ]
+      },
+      {
+        "name": "User node",
+        "role": "the speaker, linked to every utterance they asked",
+        "made_by": "fixed schema",
+        "fields": [
+          {
+            "name": "user",
+            "what": "one node per user",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §4.1",
+            "url": "https://aclanthology.org/2025.findings-acl.901.pdf"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Extract",
+        "how": "one prompt per timestamped unit returns events, inferred absolute times, descriptions and triplets, or [] if nothing about the user",
+        "out": "4,181 tokens per LoCoMo session, 2,303 per LongMemEval-S session",
+        "src": "paper App. E.2, Table 4",
+        "url": "https://aclanthology.org/2025.findings-acl.901.pdf"
+      },
+      {
+        "step": "Link",
+        "how": "add nodes and six typed edges; every event and entity keeps an edge to its source utterance",
+        "src": "paper §4.1",
+        "url": "https://aclanthology.org/2025.findings-acl.901.pdf"
+      },
+      {
+        "step": "Deduplicate",
+        "how": "merge events, entities and relations whose FAISS similarity exceeds a threshold as they arrive; agglomerative clustering in batches",
+        "params": {
+          "threshold": "not stated"
+        },
+        "src": "paper §4.1",
+        "url": "https://aclanthology.org/2025.findings-acl.901.pdf"
+      }
+    ],
+    "read": [
+      {
+        "step": "Prize",
+        "round": 1,
+        "input": "question",
+        "scores": "node and edge embeddings (cosine)",
+        "how": "top-k nodes and top-k edges get prize k - rank + 1, others 0",
+        "params": {
+          "top_k nodes": "15",
+          "top_e edges": "15"
+        },
+        "src": "paper §4.2.1 Eq. 6, §5.2.1",
+        "url": "https://aclanthology.org/2025.findings-acl.901.pdf"
+      },
+      {
+        "step": "Steiner tree",
+        "round": 1,
+        "how": "edges with prize above the cost become virtual nodes; PCST picks the connected subgraph maximizing prizes minus costs",
+        "params": {
+          "edge cost": "0.5"
+        },
+        "src": "paper §4.2.1 Eqs. 7-10",
+        "url": "https://aclanthology.org/2025.findings-acl.901.pdf"
+      },
+      {
+        "step": "Deliberate",
+        "round": 1,
+        "input": "question + subgraph shown as events, triplets and chunks",
+        "how": "fine-tuned Qwen2.5-3B returns missing entities and unrelated content; empty means stop",
+        "src": "paper §4.2.2, App. A, B, E.1",
+        "url": "https://aclanthology.org/2025.findings-acl.901.pdf"
+      },
+      {
+        "step": "Search per clue",
+        "round": 2,
+        "input": "question + one missing entity",
+        "how": "a new PCST subgraph per clue, merged into the first",
+        "params": {
+          "max_iter": "2"
+        },
+        "src": "paper Algorithm 1 (App. B)",
+        "url": "https://aclanthology.org/2025.findings-acl.901.pdf"
+      },
+      {
+        "step": "Rank",
+        "round": 0,
+        "how": "personalized PageRank over the merged subgraph; preference = node prize, edge weight 1 / (1 + log(1 + cost))",
+        "params": {
+          "damping": "not stated"
+        },
+        "out": "ranked utterances; retrieval scored at top 5 and top 10",
+        "src": "paper §4.2.3 Eqs. 11-12",
+        "url": "https://aclanthology.org/2025.findings-acl.901.pdf"
+      }
+    ],
+    "answer_context": {
+      "sees": "retrieved user utterances",
+      "format": null,
+      "excludes": [],
+      "note": "The paper gives no QA prompt, and no number of utterances passed to GPT-4o; whether events or triplets are also shown is not stated.",
+      "src": "paper §5.2.1",
+      "url": "https://aclanthology.org/2025.findings-acl.901.pdf"
+    },
+    "compression": [
+      {
+        "what": "answer context vs one history",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported: the paper does not say how many utterances reach the answer model.",
+        "src": "paper §5.2.1",
+        "url": "https://aclanthology.org/2025.findings-acl.901.pdf"
+      }
+    ],
+    "open_questions": [
+      "How much of the retrieval gain comes from the graph and how much from Contriever prizes plus PageRank? w/o AM drops to Contriever level (0.67 R@5), but no run ranks utterances by prize alone.",
+      "w/o DM equals Associa max_iter=1 exactly (0.84 / 0.85 / 0.90 / 0.87), so the deliberation round adds 0.03 R@5 on LongMemEval-S."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 246",
+        "body": "<text class=\"fig-t\" x=\"52\" y=\"16\" text-anchor=\"middle\">User turns</text><rect class=\"gi-ev\" x=\"10\" y=\"26\" width=\"72\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"17\" y1=\"35.0\" x2=\"72\" y2=\"35.0\"/><rect class=\"gi-ev\" x=\"24\" y=\"52\" width=\"72\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"31\" y1=\"61.0\" x2=\"86\" y2=\"61.0\"/><rect class=\"gi-ev\" x=\"10\" y=\"78\" width=\"72\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"17\" y1=\"87.0\" x2=\"72\" y2=\"87.0\"/><rect class=\"gi-ev\" x=\"24\" y=\"104\" width=\"72\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"31\" y1=\"113.0\" x2=\"86\" y2=\"113.0\"/><rect class=\"gi-ev\" x=\"10\" y=\"130\" width=\"72\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"17\" y1=\"139.0\" x2=\"72\" y2=\"139.0\"/><text class=\"fig-s\" x=\"54\" y=\"168\" text-anchor=\"middle\">timestamped;</text><text class=\"fig-s\" x=\"54\" y=\"181\" text-anchor=\"middle\">LoCoMo: 2 turns</text><text class=\"fig-s\" x=\"54\" y=\"194\" text-anchor=\"middle\">per unit</text><path class=\"gi-a\" d=\"M100 92 L119 92\"/><polygon class=\"gi-ah\" points=\"126,92 119,88 119,96\"/><rect class=\"gi-llm\" x=\"98\" y=\"72\" width=\"30\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"113\" y=\"82\" text-anchor=\"middle\">LLM</text><text class=\"fig-t\" x=\"198\" y=\"16\" text-anchor=\"middle\">Extracted per unit</text><rect class=\"gi-ev\" x=\"130\" y=\"26\" width=\"138\" height=\"170\" rx=\"10\"/><rect class=\"gi-hi\" x=\"140\" y=\"36\" width=\"118\" height=\"30\" rx=\"6\"/><text class=\"fig-t\" x=\"148\" y=\"50\" text-anchor=\"start\">event</text><text class=\"fig-s\" x=\"148\" y=\"61\" text-anchor=\"start\">name + description</text><rect class=\"gi-f\" x=\"140\" y=\"72\" width=\"118\" height=\"30\" rx=\"6\"/><text class=\"fig-t\" x=\"148\" y=\"86\" text-anchor=\"start\">event time</text><text class=\"fig-s\" x=\"148\" y=\"97\" text-anchor=\"start\">inferred, absolute</text><rect class=\"gi-f\" x=\"140\" y=\"108\" width=\"118\" height=\"30\" rx=\"6\"/><text class=\"fig-t\" x=\"148\" y=\"122\" text-anchor=\"start\">triplets</text><text class=\"fig-s\" x=\"148\" y=\"133\" text-anchor=\"start\">(subject, rel, object)</text><rect class=\"gi-ev d\" x=\"140\" y=\"144\" width=\"118\" height=\"42\" rx=\"6\"/><text class=\"fig-s\" x=\"148\" y=\"160\" text-anchor=\"start\">source utterance:</text><text class=\"fig-s\" x=\"148\" y=\"174\" text-anchor=\"start\">kept verbatim</text><text class=\"fig-s\" x=\"198\" y=\"214\" text-anchor=\"middle\">Qwen-Turbo, one prompt</text><path class=\"gi-a\" d=\"M270 110 L291 110\"/><polygon class=\"gi-ah\" points=\"298,110 291,106 291,114\"/><text class=\"fig-t\" x=\"427\" y=\"16\" text-anchor=\"middle\">Event-centric memory graph</text><line class=\"gi-e\" x1=\"318\" y1=\"60\" x2=\"350\" y2=\"170\"/><line class=\"gi-e\" x1=\"380\" y1=\"110\" x2=\"356\" y2=\"170\"/><line class=\"gi-e\" x1=\"470\" y1=\"110\" x2=\"426\" y2=\"170\"/><line class=\"gi-e\" x1=\"470\" y1=\"110\" x2=\"496\" y2=\"170\"/><line class=\"gi-e\" x1=\"380\" y1=\"110\" x2=\"420\" y2=\"60\"/><line class=\"gi-e\" x1=\"470\" y1=\"110\" x2=\"460\" y2=\"46\"/><line class=\"gi-e\" x1=\"470\" y1=\"110\" x2=\"516\" y2=\"70\"/><line class=\"gi-e\" x1=\"496\" y1=\"170\" x2=\"532\" y2=\"116\"/><line class=\"gi-e\" x1=\"380\" y1=\"110\" x2=\"356\" y2=\"80\"/><line class=\"gi-e\" x1=\"470\" y1=\"110\" x2=\"452\" y2=\"138\"/><line class=\"gi-e d\" x1=\"420\" y1=\"60\" x2=\"460\" y2=\"46\"/><line class=\"gi-e d\" x1=\"516\" y1=\"70\" x2=\"532\" y2=\"116\"/><rect class=\"gi-ev\" x=\"330\" y=\"170\" width=\"52\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"337\" y1=\"179.0\" x2=\"372\" y2=\"179.0\"/><rect class=\"gi-ev\" x=\"400\" y=\"170\" width=\"52\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"407\" y1=\"179.0\" x2=\"442\" y2=\"179.0\"/><rect class=\"gi-ev\" x=\"470\" y=\"170\" width=\"52\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"477\" y1=\"179.0\" x2=\"512\" y2=\"179.0\"/><circle class=\"gi-n\" cx=\"318\" cy=\"60\" r=\"7\"/><text class=\"fig-s\" x=\"318\" y=\"44\" text-anchor=\"middle\">user</text><circle class=\"gi-hi\" cx=\"380\" cy=\"110\" r=\"9\"/><circle class=\"gi-hi\" cx=\"470\" cy=\"110\" r=\"9\"/><text class=\"fig-s\" x=\"425\" y=\"114\" text-anchor=\"middle\">events</text><circle class=\"gi-n\" cx=\"420\" cy=\"60\" r=\"6\"/><circle class=\"gi-n\" cx=\"460\" cy=\"46\" r=\"6\"/><circle class=\"gi-n\" cx=\"516\" cy=\"70\" r=\"6\"/><circle class=\"gi-n\" cx=\"532\" cy=\"116\" r=\"6\"/><text class=\"fig-s\" x=\"488\" y=\"36\" text-anchor=\"start\">entities</text><rect class=\"gi-r\" x=\"344\" y=\"74\" width=\"24\" height=\"12\" rx=\"2\"/><rect class=\"gi-r\" x=\"440\" y=\"134\" width=\"24\" height=\"12\" rx=\"2\"/><text class=\"fig-s\" x=\"356\" y=\"69\" text-anchor=\"middle\">time</text><text class=\"fig-s\" x=\"427\" y=\"206\" text-anchor=\"middle\">utterances (verbatim)</text><text class=\"fig-s\" x=\"427\" y=\"224\" text-anchor=\"middle\">near-duplicate events, entities and</text><text class=\"fig-s\" x=\"427\" y=\"237\" text-anchor=\"middle\">relations merged (FAISS, clustering)</text>",
+        "text": [
+          "An LLM reads each timestamped user turn and extracts events with an absolute time, a description and relation triplets.",
+          "Events, entities, times and the user become graph nodes linked back to the verbatim utterance; near-duplicates are merged."
+        ],
+        "src": "paper §4.1, Fig. 2, App. E.2",
+        "url": "https://aclanthology.org/2025.findings-acl.901.pdf"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 248",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"34\" width=\"62\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"35.0\" y=\"60.0\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M66 56 L71 56\"/><polygon class=\"gi-ah\" points=\"78,56 71,52 71,60\"/><rect class=\"gi-v fig-soft\" x=\"78\" y=\"34\" width=\"92\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"124.0\" y=\"54.0\" text-anchor=\"middle\">Prizes</text><text class=\"fig-s\" x=\"124.0\" y=\"67.0\" text-anchor=\"middle\">cosine, top-15</text><text class=\"fig-s\" x=\"124\" y=\"92\" text-anchor=\"middle\">nodes and edges</text><text class=\"fig-s\" x=\"124\" y=\"105\" text-anchor=\"middle\">Contriever</text><path class=\"gi-a\" d=\"M170 56 L175 56\"/><polygon class=\"gi-ah\" points=\"182,56 175,52 175,60\"/><rect class=\"gi-f\" x=\"182\" y=\"34\" width=\"92\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"228.0\" y=\"54.0\" text-anchor=\"middle\">PCST</text><text class=\"fig-s\" x=\"228.0\" y=\"67.0\" text-anchor=\"middle\">one subgraph</text><text class=\"fig-s\" x=\"244\" y=\"92\" text-anchor=\"end\">edge cost 0.5</text><path class=\"gi-a\" d=\"M274 56 L281 56\"/><polygon class=\"gi-ah\" points=\"288,56 281,52 281,60\"/><polygon class=\"gi-llm\" points=\"330,28 372,56 330,84 288,56\"/><text class=\"fig-t\" x=\"330\" y=\"55\" text-anchor=\"middle\">Missing?</text><text class=\"fig-s\" x=\"330\" y=\"67\" text-anchor=\"middle\">3B SFT</text><path class=\"gi-a\" d=\"M372 56 L385 56\"/><polygon class=\"gi-ah\" points=\"392,56 385,52 385,60\"/><text class=\"fig-yes\" x=\"381\" y=\"28\" text-anchor=\"middle\">none</text><rect class=\"gi-f\" x=\"392\" y=\"34\" width=\"80\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"432.0\" y=\"54.0\" text-anchor=\"middle\">PPR rank</text><text class=\"fig-s\" x=\"432.0\" y=\"67.0\" text-anchor=\"middle\">prize-seeded</text><path class=\"gi-a\" d=\"M472 56 L479 56\"/><polygon class=\"gi-ah\" points=\"486,56 479,52 479,60\"/><rect class=\"gi-hi\" x=\"486\" y=\"34\" width=\"68\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"520.0\" y=\"54.0\" text-anchor=\"middle\">Ranked</text><text class=\"fig-s\" x=\"520.0\" y=\"67.0\" text-anchor=\"middle\">utterances</text><path class=\"gi-a\" d=\"M330 84 L330 143\"/><polygon class=\"gi-ah\" points=\"330,150 326,143 334,143\"/><text class=\"fig-no\" x=\"338\" y=\"116\" text-anchor=\"start\">entities missing</text><rect class=\"gi-f\" x=\"270\" y=\"150\" width=\"120\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"330.0\" y=\"170.0\" text-anchor=\"middle\">Query + clue</text><text class=\"fig-s\" x=\"330.0\" y=\"183.0\" text-anchor=\"middle\">search each clue</text><path class=\"gi-a\" d=\"M270 172 L252 172 L252 85\"/><polygon class=\"gi-ah\" points=\"252,78 248,85 256,85\"/><text class=\"fig-s\" x=\"246\" y=\"130\" text-anchor=\"end\">merge</text><text class=\"fig-s\" x=\"246\" y=\"143\" text-anchor=\"end\">subgraphs</text><text class=\"fig-s\" x=\"100\" y=\"160\" text-anchor=\"middle\">round 2 runs only if</text><text class=\"fig-s\" x=\"100\" y=\"173\" text-anchor=\"middle\">the model lists missing</text><text class=\"fig-s\" x=\"100\" y=\"186\" text-anchor=\"middle\">entities; max_iter 2</text><path class=\"gi-a\" d=\"M520 78 L520 143\"/><polygon class=\"gi-ah\" points=\"520,150 516,143 524,143\"/><rect class=\"gi-llm\" x=\"452\" y=\"150\" width=\"102\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"503.0\" y=\"170.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"503.0\" y=\"183.0\" text-anchor=\"middle\">GPT-4o</text><text class=\"fig-s\" x=\"280\" y=\"226\" text-anchor=\"middle\">Retrieval is scored on the top 5 and top 10 utterances;</text><text class=\"fig-s\" x=\"280\" y=\"240\" text-anchor=\"middle\">the paper does not say how many reach the QA model.</text>",
+        "text": [
+          "Nodes and edges are scored against the question and a prize-collecting Steiner tree picks a connected subgraph.",
+          "A fine-tuned 3B model names missing entities, each triggers another subgraph search, and PageRank ranks the utterances."
+        ],
+        "src": "paper §4.2, Fig. 3, Algorithm 1",
+        "url": "https://aclanthology.org/2025.findings-acl.901.pdf"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Construction tokens per session",
+        "value": "4,181 LoCoMo · 2,303 LongMemEval-S",
+        "src": "paper Table 4",
+        "section": "construction"
+      },
+      {
+        "label": "Construction cost",
+        "value": "$0.068 for all 272 LoCoMo sessions · $3.26 for 25,112 LongMemEval-S sessions",
+        "src": "paper App. C.1",
+        "section": "construction"
+      },
+      {
+        "label": "Seed prizes",
+        "value": "top-15 nodes and top-15 edges",
+        "src": "paper §5.2.1",
+        "section": "method"
+      },
+      {
+        "label": "Edge cost",
+        "value": "0.5",
+        "src": "paper §5.2.1",
+        "section": "method"
+      },
+      {
+        "label": "Search rounds",
+        "value": "max_iter 2",
+        "src": "paper §5.2.1",
+        "section": "method"
+      },
+      {
+        "label": "Deliberating model",
+        "value": "Qwen2.5-3B-Instruct, SFT on CoQA-derived data",
+        "src": "paper §4.2.2, App. A",
+        "section": "method"
+      },
+      {
+        "label": "Retrieval time per query",
+        "value": "0.71 s / 2.34 s (1 / 2 rounds) LoCoMo · 0.87 s / 1.92 s LongMemEval-S",
+        "src": "paper Table 5",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "R@5",
+        "nDCG@5",
+        "R@10",
+        "nDCG@10"
+      ],
+      "rows": [
+        [
+          "Associa (max_iter 2)",
+          "0.87",
+          "0.87",
+          "0.93",
+          "0.88"
+        ],
+        [
+          "w/o association mechanism",
+          "0.67",
+          "0.69",
+          "0.85",
+          "0.74"
+        ],
+        [
+          "w/o deliberating module",
+          "0.84",
+          "0.85",
+          "0.90",
+          "0.87"
+        ],
+        [
+          "w/o SFT of deliberating model",
+          "0.84",
+          "0.86",
+          "0.91",
+          "0.87"
+        ],
+        [
+          "w/o evidence importance ranking",
+          "0.52",
+          "0.51",
+          "0.85",
+          "0.60"
+        ]
+      ],
+      "src": "paper Table 3 (LongMemEval-S retrieval)"
+    },
+    "components": [
+      {
+        "role": "Builds the graph",
+        "model": "Qwen-Turbo",
+        "kind": "llm",
+        "src": "paper App. C.1"
+      },
+      {
+        "role": "Node and edge prizes",
+        "model": "Contriever (dense, bi-encoder)",
+        "kind": "retriever",
+        "src": "paper §5.2.1"
+      },
+      {
+        "role": "Duplicate detection",
+        "model": "FAISS similarity + agglomerative clustering",
+        "kind": "rule",
+        "src": "paper §4.1"
+      },
+      {
+        "role": "Subgraph and ranking",
+        "model": "Prize-Collecting Steiner Tree, personalized PageRank",
+        "kind": "rule",
+        "src": "paper §4.2.1, §4.2.3"
+      },
+      {
+        "role": "Finds missing entities",
+        "model": "Qwen2.5-3B-Instruct, fine-tuned",
+        "kind": "llm",
+        "src": "paper §4.2.2"
+      },
+      {
+        "role": "Answer",
+        "model": "GPT-4o (gpt-4o-2024-11-20)",
+        "kind": "llm",
+        "src": "paper §5.2.1"
+      },
+      {
+        "role": "QA judge",
+        "model": "GPT-4o-mini",
+        "kind": "llm",
+        "src": "paper §5.2"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Index a user's dialogue history with an event-and-entity graph, pull a connected evidence subgraph instead of top-k passages, and let a small tuned model ask for what is missing. This gives clearly better evidence recall on LongMemEval and small gains on LoCoMo and QA.",
+      "claims": [
+        {
+          "claim": "Graph association plus deliberate recall retrieves evidence better than dense retrievers.",
+          "evidence": "LongMemEval-S R@5 0.87 vs 0.75 (BGE); LongMemEval-M 0.66 vs 0.56; LoCoMo 0.74 vs 0.71 (LongMemEval pipeline). Table 1"
+        },
+        {
+          "claim": "Better retrieval gives better answers.",
+          "evidence": "QA 0.81 / 0.66 / 0.69 vs 0.80 / 0.64 / 0.62 (LongMemEval w UF) and LightRAG 0.64 / - / 0.64. Table 2"
+        },
+        {
+          "claim": "Every module helps; the association mechanism most.",
+          "evidence": "R@5 0.67 w/o AM, 0.52 w/o EIR, 0.84 w/o DM, 0.84 w/o SFT vs 0.87. Table 3"
+        },
+        {
+          "claim": "Construction is cheap and fast.",
+          "evidence": "fewest tokens per session (4,181 vs 7,085 LightRAG on LoCoMo), 0.52 s per session. Table 4, App. C.1"
+        },
+        {
+          "claim": "Works with smaller graph-building LLMs.",
+          "evidence": "Qwen-7B with 2 rounds reaches R@5 0.85 on LongMemEval-S. Table 6"
+        }
+      ],
+      "limits": [
+        "Temporal information is not modeled in retrieval.",
+        "Evaluated only on English datasets."
+      ],
+      "limits_src": "paper, Limitations",
+      "reading": [
+        "Recall@N counts 1 only if all evidence is in the top N, so it is stricter than the per-item recall other papers report.",
+        "Associa uses only user-side turns and drops the few questions whose evidence is not in user turns (§5.2.1); the paper does not say whether the baselines were scored on the same reduced set.",
+        "Text says removing evidence ranking gives better recall@10, but Table 3 shows 0.85 vs 0.93 for the full model.",
+        "w/o DM equals Associa max_iter=1 on every metric, so 'deliberating module' and 'second round' are the same ablation.",
+        "The QA gain over the LongMemEval pipeline is 0.01 on LongMemEval-S and 0.02 on -M; only LoCoMo shows a clear margin (0.69 vs 0.62).",
+        "No code is released, and thresholds (dedup similarity, PageRank damping) and the QA context size are not given, so the system cannot be rebuilt from the paper alone.",
+        "LongMemEval (w UF and TF) is not run on LoCoMo because LoCoMo questions lack timestamps, and LightRAG is missing on LongMemEval-M."
+      ]
+    },
+    "abstract": {
+      "text": "Associa is a long-term memory for LLM personal assistants that indexes a user's past dialogue as an event-centric graph of events, times, entities and the original utterances. At question time it scores graph nodes and edges against the query and extracts a connected evidence subgraph with a prize-collecting Steiner tree. A small fine-tuned model then lists entities the subgraph still lacks, triggering further searches, and PageRank ranks the collected utterances. On LongMemEval and LoCoMo the authors report higher evidence recall and QA accuracy than dense retrievers and memory baselines.",
+      "note": "Summary in our words; the original abstract is on the ACL Anthology.",
+      "url": "https://aclanthology.org/2025.findings-acl.901/"
+    },
+    "sections": {
+      "Memory architecture": "§4",
+      "Results": "§5.3-5.4",
+      "Ablation": "§5.5, App. D",
+      "Discussion": "§6, Limitations",
+      "Details": "§5.1-5.2, App. A-E"
+    }
+  }
+}

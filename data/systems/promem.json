@@ -1,0 +1,530 @@
+{
+  "id": "promem",
+  "name": "ProMem",
+  "paper": {
+    "title": "Beyond Static Summarization: Proactive Memory Extraction for LLM Agents",
+    "arxiv": "2601.04463",
+    "url": "https://arxiv.org/abs/2601.04463",
+    "venue": "EMNLP 2026 Findings",
+    "venue_short": "EMNLP",
+    "track": "findings",
+    "year": 2026,
+    "code": null
+  },
+  "design": {
+    "construction": {
+      "unit": "memory entry (event-level fact) with anchored details and relation edges",
+      "kept_as": "extracted third-person facts about the user, checked against the source turn",
+      "processing": "draft extraction + separate detail, event and relation extraction; embedding completeness check; NLI hallucination check with atomic decomposition and LLM revise/discard; probe-question relation check; detail anchoring by turn id",
+      "trigger": "session-end",
+      "writer": "GPT-4o-mini (draft, probe questions) + Llama3.1-8B (details, events, relations); roberta-large-mnli for NLI"
+    },
+    "organization": {
+      "structure": "graph: purified entries as nodes, verified causal/temporal edges, details as node attributes",
+      "stores": "one graph-structured memory per user",
+      "index": "Qwen3-Embedding-8B dense vectors over memory entries"
+    },
+    "management": {
+      "operations": "write-time verification only: missing events appended, unsupported atomic facts revised or discarded",
+      "conflicts": null,
+      "forgetting": null,
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "question used as is",
+      "candidates": "dense similarity (Qwen3-Embedding-8B)",
+      "selection": "top-20 memory entries",
+      "budget": "20 entries with timestamps"
+    },
+    "use": {
+      "context": "top-20 memory entries with timestamps appended",
+      "reasoning": "single answer call"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "none",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "graph",
+    "index": "vector",
+    "management": "append-only",
+    "candidates": "dense",
+    "decides": "top-k rule",
+    "note": "All of the method is at write time; reading is a plain top-20 dense lookup. The paper names no update or forgetting step (left to future work), so memory only grows."
+  },
+  "tags": {
+    "fidelity": "extracted",
+    "structure": [
+      "graph"
+    ],
+    "write_time": [
+      "extract",
+      "filter",
+      "link"
+    ],
+    "selection": [
+      "dense"
+    ],
+    "memory_type": [
+      "episodic",
+      "semantic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "conversation"
+    ]
+  },
+  "stages": {
+    "ingestion": "The whole session is processed at once; the paper also compresses the raw dialogue with LLMLingua-2 to save tokens (ratio for the main run not stated).",
+    "construction": "GPT-4o-mini writes an initial draft of user facts while Llama3.1-8B, in parallel, extracts per-turn details, abstracts events from topic clusters (clustering as in LightMem) and proposes causal/temporal relations between events.",
+    "organization": "Verified entries become nodes of a graph; verified relations become edges and the per-turn details are attached to the entry from the same turn.",
+    "update": "Write-time checks only: events whose best cosine match in the draft is at most 0.6 are appended; each entry is NLI-checked against its best-matching turn, and failing entries are split into atomic facts that are NLI-checked and then revised or dropped by an LLM.",
+    "retrieval": "Qwen3-Embedding-8B retrieves the top-20 memory entries for the question.",
+    "answer": "The 20 entries, with timestamps appended, go to the answer model (not named in the paper).",
+    "learning": ""
+  },
+  "summary": "Treats memory extraction, not retrieval, as the problem: separate extraction of details, events and relations, then write-time completeness, NLI hallucination and relation checks before a plain top-20 dense read.",
+  "verified": false,
+  "notes": "Venue: arXiv v2 comment (2026-09-01) says accepted to Findings of EMNLP 2026; the EMNLP 2026 proceedings are not yet on the ACL Anthology (checked 2026-09-30), so this rests on the arXiv comment. No code link in the paper. DESIGN: §3.2-3.5, §4.1. Answer model for QA is not named; judge is GPT-4o with human review (§4.1). HaluMem baseline rows in Table 1 match HaluMem-Medium Table 3 of the HaluMem paper (2511.03506), which the ProMem paper does not say.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2601.04463v2 (PDF read 2026-09-30)",
+      "code": null,
+      "code_note": "The paper gives no code or repository link, and none was found; everything here is from the paper (method §3, setup §4.1, prompts App. F)."
+    },
+    "headline": [
+      "All the novelty is at write time: five extra steps check and repair what one extraction pass wrote, and reading is a plain top-20 dense lookup.",
+      "The initial draft is written by GPT-4o-mini, while details, events and relations come from a local Llama3.1-8B that runs in parallel.",
+      "Extraction costs 11.59K tokens per session with GPT-4o-mini, about the same as Mem0 (10.02K) and LightMem (10.56K) on HaluMem."
+    ],
+    "units": [
+      {
+        "name": "Memory entry (graph node)",
+        "role": "one self-contained third-person fact or event about the user",
+        "made_by": "GPT-4o-mini draft plus recovered events from Llama3.1-8B, purified by NLI and an LLM adjudicator",
+        "fields": [
+          {
+            "name": "entry text",
+            "what": "standalone statement with the user's name as subject",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper §3.3-3.4, Fig. 12 prompt",
+            "url": "https://arxiv.org/pdf/2601.04463"
+          },
+          {
+            "name": "timestamp",
+            "what": "appended to each retrieved entry at QA time",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §4.1",
+            "url": "https://arxiv.org/pdf/2601.04463"
+          },
+          {
+            "name": "source turn id",
+            "what": "the dialogue turn the entry was matched to for NLI",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "paper §3.4-3.5",
+            "url": "https://arxiv.org/pdf/2601.04463"
+          }
+        ]
+      },
+      {
+        "name": "Relation edge",
+        "role": "causal or temporal link between two entries",
+        "made_by": "Llama3.1-8B proposes, GPT-4o-mini probe question tests necessity, dialogue check confirms",
+        "fields": [
+          {
+            "name": "edge (A, relation, B)",
+            "what": "kept only when the flat entries cannot answer the probe question and the dialogue supports the link",
+            "kept_as": "extracted",
+            "used_for": [],
+            "src": "paper §3.5; whether edges reach the answer model is not stated",
+            "url": "https://arxiv.org/pdf/2601.04463"
+          }
+        ]
+      },
+      {
+        "name": "Detail",
+        "role": "fine-grained attribute (time, place, entity) attached to an entry",
+        "made_by": "Llama3.1-8B, one call per turn",
+        "fields": [
+          {
+            "name": "detail phrases",
+            "what": "short phrases such as a time or a location, linked to entries of the same turn",
+            "kept_as": "extracted",
+            "used_for": [],
+            "src": "paper §3.2, §3.5, Fig. 9; whether details reach the answer model is not stated",
+            "url": "https://arxiv.org/pdf/2601.04463"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Draft",
+        "how": "GPT-4o-mini reads the whole session and lists every fact about the user as a standalone sentence",
+        "src": "paper §4.1, Fig. 12",
+        "url": "https://arxiv.org/pdf/2601.04463"
+      },
+      {
+        "step": "Details",
+        "how": "Llama3.1-8B lists atomic details (times, places, entities) turn by turn",
+        "src": "paper §3.2, Fig. 9",
+        "url": "https://arxiv.org/pdf/2601.04463"
+      },
+      {
+        "step": "Events",
+        "how": "turns are clustered by topic (LightMem's method) and Llama3.1-8B abstracts third-person events per cluster",
+        "src": "paper §3.2, §4.1, Fig. 10",
+        "url": "https://arxiv.org/pdf/2601.04463"
+      },
+      {
+        "step": "Relations",
+        "how": "Llama3.1-8B proposes causal/temporal edges between events",
+        "src": "paper §3.2, Fig. 11",
+        "url": "https://arxiv.org/pdf/2601.04463"
+      },
+      {
+        "step": "Completeness check",
+        "how": "each event is embedded (Qwen3-Embedding-8B) and compared with every draft entry; if the best cosine is not above τ_comp the event is appended to the draft",
+        "params": {
+          "τ_comp": "0.6"
+        },
+        "out": "catches 80 of 682 events (11.73%) with GPT-4o-mini",
+        "src": "paper §3.3, §4.1, Table 5",
+        "url": "https://arxiv.org/pdf/2601.04463"
+      },
+      {
+        "step": "Hallucination check",
+        "how": "each entry is matched to its most relevant turn and checked with roberta-large-mnli; entries not entailed are split into atomic facts, each re-checked; facts still not entailed go to an LLM that revises or discards them",
+        "out": "108 of 1,284 facts flagged (8.41%) with GPT-4o-mini",
+        "src": "paper §3.4, §4.1, Table 5, Figs. 13-14",
+        "url": "https://arxiv.org/pdf/2601.04463"
+      },
+      {
+        "step": "Relation check",
+        "how": "GPT-4o-mini writes a probe question per candidate edge; if the flat entries already answer it the edge is dropped, otherwise it is kept when the dialogue supports it",
+        "out": "12 of 472 relations found missing (2.54%)",
+        "src": "paper §3.5, Table 5, Fig. 15",
+        "url": "https://arxiv.org/pdf/2601.04463"
+      },
+      {
+        "step": "Anchor details",
+        "how": "a detail joins the entry that came from the same turn (turn id match)",
+        "src": "paper §3.5",
+        "url": "https://arxiv.org/pdf/2601.04463"
+      }
+    ],
+    "read": [
+      {
+        "step": "Dense search",
+        "round": 1,
+        "input": "question",
+        "scores": "memory entry text",
+        "how": "Qwen3-Embedding-8B similarity",
+        "params": {
+          "K": "20"
+        },
+        "src": "paper §4.1",
+        "url": "https://arxiv.org/pdf/2601.04463"
+      },
+      {
+        "step": "Answer",
+        "round": 1,
+        "how": "the 20 entries with timestamps appended are given to the answer model; the model is not named",
+        "src": "paper §4.1",
+        "url": "https://arxiv.org/pdf/2601.04463"
+      }
+    ],
+    "answer_context": {
+      "sees": "top-20 memory entries with timestamps",
+      "format": "not given in the paper",
+      "excludes": [
+        "raw dialogue"
+      ],
+      "note": "Whether anchored details and relation edges are serialized into the context is not stated; the case study (Table 4) shows memory as Event / Details / Relation.",
+      "src": "paper §4.1, Table 4",
+      "url": "https://arxiv.org/pdf/2601.04463"
+    },
+    "compression": [
+      {
+        "what": "stored memory vs raw dialogue, HaluMem",
+        "kept": 37.45,
+        "of": 159.91,
+        "unit": "k tokens",
+        "basis": "Fig. 6(f) input tokens: raw dialogue vs ProMem memory",
+        "src": "paper §4.6, Fig. 6",
+        "url": "https://arxiv.org/pdf/2601.04463"
+      },
+      {
+        "what": "stored memory vs raw dialogue, LongMemEval-S",
+        "kept": 47.144,
+        "of": 101.619,
+        "unit": "k tokens",
+        "basis": "Fig. 6(d) input tokens",
+        "src": "paper §4.6, Fig. 6",
+        "url": "https://arxiv.org/pdf/2601.04463"
+      },
+      {
+        "what": "stored memory vs raw dialogue, LoCoMo",
+        "kept": 8.153,
+        "of": 15.966,
+        "unit": "k tokens",
+        "basis": "Fig. 6(e) input tokens",
+        "src": "paper §4.6, Fig. 6",
+        "url": "https://arxiv.org/pdf/2601.04463"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Full ProMem, HaluMem QA accuracy",
+        "value": "63.43",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "One-off extraction, HaluMem QA accuracy",
+        "value": "50.60",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "Naive RAG raw vs one-off extracted memory, QA",
+        "value": "74.13 vs 50.66 (157K vs 12.79K tokens)",
+        "src": "paper §3.1, Fig. 3"
+      },
+      {
+        "label": "LLM calls and time per session (GPT-4o-mini)",
+        "value": "4.26 calls, 21.38 s",
+        "src": "paper App. B"
+      }
+    ],
+    "open_questions": [
+      "Naive RAG over raw dialogue scores 74.13 on HaluMem QA (Fig. 3) against ProMem's 63.43 (Table 1), so extraction still loses to not extracting at all there.",
+      "The ablation removes one check at a time from a pipeline whose draft and helpers come from two different models; no run isolates the gain from simply adding the Llama3.1-8B event list.",
+      "It is not stated whether details and relation edges reach the answer model, so the w/o DA and w/o Rel drops cannot be tied to a context change."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 260",
+        "body": "<text class=\"fig-t\" x=\"40\" y=\"16\" text-anchor=\"middle\">Session</text><rect class=\"gi-ev\" x=\"10\" y=\"26\" width=\"52\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"17\" y1=\"34\" x2=\"52\" y2=\"34\"/><rect class=\"gi-ev\" x=\"24\" y=\"50\" width=\"52\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"31\" y1=\"58\" x2=\"66\" y2=\"58\"/><rect class=\"gi-ev\" x=\"10\" y=\"74\" width=\"52\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"17\" y1=\"82\" x2=\"52\" y2=\"82\"/><rect class=\"gi-ev\" x=\"24\" y=\"98\" width=\"52\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"31\" y1=\"106\" x2=\"66\" y2=\"106\"/><rect class=\"gi-ev\" x=\"10\" y=\"122\" width=\"52\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"17\" y1=\"130\" x2=\"52\" y2=\"130\"/><rect class=\"gi-ev\" x=\"24\" y=\"146\" width=\"52\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"31\" y1=\"154\" x2=\"66\" y2=\"154\"/><rect class=\"gi-ev\" x=\"10\" y=\"170\" width=\"52\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"17\" y1=\"178\" x2=\"52\" y2=\"178\"/><text class=\"fig-s\" x=\"40\" y=\"204\" text-anchor=\"middle\">user–assistant</text><text class=\"fig-s\" x=\"40\" y=\"216\" text-anchor=\"middle\">turns</text><rect class=\"gi-llm\" x=\"100\" y=\"24\" width=\"108\" height=\"36\" rx=\"8\"/><text class=\"fig-t\" x=\"154.0\" y=\"39.0\" text-anchor=\"middle\">Initial draft</text><text class=\"fig-s\" x=\"154.0\" y=\"52.0\" text-anchor=\"middle\">GPT-4o-mini</text><rect class=\"gi-llm fig-soft\" x=\"100\" y=\"72\" width=\"108\" height=\"36\" rx=\"8\"/><text class=\"fig-t\" x=\"154.0\" y=\"87.0\" text-anchor=\"middle\">Events</text><text class=\"fig-s\" x=\"154.0\" y=\"100.0\" text-anchor=\"middle\">Llama-8B, per topic</text><rect class=\"gi-llm fig-soft\" x=\"100\" y=\"120\" width=\"108\" height=\"36\" rx=\"8\"/><text class=\"fig-t\" x=\"154.0\" y=\"135.0\" text-anchor=\"middle\">Relations</text><text class=\"fig-s\" x=\"154.0\" y=\"148.0\" text-anchor=\"middle\">causal / temporal</text><rect class=\"gi-llm fig-soft\" x=\"100\" y=\"168\" width=\"108\" height=\"36\" rx=\"8\"/><text class=\"fig-t\" x=\"154.0\" y=\"183.0\" text-anchor=\"middle\">Details</text><text class=\"fig-s\" x=\"154.0\" y=\"196.0\" text-anchor=\"middle\">Llama-8B, per turn</text><path class=\"gi-a\" d=\"M86.0 60.0 L95.7 47.5\"/><polygon class=\"gi-ah\" points=\"100.0,42.0 98.9,50.0 92.5,45.1\"/><path class=\"gi-a\" d=\"M86.0 90.0 L93.0 90.0\"/><polygon class=\"gi-ah\" points=\"100.0,90.0 93.0,94.0 93.0,86.0\"/><path class=\"gi-a\" d=\"M86.0 160.0 L96.7 179.8\"/><polygon class=\"gi-ah\" points=\"100.0,186.0 93.2,181.7 100.2,177.9\"/><path class=\"gi-a\" d=\"M154.0 108.0 L154.0 113.0\"/><polygon class=\"gi-ah\" points=\"154.0,120.0 150.0,113.0 158.0,113.0\"/><rect class=\"gi-f\" x=\"228\" y=\"24\" width=\"100\" height=\"84\" rx=\"8\"/><text class=\"fig-t\" x=\"278\" y=\"42\" text-anchor=\"middle\">Completeness</text><text class=\"fig-s\" x=\"278\" y=\"57\" text-anchor=\"middle\">each event vs draft</text><text class=\"fig-s\" x=\"278\" y=\"71\" text-anchor=\"middle\">cos ≤ 0.6 → missing</text><text class=\"fig-s\" x=\"278\" y=\"85\" text-anchor=\"middle\">missing events</text><text class=\"fig-s\" x=\"278\" y=\"98\" text-anchor=\"middle\">are appended</text><path class=\"gi-a\" d=\"M208.0 42.0 L221.0 42.0\"/><polygon class=\"gi-ah\" points=\"228.0,42.0 221.0,46.0 221.0,38.0\"/><path class=\"gi-a\" d=\"M208.0 90.0 L221.0 90.0\"/><polygon class=\"gi-ah\" points=\"228.0,90.0 221.0,94.0 221.0,86.0\"/><polygon class=\"gi-llm\" points=\"394,30 440,66 394,102 348,66\"/><text class=\"fig-t\" x=\"394\" y=\"62\" text-anchor=\"middle\">NLI</text><text class=\"fig-s\" x=\"394\" y=\"75\" text-anchor=\"middle\">vs its turn</text><path class=\"gi-a\" d=\"M328.0 66.0 L341.0 66.0\"/><polygon class=\"gi-ah\" points=\"348.0,66.0 341.0,70.0 341.0,62.0\"/><text class=\"fig-yes\" x=\"470\" y=\"60\" text-anchor=\"start\">entails</text><path class=\"gi-a\" d=\"M440.0 66.0 L463.0 66.0\"/><polygon class=\"gi-ah\" points=\"470.0,66.0 463.0,70.0 463.0,62.0\"/><text class=\"fig-no\" x=\"404\" y=\"118\" text-anchor=\"start\">no</text><path class=\"gi-a\" d=\"M394.0 102.0 L394.0 117.0\"/><polygon class=\"gi-ah\" points=\"394.0,124.0 390.0,117.0 398.0,117.0\"/><rect class=\"gi-llm fig-soft\" x=\"340\" y=\"124\" width=\"108\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"394.0\" y=\"137.0\" text-anchor=\"middle\">Atomic facts</text><text class=\"fig-s\" x=\"394.0\" y=\"150.0\" text-anchor=\"middle\">NLI each; LLM</text><text class=\"fig-s\" x=\"394.0\" y=\"162.0\" text-anchor=\"middle\">revises or drops</text><path class=\"gi-a\" d=\"M448 146 L480 146 L480 116\"/><path class=\"gi-a\" d=\"M480.0 116.0 L480.0 115.0\"/><polygon class=\"gi-ah\" points=\"480.0,108.0 484.0,115.0 476.0,115.0\"/><rect class=\"gi-llm fig-soft\" x=\"228\" y=\"176\" width=\"124\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"290.0\" y=\"189.0\" text-anchor=\"middle\">Probe question</text><text class=\"fig-s\" x=\"290.0\" y=\"202.0\" text-anchor=\"middle\">kept only if needed</text><text class=\"fig-s\" x=\"290.0\" y=\"214.0\" text-anchor=\"middle\">and dialogue supports</text><path class=\"gi-a\" d=\"M208 138 L218 138 L218 198\"/><path class=\"gi-a\" d=\"M218.0 198.0 L221.0 198.0\"/><polygon class=\"gi-ah\" points=\"228.0,198.0 221.0,202.0 221.0,194.0\"/><path class=\"gi-a\" d=\"M352 198 L478 198 L478 190\"/><path class=\"gi-a\" d=\"M478.0 190.0 L478.0 191.0\"/><polygon class=\"gi-ah\" points=\"478.0,184.0 482.0,191.0 474.0,191.0\"/><rect class=\"gi-ev\" x=\"462\" y=\"72\" width=\"94\" height=\"112\" rx=\"10\"/><text class=\"fig-t\" x=\"509\" y=\"88\" text-anchor=\"middle\">Graph memory</text><line class=\"gi-e\" x1=\"484\" y1=\"112\" x2=\"530\" y2=\"104\"/><line class=\"gi-e\" x1=\"484\" y1=\"112\" x2=\"508\" y2=\"150\"/><circle class=\"gi-n\" cx=\"484\" cy=\"112\" r=\"7\"/><circle class=\"gi-n\" cx=\"530\" cy=\"104\" r=\"7\"/><circle class=\"gi-n\" cx=\"508\" cy=\"150\" r=\"7\"/><rect class=\"gi-r\" x=\"538\" y=\"120\" width=\"12\" height=\"8\" rx=\"2\"/><rect class=\"gi-r\" x=\"470\" y=\"130\" width=\"12\" height=\"8\" rx=\"2\"/><rect class=\"gi-r\" x=\"518\" y=\"164\" width=\"12\" height=\"8\" rx=\"2\"/><path class=\"gi-a d\" d=\"M154 204 L154 234 L509 234 L509 196\"/><path class=\"gi-a\" d=\"M509.0 196.0 L509.0 193.0\"/><polygon class=\"gi-ah\" points=\"509.0,186.0 513.0,193.0 505.0,193.0\"/><text class=\"fig-s\" x=\"360\" y=\"248\" text-anchor=\"middle\">details attached to events from the same turn (turn id)</text>",
+        "text": [
+          "GPT-4o-mini writes a draft of user facts while a small model separately pulls out events, relations and turn-level details.",
+          "Missed events are added, each entry is NLI-checked against its turn and repaired or dropped, needed relations are kept, and details are attached by turn."
+        ],
+        "src": "paper §3.2-3.5, §4.1, Fig. 4",
+        "url": "https://arxiv.org/pdf/2601.04463"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 210",
+        "body": "<rect class=\"gi-f\" x=\"6\" y=\"40\" width=\"70\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"41.0\" y=\"66.0\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M76.0 62.0 L93.0 62.0\"/><polygon class=\"gi-ah\" points=\"100.0,62.0 93.0,66.0 93.0,58.0\"/><rect class=\"gi-v fig-soft\" x=\"100\" y=\"40\" width=\"118\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"159.0\" y=\"59.0\" text-anchor=\"middle\">Dense search</text><text class=\"fig-s\" x=\"159.0\" y=\"72.0\" text-anchor=\"middle\">Qwen3-Embedding-8B</text><rect class=\"gi-ev\" x=\"100\" y=\"120\" width=\"118\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"159\" y=\"139\" text-anchor=\"middle\">Graph memory</text><text class=\"fig-s\" x=\"159\" y=\"152\" text-anchor=\"middle\">purified entries</text><path class=\"gi-a\" d=\"M159.0 120.0 L159.0 91.0\"/><polygon class=\"gi-ah\" points=\"159.0,84.0 163.0,91.0 155.0,91.0\"/><path class=\"gi-a\" d=\"M218.0 62.0 L243.0 62.0\"/><polygon class=\"gi-ah\" points=\"250.0,62.0 243.0,66.0 243.0,58.0\"/><rect class=\"gi-f\" x=\"250\" y=\"40\" width=\"110\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"305.0\" y=\"59.0\" text-anchor=\"middle\">Top-20 entries</text><text class=\"fig-s\" x=\"305.0\" y=\"72.0\" text-anchor=\"middle\">+ timestamps</text><path class=\"gi-a\" d=\"M360.0 62.0 L385.0 62.0\"/><polygon class=\"gi-ah\" points=\"392.0,62.0 385.0,66.0 385.0,58.0\"/><rect class=\"gi-hi\" x=\"392\" y=\"40\" width=\"90\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"437.0\" y=\"59.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"437.0\" y=\"72.0\" text-anchor=\"middle\">LLM not named</text><path class=\"gi-a\" d=\"M482.0 62.0 L493.0 62.0\"/><polygon class=\"gi-ah\" points=\"500.0,62.0 493.0,66.0 493.0,58.0\"/><rect class=\"gi-ev\" x=\"500\" y=\"40\" width=\"54\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"527.0\" y=\"59.0\" text-anchor=\"middle\">Judge</text><text class=\"fig-s\" x=\"527.0\" y=\"72.0\" text-anchor=\"middle\">GPT-4o</text><text class=\"fig-s\" x=\"437\" y=\"110\" text-anchor=\"middle\">whether details and edges reach</text><text class=\"fig-s\" x=\"437\" y=\"123\" text-anchor=\"middle\">the answer model is not stated</text><text class=\"fig-s\" x=\"280\" y=\"190\" text-anchor=\"middle\">no reranker, no query rewriting, one retrieval round</text>",
+        "text": [
+          "Reading is one dense lookup: Qwen3-Embedding-8B returns the 20 closest memory entries, with timestamps added.",
+          "The paper does not name the answer model or say whether details and relation edges are included; QA is judged by GPT-4o with human review."
+        ],
+        "src": "paper §4.1",
+        "url": "https://arxiv.org/pdf/2601.04463"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Completeness threshold",
+        "value": "cosine 0.6",
+        "src": "paper §4.1, App. D",
+        "section": "construction"
+      },
+      {
+        "label": "Errors caught per module (GPT-4o-mini)",
+        "value": "8.41% facts, 11.73% events missing, 2.54% relations",
+        "src": "paper Table 5",
+        "section": "construction"
+      },
+      {
+        "label": "Extraction tokens per session",
+        "value": "11.59K (GPT-4o-mini) · 13.47K (Llama3.1-8B)",
+        "src": "paper Tables 1, 6",
+        "section": "results"
+      },
+      {
+        "label": "LLM calls per session",
+        "value": "4.26, 21.38 s",
+        "src": "paper App. B",
+        "section": "results"
+      },
+      {
+        "label": "Entries to the answer model",
+        "value": "top 20",
+        "src": "paper §4.1",
+        "section": "method"
+      },
+      {
+        "label": "Memory vs raw dialogue",
+        "value": "37.45K of 159.91K tokens on HaluMem",
+        "src": "paper Fig. 6(f)",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Initial draft, probe questions",
+        "model": "GPT-4o-mini",
+        "kind": "llm",
+        "src": "paper §4.1"
+      },
+      {
+        "role": "Details, events, relations",
+        "model": "Llama3.1-8B (local)",
+        "kind": "llm",
+        "src": "paper §4.1"
+      },
+      {
+        "role": "Completeness match and retrieval",
+        "model": "Qwen3-Embedding-8B",
+        "kind": "retriever",
+        "src": "paper §4.1"
+      },
+      {
+        "role": "Hallucination check",
+        "model": "roberta-large-mnli (NLI)",
+        "kind": "cross",
+        "src": "paper §4.1"
+      },
+      {
+        "role": "Revise or discard flagged facts",
+        "model": "LLM, not named",
+        "kind": "llm",
+        "src": "paper §3.4, Fig. 14"
+      },
+      {
+        "role": "Judge",
+        "model": "GPT-4o with human review",
+        "kind": "llm",
+        "src": "paper §4.1"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "Mem. integrity",
+        "Mem. accuracy",
+        "QA acc.",
+        "QA halluc.",
+        "QA omission"
+      ],
+      "rows": [
+        [
+          "Full ProMem",
+          "81.37",
+          "94.68",
+          "63.43",
+          "17.43",
+          "19.14"
+        ],
+        [
+          "w/o completeness check",
+          "69.48",
+          "94.51",
+          "58.45",
+          "18.00",
+          "23.55"
+        ],
+        [
+          "w/o hallucination check",
+          "80.84",
+          "93.43",
+          "60.35",
+          "21.40",
+          "18.25"
+        ],
+        [
+          "w/o detail anchoring",
+          "80.91",
+          "94.48",
+          "57.80",
+          "19.50",
+          "22.70"
+        ],
+        [
+          "w/o relation edges",
+          "81.15",
+          "94.42",
+          "61.12",
+          "18.40",
+          "20.48"
+        ],
+        [
+          "one-off extraction",
+          "54.03",
+          "92.64",
+          "50.60",
+          "25.13",
+          "24.27"
+        ]
+      ],
+      "src": "paper Table 2 (HaluMem)"
+    },
+    "discussion": {
+      "takeaway": "Extracting details, events and relations separately and checking the result against the dialogue gives more complete and more accurate memory than one summary pass, at roughly the token cost of Mem0.",
+      "claims": [
+        {
+          "claim": "One-pass extraction loses information and cannot be fixed by extracting more.",
+          "evidence": "Naive RAG QA drops from 74.13 (raw, 157K tokens) to 50.66 (one-off memory, 12.79K); larger memories give limited F1 gains. §3.1, Fig. 3"
+        },
+        {
+          "claim": "Best memory quality on HaluMem.",
+          "evidence": "Memory accuracy 94.68 and F1 87.52, both highest in Table 1; QA 63.43 is second to MemOS (67.23). §4.2"
+        },
+        {
+          "claim": "The gain comes from the method, not from spending more tokens.",
+          "evidence": "11.59K tokens vs 10.56K for full LightMem, which scores 55.81 QA and 71.19 F1. §4.2, Table 1"
+        },
+        {
+          "claim": "Each check helps.",
+          "evidence": "Without completeness check integrity falls 81.37→69.48; without hallucination check QA hallucination rises to 21.40; without detail anchoring QA falls to 57.80. Table 2"
+        },
+        {
+          "claim": "Works with small models.",
+          "evidence": "With Llama3.1-8B for extraction and QA: integrity 43.09 vs 30.59 and QA 49.15 vs 38.41 for Mem0. Table 3"
+        },
+        {
+          "claim": "Transfers to other benchmarks and systems.",
+          "evidence": "LongMemEval-S 72.12 and LoCoMo 77.56 vs LightMem 68.64 / 72.99 (Fig. 5); swapping ProMem memory into MemOS raises HaluMem QA 67.23→68.46 (Fig. 6c)."
+        }
+      ],
+      "limits": [
+        "Verification and recovery add tokens and latency over one-pass summarization, which may matter for real-time or low-resource use.",
+        "The checks depend on the backbone's reasoning; a weak model may write poor probe questions, and the smallest workable model is unknown."
+      ],
+      "limits_src": "paper, Limitations; §3.6",
+      "reading": [
+        "Baseline rows in Table 1 match HaluMem-Medium Table 3 of the HaluMem paper exactly (e.g. Memobase 14.55/92.24/25.13/35.33), where answers come from GPT-4o. ProMem does not say they were copied or which HaluMem split it uses.",
+        "MemOS's memory integrity 84.81 is HaluMem's weighted recall, while the other baselines use plain recall (MemOS plain recall is 74.07); MemOS's F1 79.70 matches plain recall, so the integrity column mixes two measures.",
+        "Naive RAG over the raw dialogue scores 74.13 QA on HaluMem (Fig. 3), above every Table 1 system including ProMem (63.43).",
+        "On LongMemEval-S single-session-assistant, ProMem gets 42.67 against 98.21 for Naive RAG (Table 7): the draft prompt extracts facts about the user only.",
+        "The paper says detail anchoring uses turn ids without embedding work, yet Table 6 lists it as the largest verification cost (3.055K tokens, 26%).",
+        "No construction code is released, and the answer model for QA is not named; the main run also compresses the dialogue with LLMLingua-2 at an unstated ratio."
+      ]
+    },
+    "abstract": {
+      "text": "ProMem argues that memory systems for LLM agents lose most of their information at the extraction step, because a single summary prompt runs before future questions are known and is never checked. It splits extraction into turn-level details, topic-level events and event relations, and then verifies the result: missed events are recovered by matching them against a first draft, entries are checked with NLI against their source turn and repaired at the level of atomic facts, and relation edges are kept only when needed. On HaluMem it reports the best memory accuracy and F1 at a token cost close to Mem0, and it also improves QA on LongMemEval-S and LoCoMo.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2601.04463"
+    },
+    "sections": {
+      "Memory architecture": "§3",
+      "Results": "§4.2, §4.4-4.6, App. E",
+      "Ablation": "§4.3, App. B",
+      "Discussion": "§3.6, §5, Limitations",
+      "Details": "§4.1, App. A-F"
+    }
+  }
+}

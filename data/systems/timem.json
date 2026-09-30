@@ -1,0 +1,857 @@
+{
+  "id": "timem",
+  "name": "TiMem",
+  "paper": {
+    "title": "TiMem: Temporal-Hierarchical Memory Consolidation for Long-Horizon Conversational Agents",
+    "arxiv": "2601.02845",
+    "url": "https://arxiv.org/abs/2601.02845",
+    "venue": "Findings of ACL 2026",
+    "venue_short": "ACL",
+    "track": "findings",
+    "year": 2026,
+    "code": "https://github.com/TiMEM-AI/timem"
+  },
+  "design": {
+    "construction": {
+      "unit": "node of a five-level Temporal Memory Tree: L1 fragment, L2 session, L3 day, L4 week, L5 monthly profile",
+      "kept_as": "L1: third-person LLM rewrite of one exchange (new facts only); L2-L5: LLM summaries, pattern reports and profiles",
+      "processing": "L1 written after every user-assistant exchange; each higher node is written by an LLM from its children in a closed time window plus the last 3 memories at its own level, with a level-specific prompt",
+      "trigger": "every-exchange",
+      "writer": "backbone LLM (gpt-4o-mini-2024-07-18, temperature 0.7)"
+    },
+    "organization": {
+      "structure": "temporal tree with explicit parent-child links; each node covers a time interval inside its parent's",
+      "stores": "PostgreSQL tables per level + parent-child relation table; Qdrant vectors",
+      "index": "Qwen3-Embedding-0.6B dense over content; BM25 over title + content, computed at query time"
+    },
+    "management": {
+      "operations": "scheduled consolidation: session, day, week and month nodes written when their window closes; the profile is refined from the previous profiles",
+      "conflicts": "none at storage; the recall gate is said to drop redundant or conflicting memories at read time",
+      "forgetting": null,
+      "timing": "both"
+    },
+    "retrieval": {
+      "query": "question for dense search; an LLM planner labels complexity (simple / hybrid / complex) and extracts 1-3 keywords (no names) for BM25",
+      "candidates": "L1 only: dense top 40 + BM25 over all L1 of the conversation, fused 0.9 / 0.1, top 20; then ancestors of those leaves at the levels the complexity label opens",
+      "selection": "one LLM gate call keeps or drops each candidate",
+      "budget": "20 L1 + up to L2 4, L3 2, L4 2, L5 1 (code, LoCoMo); ~511 tokens after gating on LoCoMo, ~1,271 on LongMemEval-S"
+    },
+    "use": {
+      "context": "kept memories grouped by level (L1 to L5), each prefixed with its date; Mem0 QA prompt on LoCoMo, LongMemEval non-CoT prompt",
+      "reasoning": "single answer call"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "fixed-rule",
+      "retrieval": "prompted-llm"
+    }
+  },
+  "classify": {
+    "structure": "hierarchy",
+    "index": "vector and lexical",
+    "management": "consolidate",
+    "candidates": "hybrid",
+    "decides": "LLM decides",
+    "note": "Hybrid dense + BM25 picks the L1 leaves; higher levels arrive by fixed parent links; an LLM gate makes the final keep/drop call, so 'LLM decides' rather than 'top-k rule'."
+  },
+  "tags": {
+    "fidelity": "rewritten",
+    "structure": [
+      "tree",
+      "profile"
+    ],
+    "write_time": [
+      "summarize",
+      "consolidate"
+    ],
+    "selection": [
+      "hybrid",
+      "planner"
+    ],
+    "memory_type": [
+      "episodic",
+      "semantic",
+      "profile"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "conversation"
+    ]
+  },
+  "stages": {
+    "ingestion": "The dialogue is cut into fixed windows of one user-assistant exchange (w_d = 1); no semantic segmentation.",
+    "construction": "An LLM rewrites each exchange into a third-person L1 fragment that keeps only facts not already in the last 3 fragments; relative times are left as written.",
+    "organization": "Fragments are the leaves of a Temporal Memory Tree: L2 session, L3 day, L4 week and L5 monthly profile nodes, each with a time interval that contains its children's, linked parent to child.",
+    "update": "When a session, day, week or month closes, an LLM writes the parent node from its children plus the last 3 nodes at that level, with a level-specific prompt (facts, events, patterns, profile). Nothing is deleted or edited afterwards.",
+    "retrieval": "An LLM planner labels the question simple, hybrid or complex and extracts keywords; dense + BM25 over L1 picks 20 leaves; their ancestors at the levels opened by the label are added through parent links; an LLM gate keeps or drops each candidate.",
+    "answer": "The answer model reads the kept memories grouped by level, each with its date, under level headers.",
+    "learning": ""
+  },
+  "summary": "Dialogue is rewritten exchange by exchange into leaf memories and consolidated on a calendar schedule into session, day, week and monthly-profile nodes of a temporal tree; recall searches only the leaves, climbs parent links to levels chosen by a query-complexity planner, and filters with an LLM gate.",
+  "verified": false,
+  "notes": "VENUE: Findings of ACL 2026, verified in the ACL Anthology (2026.findings-acl.1091, https://aclanthology.org/2026.findings-acl.1091/); the arXiv comment also says ACL 2026 Findings. Text read from arXiv v2 (30 Apr 2026). Code: github.com/TiMEM-AI/timem pinned at 6d279a5 (HEAD, 2026-05-27); retrieval, config and experiment code are identical to the initial commit f369184 (2026-02-08) except one import line. TAXONOMY CHECK (not edited here): consolidation-trigger 'scheduled-periodic' is right for L2-L5 (written when a session/day/week/month window closes, §3.2.2, App. B.1; code 01_memory_generation.py simulates a 02:00 daily backfill). retrieval-traversal 'top-down-routing' is wrong: recall is bottom-up (search L1 leaves by dense + BM25, then follow parent links upward; the code class is BottomUpRetrieverBase), which fits 'similarity-plus-aggregation'. DESIGN: trigger=every-exchange is the L1 write; higher levels are scheduled, hence management.timing=both. control.management=fixed-rule because the calendar decides when to consolidate (the writing itself is a prompted LLM). Baselines: the paper says it ran all five with their recommended configurations under one LLM/embedding setup (§4.1, App. B.2), so run_by=rerun.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2601.02845v2 (PDF read 2026-09-30)",
+      "code": "https://github.com/TiMEM-AI/timem/tree/6d279a5f5d40ee229e1995df15c182cb2062c71c/",
+      "code_note": "Official repository linked from the paper. It has 7 commits; the first (f369184, 2026-02-08) is after paper v1 and already contains the retrieval, config and experiment scripts. Later commits change README, licence, CLI and restore two model/schema modules; retrieval code differs by one import line. Pinned at HEAD 6d279a5 (2026-05-27). Whether this is exactly the code behind the v2 tables is not stated."
+    },
+    "headline": [
+      "Only L1 fragments are searched. Session, day, week and profile memories reach the answer only as ancestors of the 20 best-matching fragments, found by parent links, never by their own similarity to the question.",
+      "An LLM gate then cuts the candidates from about 4.4k to 0.5k tokens on LoCoMo (Table 3), and the answer model reads what survives, grouped by level.",
+      "In the released code the complexity-specific gate prompts are not wired in: the dataset config names templates the prompt file does not contain, so a generic keep/drop prompt runs."
+    ],
+    "units": [
+      {
+        "name": "L1 fragment",
+        "role": "leaf: one user-assistant exchange",
+        "made_by": "LLM, after every exchange",
+        "fields": [
+          {
+            "name": "content",
+            "what": "third-person rewrite keeping only facts not in the last 3 fragments; relative times kept as written",
+            "kept_as": "rewritten",
+            "used_for": [
+              "index",
+              "verifier",
+              "answer"
+            ],
+            "src": "paper App. E.3.1; code prompts.yaml L14-L44",
+            "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/config/datasets/locomo/prompts.yaml#L14-L44"
+          },
+          {
+            "name": "title",
+            "what": "template string 'Fragment Memory - {timestamp}', not LLM-written",
+            "kept_as": "derived",
+            "used_for": [
+              "index",
+              "verifier"
+            ],
+            "src": "code unified_processors.py L172; BM25 text = title + content (bottom_up_retriever_base.py L990)",
+            "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/timem/workflows/nodes/unified_processors.py#L172"
+          },
+          {
+            "name": "time window, session id",
+            "what": "start/end time of the exchange and its session",
+            "kept_as": "derived",
+            "used_for": [
+              "answer",
+              "verifier"
+            ],
+            "src": "code postgres_store.py L90-L160",
+            "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/storage/postgres_store.py#L90-L160"
+          },
+          {
+            "name": "original turns",
+            "what": "raw dialogue turns of the exchange",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "stored in dialogue_originals / dialogue_turns_json (postgres_store.py L134-L156); not read by retrieval or answer code",
+            "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/storage/postgres_store.py#L134-L156"
+          }
+        ]
+      },
+      {
+        "name": "L2-L4 nodes",
+        "role": "session summary, daily event record, weekly pattern report",
+        "made_by": "LLM, when the session / day / week closes",
+        "fields": [
+          {
+            "name": "content",
+            "what": "L2 200-300 words of facts; L3 200-400 words of events with quotes; L4 300-500 words of recurring behaviours and changes",
+            "kept_as": "summarized",
+            "used_for": [
+              "verifier",
+              "answer"
+            ],
+            "src": "paper §3.1, App. E.3.2-E.3.4",
+            "url": "https://arxiv.org/pdf/2601.02845"
+          },
+          {
+            "name": "parent-child links",
+            "what": "explicit relation rows from each parent to its children",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code postgres_store.py L206-L215; memory_storage_manager.py L912-L970",
+            "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/storage/memory_storage_manager.py#L912-L970"
+          }
+        ]
+      },
+      {
+        "name": "L5 profile",
+        "role": "monthly profile of both speakers",
+        "made_by": "LLM, when the month closes, from the week reports and previous profiles",
+        "fields": [
+          {
+            "name": "profile",
+            "what": "400-600 words per person: identity, key events, traits with examples, decision patterns, changes, contrast with the other speaker",
+            "kept_as": "summarized",
+            "used_for": [
+              "verifier",
+              "answer"
+            ],
+            "src": "paper §3.1, App. E.3.5",
+            "url": "https://arxiv.org/pdf/2601.02845"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Rewrite each exchange",
+        "how": "LLM turns one user-assistant exchange into a third-person fragment with only new facts, given the last 3 fragments",
+        "params": {
+          "window": "1 exchange",
+          "history": "3"
+        },
+        "out": "2,871 L1 on LoCoMo; 124,272 on LongMemEval-S",
+        "src": "paper §3.2.2, Fig. 3, App. B.1",
+        "url": "https://arxiv.org/pdf/2601.02845"
+      },
+      {
+        "step": "Close a session",
+        "how": "LLM merges the session's fragments into a factual summary",
+        "out": "272 L2 on LoCoMo",
+        "src": "paper App. E.3.2, Fig. 3",
+        "url": "https://arxiv.org/pdf/2601.02845"
+      },
+      {
+        "step": "Close a day",
+        "how": "LLM writes the day's event record from its sessions and the last 3 days",
+        "out": "272 L3 on LoCoMo",
+        "src": "paper App. E.3.3, Fig. 3",
+        "url": "https://arxiv.org/pdf/2601.02845"
+      },
+      {
+        "step": "Close a week",
+        "how": "LLM writes a pattern report from the week's days and the last 3 weeks",
+        "out": "216 L4 on LoCoMo",
+        "src": "paper App. E.3.4, Fig. 3",
+        "url": "https://arxiv.org/pdf/2601.02845"
+      },
+      {
+        "step": "Close a month",
+        "how": "LLM writes profiles of both speakers from the month's weeks and the last 3 profiles",
+        "out": "86 L5 on LoCoMo",
+        "src": "paper App. E.3.5, Fig. 3",
+        "url": "https://arxiv.org/pdf/2601.02845"
+      },
+      {
+        "step": "Schedule",
+        "how": "the experiment script replays the dialogue day by day and runs a backfill that writes every closed window; a final forced backfill runs the day after the last session",
+        "note": "higher levels cost +29.5% LLM calls on LoCoMo, +25.0% on LongMemEval-S (Table 5)",
+        "src": "code 01_memory_generation.py L222-L245",
+        "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/experiments/datasets/locomo/01_memory_generation.py#L222-L245"
+      }
+    ],
+    "read": [
+      {
+        "step": "Plan",
+        "round": 1,
+        "input": "question",
+        "how": "LLM labels complexity 0/1/2 (simple / hybrid / complex) and extracts 1-3 keywords, names forbidden",
+        "params": {
+          "model": "gpt-4o-mini",
+          "temperature": "0.7"
+        },
+        "src": "paper §3.3.1, App. E.3.7; code llm_retrieval_planner.py L185-L255, settings.yaml L211-L227",
+        "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/timem/workflows/retrieval_nodes/llm_retrieval_planner.py#L185-L255"
+      },
+      {
+        "step": "Search L1",
+        "round": 1,
+        "input": "question (dense), keywords (BM25)",
+        "scores": "L1 content (dense); title + content (BM25)",
+        "how": "Qwen3-Embedding-0.6B top 40 in Qdrant; BM25 scores every L1 of the conversation pair; both max-normalised and fused 0.9 dense + 0.1 BM25",
+        "params": {
+          "dense": "top 40",
+          "BM25": "all L1",
+          "λ": "0.9"
+        },
+        "src": "paper Eq. 7, App. B.3; code bottom_up_retriever_base.py L125-L246, L1369-L1482",
+        "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/timem/workflows/retrieval_nodes/bottom_up_retriever_base.py#L1369-L1482"
+      },
+      {
+        "step": "Keep 20 leaves",
+        "round": 1,
+        "how": "top 20 by fused score, then re-sorted by time",
+        "params": {
+          "k1": "20"
+        },
+        "src": "code bottom_up_retriever_base.py L1484-L1559",
+        "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/timem/workflows/retrieval_nodes/bottom_up_retriever_base.py#L1484-L1559"
+      },
+      {
+        "step": "Walk up",
+        "round": 1,
+        "how": "for each leaf in time order, follow parent links L2→L3→L4→L5 and collect parents at the opened levels until each level's quota is full (L2 deduplicated by session)",
+        "params": {
+          "simple": "L2 4, L5 1",
+          "hybrid": "L2 4, L3 2, L5 1",
+          "complex": "L2 4, L3 2, L4 2, L5 1 (LoCoMo code)"
+        },
+        "src": "paper Eq. 8-9, Table 7; code bottom_up_retriever_base.py L336-L531, retrieval_config.yaml L56-L110",
+        "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/timem/workflows/retrieval_nodes/bottom_up_retriever_base.py#L336-L531"
+      },
+      {
+        "step": "Gate",
+        "round": 1,
+        "input": "question",
+        "scores": "each candidate as [n-level] title, content, time, session",
+        "how": "one LLM call returns the ids to keep; if it keeps none, the first 5 are kept",
+        "params": {
+          "model": "gpt-4o-mini",
+          "temperature": "0.3"
+        },
+        "out": "LoCoMo: 4,411 → 511 tokens (Table 3)",
+        "src": "paper §3.3.3, App. E.3.6; code memory_refiner.py L110-L200, L337-L416",
+        "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/timem/workflows/retrieval_nodes/memory_refiner.py#L110-L200"
+      }
+    ],
+    "answer_context": {
+      "sees": "the gated memories, L1 fragments first, then L2 to L5",
+      "format": "per level a header such as \"[Related Memory Fragments]\" or \"[Related Deep Profile Memories]\", then \"[date] content\" lines sorted oldest first, inside the Mem0 QA prompt (LoCoMo) or the LongMemEval non-CoT prompt",
+      "excludes": [
+        "original dialogue turns",
+        "memories of other conversations",
+        "levels the planner did not open"
+      ],
+      "includes": [
+        "L1 rewritten fragments",
+        "session / day / week summaries and the profile that survived the gate",
+        "a date per memory"
+      ],
+      "src": "code answer_generator.py L389-L535; paper App. E.1.1, E.2.1",
+      "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/timem/workflows/retrieval_nodes/answer_generator.py#L389-L535"
+    },
+    "compression": [
+      {
+        "what": "gated context vs ungated candidates, LoCoMo",
+        "kept": 511.25,
+        "of": 4411.09,
+        "unit": "tokens",
+        "basis": "Table 3: full system vs 'w Planner, w/o Gating'",
+        "src": "paper Table 3",
+        "url": "https://arxiv.org/pdf/2601.02845"
+      },
+      {
+        "what": "gated context vs ungated candidates, LongMemEval-S",
+        "kept": 1270.62,
+        "of": 3941.98,
+        "unit": "tokens",
+        "basis": "Table 3: full system vs 'w Planner, w/o Gating'",
+        "src": "paper Table 3",
+        "url": "https://arxiv.org/pdf/2601.02845"
+      },
+      {
+        "what": "answer context vs one conversation",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported: the paper gives memory tokens per question but not the length of the conversations.",
+        "src": "paper Table 6",
+        "url": "https://arxiv.org/pdf/2601.02845"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Full system, LoCoMo / LongMemEval-S (LLJ)",
+        "value": "75.30 / 76.88",
+        "src": "paper Tables 3-4"
+      },
+      {
+        "label": "Planner, no gate",
+        "value": "72.99 / 73.80",
+        "src": "paper Table 3"
+      },
+      {
+        "label": "Fixed hybrid scope + gate (best fixed)",
+        "value": "73.38 / 75.00",
+        "src": "paper Table 3"
+      },
+      {
+        "label": "L1 only, hierarchical recall",
+        "value": "73.18 / 72.40",
+        "src": "paper Table 4"
+      },
+      {
+        "label": "Full tree, flat recall",
+        "value": "70.71 / 55.40",
+        "src": "paper Table 4"
+      },
+      {
+        "label": "Segment of 8 exchanges instead of 1 (LoCoMo)",
+        "value": "65.26",
+        "src": "paper Table 9"
+      },
+      {
+        "label": "Best answer model (Qwen3-235B-A22B), LoCoMo",
+        "value": "80.45",
+        "src": "paper Table 8"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Gate prompt",
+        "paper": "complexity-specific prompts (keep 3-8 for simple queries, App. E.3.6)",
+        "code": "retrieval_config.yaml names templates relevance_analysis_simple/hybrid/complex, which prompts.yaml does not define (it has memory_refiner_simple/...); the code then falls back to a generic 'return relevant IDs' prompt",
+        "src": "retrieval_config.yaml L32-L35; memory_refiner.py L337-L391",
+        "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/timem/workflows/retrieval_nodes/memory_refiner.py#L337-L391"
+      },
+      {
+        "topic": "Complex-query budget",
+        "paper": "L2 8, L3 4, L4 2, L5 1 (Table 7)",
+        "code": "L2 4, L3 2, L4 2, L5 1 on LoCoMo; L3 4 on LongMemEval-S",
+        "src": "retrieval_config.yaml L56-L63",
+        "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/config/datasets/locomo/retrieval_config.yaml#L56-L63"
+      },
+      {
+        "topic": "Which ancestors are kept",
+        "paper": "prune by similarity scores when a level exceeds its budget (Table 7)",
+        "code": "the 20 leaves are re-sorted by time before the walk, and parents are collected first-come until the quota is full, so the earliest leaves win; parents are never scored against the question",
+        "src": "bottom_up_retriever_base.py L1542, L419-L520",
+        "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/timem/workflows/retrieval_nodes/bottom_up_retriever_base.py#L419-L520"
+      },
+      {
+        "topic": "Order in the answer context",
+        "paper": "sorted by level, then by distance from the query time (Eq. 11)",
+        "code": "sorted by level, then oldest first",
+        "src": "answer_generator.py L474-L501",
+        "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/timem/workflows/retrieval_nodes/answer_generator.py#L474-L501"
+      }
+    ],
+    "open_questions": [
+      "Table 4's 'L1 only, hierarchical recall' (73.18 / 72.40) beats flat recall over the full tree; with no higher levels it is unclear what the hierarchical path adds beyond the gate and fewer tokens, and the paper does not define flat recall precisely.",
+      "No run gives the higher levels their own similarity search, so the tests cannot tell whether session/day/week summaries help because of their content or because they widen context around the chosen leaves.",
+      "On LoCoMo L2 and L3 counts are equal (272 each): with one session per day, the day level mostly restates the session level."
+    ],
+    "glance": [
+      {
+        "q": "What is one memory item?",
+        "a": "A node of a time tree: an L1 fragment is an LLM rewrite of one exchange; above it sit session, day, week and monthly-profile nodes, each written by an LLM from its children.",
+        "src": "paper §3.1",
+        "url": "https://arxiv.org/pdf/2601.02845"
+      },
+      {
+        "q": "Is the dialogue summarised?",
+        "a": "Each exchange is rewritten in third person keeping only new facts; the higher levels are summaries of 200-600 words. The raw turns are stored but never read.",
+        "src": "paper App. E.3; code postgres_store.py L134-L156",
+        "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/storage/postgres_store.py#L134-L156"
+      },
+      {
+        "q": "How is memory organised?",
+        "a": "By the calendar, not by topic: a parent node covers the time window of its children (session, day, week, month), linked explicitly parent to child.",
+        "src": "paper §3.1",
+        "url": "https://arxiv.org/pdf/2601.02845"
+      },
+      {
+        "q": "Is there reranking?",
+        "a": "No cross-encoder. One LLM call reads all candidates and returns the ids to keep.",
+        "src": "code memory_refiner.py L110-L200",
+        "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/timem/workflows/retrieval_nodes/memory_refiner.py#L110-L200"
+      },
+      {
+        "q": "Is memory reconstructed at question time?",
+        "a": "No second search. The planner only chooses which levels to collect; an answer-time reflection loop exists in the code but the evaluation prompts never trigger it.",
+        "src": "code memory_retrieval.py L254-L340; answer_generator.py L197-L215",
+        "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/timem/workflows/memory_retrieval.py#L254-L340"
+      },
+      {
+        "q": "What does the answer model read?",
+        "a": "Up to 20 fragments plus a few session/day/week summaries and the profile, whatever the gate kept, each with a date: about 511 tokens on LoCoMo.",
+        "src": "paper Table 6; code answer_generator.py L389-L535",
+        "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/timem/workflows/retrieval_nodes/answer_generator.py#L389-L535"
+      }
+    ],
+    "funnel": [
+      {
+        "round": 1,
+        "steps": [
+          {
+            "n": "top 40 + all",
+            "what": "L1 fragments scored (dense top 40, BM25 over all)"
+          },
+          {
+            "n": "20",
+            "what": "leaves kept by fused score"
+          },
+          {
+            "n": "≤ 29",
+            "what": "leaves + ancestors (complex query, LoCoMo config)"
+          },
+          {
+            "n": "~511 tokens",
+            "what": "kept by the LLM gate (LoCoMo average)"
+          }
+        ],
+        "src": "code bottom_up_retriever_base.py L125-L531, retrieval_config.yaml L56-L110; paper Table 6",
+        "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/timem/workflows/retrieval_nodes/bottom_up_retriever_base.py#L125-L531"
+      }
+    ],
+    "flow": [
+      {
+        "n": 1,
+        "round": 1,
+        "title": "Label the question",
+        "actor": "llm",
+        "method": "LLM classification, temperature 0.7",
+        "model": "gpt-4o-mini",
+        "in": "question",
+        "out": "simple / hybrid / complex + 1-3 keywords",
+        "sees": "The question only. Questions about preferences, prediction or reasoning go to complex; multi-fact questions to hybrid; single facts to simple. Personal names are banned from the keywords.",
+        "params": {
+          "keywords": "1-3"
+        },
+        "src": "paper App. E.3.7; code llm_retrieval_planner.py L185-L255",
+        "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/timem/workflows/retrieval_nodes/llm_retrieval_planner.py#L185-L255",
+        "short": "Plan",
+        "count": "question → label"
+      },
+      {
+        "n": 2,
+        "round": 1,
+        "title": "Search the fragments",
+        "actor": "retriever",
+        "method": "bi-encoder (dense) + lexical (BM25), weighted sum",
+        "model": "Qwen3-Embedding-0.6B; BM25 (k1 1.5, b 0.75)",
+        "in": "question, keywords",
+        "out": "every L1 with a fused score",
+        "sees": "Dense: the question against each fragment's content, top 40. BM25: the keywords against title + content of every fragment of the conversation pair. Scores are divided by their maximum and summed 0.9 / 0.1; fragments outside the dense top 40 get only the BM25 part.",
+        "params": {
+          "dense": "40",
+          "λ": "0.9"
+        },
+        "src": "bottom_up_retriever_base.py L125-L246, L894-L1036, L1369-L1482",
+        "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/timem/workflows/retrieval_nodes/bottom_up_retriever_base.py#L1369-L1482",
+        "short": "Search L1",
+        "count": "all L1 → scored"
+      },
+      {
+        "n": 3,
+        "round": 1,
+        "title": "Keep 20 leaves",
+        "actor": "rule",
+        "method": "rule: top 20 by fused score, then sorted by time",
+        "in": "scored L1",
+        "out": "20 fragments",
+        "sees": "Scores only. The 20 are then put in time order, which also sets the order of the next step.",
+        "params": {
+          "k1": "20"
+        },
+        "src": "bottom_up_retriever_base.py L1484-L1559",
+        "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/timem/workflows/retrieval_nodes/bottom_up_retriever_base.py#L1484-L1559",
+        "short": "Keep 20",
+        "count": "→ 20"
+      },
+      {
+        "n": 4,
+        "round": 1,
+        "title": "Collect ancestors",
+        "actor": "rule",
+        "method": "rule: follow parent links from each leaf",
+        "in": "20 fragments",
+        "out": "20 + up to 9 higher nodes",
+        "sees": "No text is compared. For each leaf (oldest first) the code walks L2→L3→L4→L5 and keeps a parent at each level the label opened until that level's quota is full; a session is taken once.",
+        "params": {
+          "L2": "4",
+          "L3": "2",
+          "L4": "2",
+          "L5": "1"
+        },
+        "src": "bottom_up_retriever_base.py L336-L531; retrieval_config.yaml L56-L110",
+        "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/timem/workflows/retrieval_nodes/bottom_up_retriever_base.py#L336-L531",
+        "short": "Walk up",
+        "count": "20 → ≤29"
+      },
+      {
+        "n": 5,
+        "round": 1,
+        "title": "Gate",
+        "actor": "llm",
+        "method": "LLM judgement over the whole list, temperature 0.3",
+        "model": "gpt-4o-mini",
+        "in": "≤29 candidates",
+        "out": "ids to keep",
+        "sees": "Each candidate as \"[n-level] title\", its content, time and session id, with the question. If it keeps nothing, the first 5 are used.",
+        "params": {
+          "fallback": "5"
+        },
+        "src": "memory_refiner.py L110-L200, L393-L416; retrieval_config.yaml L20-L42",
+        "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/timem/workflows/retrieval_nodes/memory_refiner.py#L110-L200",
+        "short": "Gate",
+        "count": "≤29 → kept"
+      },
+      {
+        "n": 6,
+        "round": 0,
+        "title": "Answer",
+        "actor": "llm",
+        "method": "LLM generation",
+        "model": "gpt-4o-mini-2024-07-18 (also gpt-4o-2024-11-20 on LongMemEval-S)",
+        "in": "kept memories",
+        "out": "answer",
+        "sees": "Kept memories grouped by level with headers, each as \"[date] content\", oldest first within a level. No original turns.",
+        "params": {},
+        "src": "answer_generator.py L389-L535",
+        "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/timem/workflows/retrieval_nodes/answer_generator.py#L389-L535",
+        "short": "Answer",
+        "count": "kept → answer"
+      }
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 262",
+        "body": "<text class=\"fig-t\" x=\"6\" y=\"29\" text-anchor=\"start\">L5 profile</text><text class=\"fig-s\" x=\"6\" y=\"41\" text-anchor=\"start\">month ends · 86</text><text class=\"fig-t\" x=\"6\" y=\"73\" text-anchor=\"start\">L4 week</text><text class=\"fig-s\" x=\"6\" y=\"85\" text-anchor=\"start\">week ends · 216</text><text class=\"fig-t\" x=\"6\" y=\"117\" text-anchor=\"start\">L3 day</text><text class=\"fig-s\" x=\"6\" y=\"129\" text-anchor=\"start\">day ends · 272</text><text class=\"fig-t\" x=\"6\" y=\"161\" text-anchor=\"start\">L2 session</text><text class=\"fig-s\" x=\"6\" y=\"173\" text-anchor=\"start\">session ends · 272</text><text class=\"fig-t\" x=\"6\" y=\"203\" text-anchor=\"start\">L1 fragment</text><text class=\"fig-s\" x=\"6\" y=\"215\" text-anchor=\"start\">each exchange · 2,871</text><line class=\"gi-e\" x1=\"152\" y1=\"210\" x2=\"152\" y2=\"226\"/><rect class=\"gi-ev\" x=\"143\" y=\"226\" width=\"18\" height=\"12\" rx=\"3\"/><line class=\"gi-t\" x1=\"147\" y1=\"232\" x2=\"157\" y2=\"232\"/><line class=\"gi-e\" x1=\"174\" y1=\"210\" x2=\"174\" y2=\"226\"/><rect class=\"gi-ev\" x=\"165\" y=\"226\" width=\"18\" height=\"12\" rx=\"3\"/><line class=\"gi-t\" x1=\"169\" y1=\"232\" x2=\"179\" y2=\"232\"/><line class=\"gi-e\" x1=\"196\" y1=\"210\" x2=\"196\" y2=\"226\"/><rect class=\"gi-ev\" x=\"187\" y=\"226\" width=\"18\" height=\"12\" rx=\"3\"/><line class=\"gi-t\" x1=\"191\" y1=\"232\" x2=\"201\" y2=\"232\"/><line class=\"gi-e\" x1=\"236\" y1=\"210\" x2=\"236\" y2=\"226\"/><rect class=\"gi-ev\" x=\"227\" y=\"226\" width=\"18\" height=\"12\" rx=\"3\"/><line class=\"gi-t\" x1=\"231\" y1=\"232\" x2=\"241\" y2=\"232\"/><line class=\"gi-e\" x1=\"258\" y1=\"210\" x2=\"258\" y2=\"226\"/><rect class=\"gi-ev\" x=\"249\" y=\"226\" width=\"18\" height=\"12\" rx=\"3\"/><line class=\"gi-t\" x1=\"253\" y1=\"232\" x2=\"263\" y2=\"232\"/><line class=\"gi-e\" x1=\"280\" y1=\"210\" x2=\"280\" y2=\"226\"/><rect class=\"gi-ev\" x=\"271\" y=\"226\" width=\"18\" height=\"12\" rx=\"3\"/><line class=\"gi-t\" x1=\"275\" y1=\"232\" x2=\"285\" y2=\"232\"/><line class=\"gi-e\" x1=\"330\" y1=\"210\" x2=\"330\" y2=\"226\"/><rect class=\"gi-ev\" x=\"321\" y=\"226\" width=\"18\" height=\"12\" rx=\"3\"/><line class=\"gi-t\" x1=\"325\" y1=\"232\" x2=\"335\" y2=\"232\"/><line class=\"gi-e\" x1=\"352\" y1=\"210\" x2=\"352\" y2=\"226\"/><rect class=\"gi-ev\" x=\"343\" y=\"226\" width=\"18\" height=\"12\" rx=\"3\"/><line class=\"gi-t\" x1=\"347\" y1=\"232\" x2=\"357\" y2=\"232\"/><line class=\"gi-e\" x1=\"374\" y1=\"210\" x2=\"374\" y2=\"226\"/><rect class=\"gi-ev\" x=\"365\" y=\"226\" width=\"18\" height=\"12\" rx=\"3\"/><line class=\"gi-t\" x1=\"369\" y1=\"232\" x2=\"379\" y2=\"232\"/><line class=\"gi-e\" x1=\"440\" y1=\"210\" x2=\"440\" y2=\"226\"/><rect class=\"gi-ev\" x=\"431\" y=\"226\" width=\"18\" height=\"12\" rx=\"3\"/><line class=\"gi-t\" x1=\"435\" y1=\"232\" x2=\"445\" y2=\"232\"/><line class=\"gi-e\" x1=\"462\" y1=\"210\" x2=\"462\" y2=\"226\"/><rect class=\"gi-ev\" x=\"453\" y=\"226\" width=\"18\" height=\"12\" rx=\"3\"/><line class=\"gi-t\" x1=\"457\" y1=\"232\" x2=\"467\" y2=\"232\"/><line class=\"gi-e\" x1=\"484\" y1=\"210\" x2=\"484\" y2=\"226\"/><rect class=\"gi-ev\" x=\"475\" y=\"226\" width=\"18\" height=\"12\" rx=\"3\"/><line class=\"gi-t\" x1=\"479\" y1=\"232\" x2=\"489\" y2=\"232\"/><text class=\"fig-s\" x=\"6\" y=\"235\" text-anchor=\"start\">dialogue</text><line class=\"gi-e\" x1=\"152\" y1=\"198\" x2=\"174.0\" y2=\"170\"/><line class=\"gi-e\" x1=\"174\" y1=\"198\" x2=\"174.0\" y2=\"170\"/><line class=\"gi-e\" x1=\"196\" y1=\"198\" x2=\"174.0\" y2=\"170\"/><line class=\"gi-e\" x1=\"236\" y1=\"198\" x2=\"258.0\" y2=\"170\"/><line class=\"gi-e\" x1=\"258\" y1=\"198\" x2=\"258.0\" y2=\"170\"/><line class=\"gi-e\" x1=\"280\" y1=\"198\" x2=\"258.0\" y2=\"170\"/><line class=\"gi-e\" x1=\"330\" y1=\"198\" x2=\"352.0\" y2=\"170\"/><line class=\"gi-e\" x1=\"352\" y1=\"198\" x2=\"352.0\" y2=\"170\"/><line class=\"gi-e\" x1=\"374\" y1=\"198\" x2=\"352.0\" y2=\"170\"/><line class=\"gi-e\" x1=\"440\" y1=\"198\" x2=\"462.0\" y2=\"170\"/><line class=\"gi-e\" x1=\"462\" y1=\"198\" x2=\"462.0\" y2=\"170\"/><line class=\"gi-e\" x1=\"484\" y1=\"198\" x2=\"462.0\" y2=\"170\"/><line class=\"gi-e\" x1=\"174.0\" y1=\"154\" x2=\"216.0\" y2=\"126\"/><line class=\"gi-e\" x1=\"258.0\" y1=\"154\" x2=\"216.0\" y2=\"126\"/><line class=\"gi-e\" x1=\"352.0\" y1=\"154\" x2=\"352.0\" y2=\"126\"/><line class=\"gi-e\" x1=\"462.0\" y1=\"154\" x2=\"462.0\" y2=\"126\"/><line class=\"gi-e\" x1=\"216.0\" y1=\"110\" x2=\"284.0\" y2=\"82\"/><line class=\"gi-e\" x1=\"352.0\" y1=\"110\" x2=\"284.0\" y2=\"82\"/><line class=\"gi-e\" x1=\"462.0\" y1=\"110\" x2=\"462.0\" y2=\"82\"/><line class=\"gi-e\" x1=\"284.0\" y1=\"66\" x2=\"373.0\" y2=\"40\"/><line class=\"gi-e\" x1=\"462.0\" y1=\"66\" x2=\"373.0\" y2=\"40\"/><circle class=\"gi-n\" cx=\"152\" cy=\"204\" r=\"6\"/><circle class=\"gi-n\" cx=\"174\" cy=\"204\" r=\"6\"/><circle class=\"gi-n\" cx=\"196\" cy=\"204\" r=\"6\"/><circle class=\"gi-n\" cx=\"236\" cy=\"204\" r=\"6\"/><circle class=\"gi-n\" cx=\"258\" cy=\"204\" r=\"6\"/><circle class=\"gi-n\" cx=\"280\" cy=\"204\" r=\"6\"/><circle class=\"gi-n\" cx=\"330\" cy=\"204\" r=\"6\"/><circle class=\"gi-n\" cx=\"352\" cy=\"204\" r=\"6\"/><circle class=\"gi-n\" cx=\"374\" cy=\"204\" r=\"6\"/><circle class=\"gi-n\" cx=\"440\" cy=\"204\" r=\"6\"/><circle class=\"gi-n\" cx=\"462\" cy=\"204\" r=\"6\"/><circle class=\"gi-n\" cx=\"484\" cy=\"204\" r=\"6\"/><rect class=\"gi-ev\" x=\"157.0\" y=\"154.0\" width=\"34\" height=\"16\" rx=\"4\"/><line class=\"gi-t\" x1=\"164.0\" y1=\"162\" x2=\"184.0\" y2=\"162\"/><rect class=\"gi-ev\" x=\"241.0\" y=\"154.0\" width=\"34\" height=\"16\" rx=\"4\"/><line class=\"gi-t\" x1=\"248.0\" y1=\"162\" x2=\"268.0\" y2=\"162\"/><rect class=\"gi-ev\" x=\"335.0\" y=\"154.0\" width=\"34\" height=\"16\" rx=\"4\"/><line class=\"gi-t\" x1=\"342.0\" y1=\"162\" x2=\"362.0\" y2=\"162\"/><rect class=\"gi-ev\" x=\"445.0\" y=\"154.0\" width=\"34\" height=\"16\" rx=\"4\"/><line class=\"gi-t\" x1=\"452.0\" y1=\"162\" x2=\"472.0\" y2=\"162\"/><rect class=\"gi-ev\" x=\"199.0\" y=\"110.0\" width=\"34\" height=\"16\" rx=\"4\"/><line class=\"gi-t\" x1=\"206.0\" y1=\"118\" x2=\"226.0\" y2=\"118\"/><rect class=\"gi-ev\" x=\"335.0\" y=\"110.0\" width=\"34\" height=\"16\" rx=\"4\"/><line class=\"gi-t\" x1=\"342.0\" y1=\"118\" x2=\"362.0\" y2=\"118\"/><rect class=\"gi-ev\" x=\"445.0\" y=\"110.0\" width=\"34\" height=\"16\" rx=\"4\"/><line class=\"gi-t\" x1=\"452.0\" y1=\"118\" x2=\"472.0\" y2=\"118\"/><rect class=\"gi-ev\" x=\"267.0\" y=\"66.0\" width=\"34\" height=\"16\" rx=\"4\"/><line class=\"gi-t\" x1=\"274.0\" y1=\"74\" x2=\"294.0\" y2=\"74\"/><rect class=\"gi-ev\" x=\"445.0\" y=\"66.0\" width=\"34\" height=\"16\" rx=\"4\"/><line class=\"gi-t\" x1=\"452.0\" y1=\"74\" x2=\"472.0\" y2=\"74\"/><rect class=\"gi-hi\" x=\"337.0\" y=\"20\" width=\"72\" height=\"20\" rx=\"6\"/><text class=\"fig-s\" x=\"373.0\" y=\"34\" text-anchor=\"middle\">profile</text><rect class=\"gi-llm\" x=\"506\" y=\"215\" width=\"32\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"522\" y=\"225\" text-anchor=\"middle\">LLM</text><rect class=\"gi-llm\" x=\"506\" y=\"112\" width=\"32\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"522\" y=\"122\" text-anchor=\"middle\">LLM</text><text class=\"fig-s\" x=\"522\" y=\"138\" text-anchor=\"middle\">children +</text><text class=\"fig-s\" x=\"522\" y=\"150\" text-anchor=\"middle\">last 3 at</text><text class=\"fig-s\" x=\"522\" y=\"162\" text-anchor=\"middle\">its level</text><text class=\"fig-s\" x=\"152\" y=\"256\" text-anchor=\"start\">counts: all of LoCoMo; a parent is written when its time window closes</text>",
+        "text": [
+          "An LLM rewrites every exchange into an L1 fragment.",
+          "When a session, day, week or month ends, an LLM writes its node from the children and the last 3 nodes at that level, up to a monthly profile."
+        ],
+        "src": "paper §3.1-3.2, Fig. 3, App. B.1; code 01_memory_generation.py L222-L245",
+        "url": "https://arxiv.org/pdf/2601.02845"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 262",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"30\" width=\"54\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"31.0\" y=\"56.0\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M58.0 52.0 L63.0 52.0\"/><polygon class=\"gi-ah\" points=\"70.0,52.0 63.0,56.0 63.0,48.0\"/><polygon class=\"gi-llm\" points=\"110,26 150,52 110,78 70,52\"/><text class=\"fig-t\" x=\"110\" y=\"51\" text-anchor=\"middle\">Plan</text><text class=\"fig-s\" x=\"110\" y=\"63\" text-anchor=\"middle\">LLM</text><path class=\"gi-a\" d=\"M150.0 52.0 L155.0 52.0\"/><polygon class=\"gi-ah\" points=\"162.0,52.0 155.0,56.0 155.0,48.0\"/><rect class=\"gi-v fig-soft\" x=\"162\" y=\"30\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"206.0\" y=\"50.0\" text-anchor=\"middle\">Search L1</text><text class=\"fig-s\" x=\"206.0\" y=\"63.0\" text-anchor=\"middle\">fragments</text><text class=\"fig-s\" x=\"206\" y=\"90\" text-anchor=\"middle\">dense + BM25</text><path class=\"gi-a\" d=\"M250.0 52.0 L255.0 52.0\"/><polygon class=\"gi-ah\" points=\"262.0,52.0 255.0,56.0 255.0,48.0\"/><rect class=\"gi-f\" x=\"262\" y=\"30\" width=\"70\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"297.0\" y=\"50.0\" text-anchor=\"middle\">top 20</text><text class=\"fig-s\" x=\"297.0\" y=\"63.0\" text-anchor=\"middle\">L1 leaves</text><text class=\"fig-s\" x=\"297\" y=\"90\" text-anchor=\"middle\">fused 0.9 / 0.1</text><path class=\"gi-a\" d=\"M332.0 52.0 L337.0 52.0\"/><polygon class=\"gi-ah\" points=\"344.0,52.0 337.0,56.0 337.0,48.0\"/><rect class=\"gi-f\" x=\"344\" y=\"30\" width=\"90\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"389.0\" y=\"50.0\" text-anchor=\"middle\">Walk up</text><text class=\"fig-s\" x=\"389.0\" y=\"63.0\" text-anchor=\"middle\">parent links</text><text class=\"fig-s\" x=\"389\" y=\"90\" text-anchor=\"middle\">L2 ≤4 · L3 ≤2</text><text class=\"fig-s\" x=\"389\" y=\"102\" text-anchor=\"middle\">L4 ≤2 · L5 ≤1</text><path class=\"gi-a\" d=\"M434.0 52.0 L439.0 52.0\"/><polygon class=\"gi-ah\" points=\"446.0,52.0 439.0,56.0 439.0,48.0\"/><rect class=\"gi-llm\" x=\"446\" y=\"30\" width=\"108\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"500.0\" y=\"50.0\" text-anchor=\"middle\">Gate</text><text class=\"fig-s\" x=\"500.0\" y=\"63.0\" text-anchor=\"middle\">LLM keeps or drops</text><path class=\"gi-a\" d=\"M500.0 74.0 L500.0 179.0\"/><polygon class=\"gi-ah\" points=\"500.0,186.0 496.0,179.0 504.0,179.0\"/><rect class=\"gi-hi\" x=\"446\" y=\"186\" width=\"108\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"500.0\" y=\"206.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"500.0\" y=\"219.0\" text-anchor=\"middle\">kept memories</text><text class=\"fig-s\" x=\"556\" y=\"244\" text-anchor=\"end\">gate: 4,411 → 511 tokens</text><text class=\"fig-s\" x=\"556\" y=\"256\" text-anchor=\"end\">per LoCoMo question</text><path class=\"gi-a d\" d=\"M110 78 L110 163 L139 163\"/><polygon class=\"gi-ah\" points=\"146,163 139,159 139,167\"/><text class=\"fig-s\" x=\"118\" y=\"120\" text-anchor=\"start\">type sets the levels</text><text class=\"fig-s\" x=\"211.0\" y=\"132\" text-anchor=\"middle\">L1</text><text class=\"fig-s\" x=\"245.0\" y=\"132\" text-anchor=\"middle\">L2</text><text class=\"fig-s\" x=\"279.0\" y=\"132\" text-anchor=\"middle\">L3</text><text class=\"fig-s\" x=\"313.0\" y=\"132\" text-anchor=\"middle\">L4</text><text class=\"fig-s\" x=\"347.0\" y=\"132\" text-anchor=\"middle\">L5</text><text class=\"fig-s\" x=\"150\" y=\"149\" text-anchor=\"start\">simple</text><rect class=\"gi-w\" x=\"196\" y=\"138\" width=\"30\" height=\"14\" rx=\"3\"/><rect class=\"gi-w\" x=\"230\" y=\"138\" width=\"30\" height=\"14\" rx=\"3\"/><rect class=\"gi-ev d\" x=\"264\" y=\"138\" width=\"30\" height=\"14\" rx=\"3\"/><rect class=\"gi-ev d\" x=\"298\" y=\"138\" width=\"30\" height=\"14\" rx=\"3\"/><rect class=\"gi-w\" x=\"332\" y=\"138\" width=\"30\" height=\"14\" rx=\"3\"/><text class=\"fig-s\" x=\"150\" y=\"169\" text-anchor=\"start\">hybrid</text><rect class=\"gi-w\" x=\"196\" y=\"158\" width=\"30\" height=\"14\" rx=\"3\"/><rect class=\"gi-w\" x=\"230\" y=\"158\" width=\"30\" height=\"14\" rx=\"3\"/><rect class=\"gi-w\" x=\"264\" y=\"158\" width=\"30\" height=\"14\" rx=\"3\"/><rect class=\"gi-ev d\" x=\"298\" y=\"158\" width=\"30\" height=\"14\" rx=\"3\"/><rect class=\"gi-w\" x=\"332\" y=\"158\" width=\"30\" height=\"14\" rx=\"3\"/><text class=\"fig-s\" x=\"150\" y=\"189\" text-anchor=\"start\">complex</text><rect class=\"gi-w\" x=\"196\" y=\"178\" width=\"30\" height=\"14\" rx=\"3\"/><rect class=\"gi-w\" x=\"230\" y=\"178\" width=\"30\" height=\"14\" rx=\"3\"/><rect class=\"gi-w\" x=\"264\" y=\"178\" width=\"30\" height=\"14\" rx=\"3\"/><rect class=\"gi-w\" x=\"298\" y=\"178\" width=\"30\" height=\"14\" rx=\"3\"/><rect class=\"gi-w\" x=\"332\" y=\"178\" width=\"30\" height=\"14\" rx=\"3\"/><path class=\"gi-a d\" d=\"M366 165 L424 165 L424 83\"/><polygon class=\"gi-ah\" points=\"424,76 420,83 428,83\"/><text class=\"fig-s\" x=\"8\" y=\"214\" text-anchor=\"start\">leaves are found by search; higher levels</text><text class=\"fig-s\" x=\"8\" y=\"226\" text-anchor=\"start\">only by following parent links from them</text>",
+        "text": [
+          "An LLM labels the question; dense + BM25 search over fragments keeps 20 leaves, and their parents are added at the levels the label opens.",
+          "An LLM gate keeps the useful ones; the answer model reads them grouped by level."
+        ],
+        "src": "paper §3.3, Table 7; code bottom_up_retriever_base.py L125-L531, memory_refiner.py L110-L200",
+        "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/timem/workflows/retrieval_nodes/bottom_up_retriever_base.py#L125-L531"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Memories per level, LoCoMo",
+        "value": "L1 2,871 · L2 272 · L3 272 · L4 216 · L5 86",
+        "src": "paper Fig. 3",
+        "section": "construction"
+      },
+      {
+        "label": "Memories per level, LongMemEval-S",
+        "value": "124,272 · 22,662 · 5,250 · 2,300 · 849",
+        "src": "paper Fig. 3",
+        "section": "construction"
+      },
+      {
+        "label": "Extra LLM calls for L2-L5",
+        "value": "+29.5% LoCoMo · +25.0% LongMemEval-S",
+        "src": "paper Table 5",
+        "section": "construction"
+      },
+      {
+        "label": "Segment size",
+        "value": "1 exchange; history window 3",
+        "src": "paper App. B.1",
+        "section": "construction"
+      },
+      {
+        "label": "Leaves",
+        "value": "20 by 0.9 dense + 0.1 BM25 (dense top 40)",
+        "src": "paper App. B.3; code bottom_up_retriever_base.py L125-L246",
+        "section": "method"
+      },
+      {
+        "label": "Ancestors (LoCoMo code, complex)",
+        "value": "L2 4 · L3 2 · L4 2 · L5 1",
+        "src": "code retrieval_config.yaml L56-L63",
+        "section": "method"
+      },
+      {
+        "label": "LLM calls per question",
+        "value": "2 (planner, gate) + answer",
+        "src": "paper App. B.3",
+        "section": "method"
+      },
+      {
+        "label": "Answer context",
+        "value": "511 tokens LoCoMo · 1,271 LongMemEval-S",
+        "src": "paper Table 6",
+        "section": "results"
+      },
+      {
+        "label": "Recall latency P50 / P95",
+        "value": "2.35 / 4.91 s LoCoMo · 1.76 / 4.48 s LongMemEval-S",
+        "src": "paper Table 6",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "LoCoMo LLJ",
+        "LoCoMo tokens",
+        "LongMemEval-S LLJ",
+        "LongMemEval-S tokens"
+      ],
+      "rows": [
+        [
+          "Full system (planner + gate)",
+          "75.30",
+          "511",
+          "76.88",
+          "1,271"
+        ],
+        [
+          "planner, no gate",
+          "72.99",
+          "4,411",
+          "73.80",
+          "3,942"
+        ],
+        [
+          "no planner: hybrid scope + gate",
+          "73.38",
+          "692",
+          "75.00",
+          "1,674"
+        ],
+        [
+          "no planner, no gate: simple scope",
+          "73.51",
+          "3,710",
+          "73.20",
+          "3,372"
+        ],
+        [
+          "L1 only, hierarchical recall",
+          "73.18",
+          "361",
+          "72.40",
+          "437"
+        ],
+        [
+          "L1 only, flat recall",
+          "70.06",
+          "995",
+          "57.40",
+          "1,824"
+        ],
+        [
+          "L2-L5 only, hierarchical recall",
+          "57.08",
+          "3,786",
+          "64.20",
+          "2,345"
+        ],
+        [
+          "full tree, flat recall",
+          "70.71",
+          "1,716",
+          "55.40",
+          "4,519"
+        ]
+      ],
+      "src": "paper Tables 3-4 (gpt-4o-mini for all LLM steps)"
+    },
+    "components": [
+      {
+        "role": "Writes all five levels",
+        "model": "gpt-4o-mini-2024-07-18, temperature 0.7",
+        "kind": "llm",
+        "src": "paper App. B.1"
+      },
+      {
+        "role": "Complexity label and keywords",
+        "model": "gpt-4o-mini, temperature 0.7",
+        "kind": "llm",
+        "src": "code settings.yaml L211-L227",
+        "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/config/settings.yaml#L211-L227"
+      },
+      {
+        "role": "Dense search over L1",
+        "model": "Qwen3-Embedding-0.6B (1024-d)",
+        "kind": "retriever",
+        "src": "paper App. B.1"
+      },
+      {
+        "role": "Lexical search over L1",
+        "model": "BM25 (k1 1.5, b 0.75), in Python at query time",
+        "kind": "retriever",
+        "src": "code bottom_up_retriever_base.py L894-L1036",
+        "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/timem/workflows/retrieval_nodes/bottom_up_retriever_base.py#L894-L1036"
+      },
+      {
+        "role": "Collect ancestors",
+        "model": "parent-link walk",
+        "kind": "rule",
+        "src": "code bottom_up_retriever_base.py L336-L531",
+        "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/timem/workflows/retrieval_nodes/bottom_up_retriever_base.py#L336-L531"
+      },
+      {
+        "role": "Recall gate",
+        "model": "gpt-4o-mini, temperature 0.3",
+        "kind": "llm",
+        "src": "code retrieval_config.yaml L20-L42",
+        "url": "https://github.com/TiMEM-AI/timem/blob/6d279a5f5d40ee229e1995df15c182cb2062c71c/config/datasets/locomo/retrieval_config.yaml#L20-L42"
+      },
+      {
+        "role": "Answer",
+        "model": "gpt-4o-mini-2024-07-18 (gpt-4o-2024-11-20 also on LongMemEval-S)",
+        "kind": "llm",
+        "src": "paper §4.1, Table 2"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Organise conversational memory by the calendar (exchange, session, day, week, month) and let an LLM consolidate each closed window; at question time search only the finest level, pull in the ancestors, and let an LLM prune. In its own tests this is the best of six systems on LoCoMo and LongMemEval-S with the shortest context on LoCoMo.",
+      "claims": [
+        {
+          "claim": "State-of-the-art accuracy among evaluated memory systems.",
+          "evidence": "LoCoMo LLJ 75.30 vs MemOS 69.24; LongMemEval-S 76.88 vs MemOS 68.68 (gpt-4o-mini), 78.96 vs 73.07 (gpt-4o). Tables 1-2"
+        },
+        {
+          "claim": "Much shorter recalled context.",
+          "evidence": "511 tokens per LoCoMo question, 52.2% below Mem0's 1,070. Table 6, §4.5"
+        },
+        {
+          "claim": "The planner and the gate both help.",
+          "evidence": "No gate 72.99 / 73.80; best fixed scope with gate 73.38 / 75.00; full 75.30 / 76.88. Table 3"
+        },
+        {
+          "claim": "The full hierarchy beats either part alone.",
+          "evidence": "L1 only 73.18 / 72.40, L2-L5 only 57.08 / 64.20, full 75.30 / 76.88. Table 4"
+        },
+        {
+          "claim": "Consolidation separates users on LoCoMo and reduces spread on LongMemEval-S.",
+          "evidence": "Silhouette 0.093 → 0.574 from L1 to L5; spread 0.692 → 0.345. Fig. 3, Tables 11-12"
+        },
+        {
+          "claim": "Finer segments are better.",
+          "evidence": "LoCoMo 75.30 at 1 exchange, 65.26 at 8. Table 9"
+        }
+      ],
+      "limits": [
+        "Consolidation and recall rely on general-purpose LLMs through prompts; smaller fine-tuned models might be cheaper.",
+        "Higher levels are free text without categories or knowledge graphs.",
+        "There is no storage-time forgetting.",
+        "Time boundaries are fixed (session, day, week, month) rather than detected."
+      ],
+      "limits_src": "paper §6 Limitations",
+      "reading": [
+        "Higher levels are never searched by the question; they only arrive as parents of the 20 leaves, so the tree adds context around what dense + BM25 already found rather than finding new evidence.",
+        "In the code the leaves are put in time order before the parent walk, so the level quotas (e.g. 4 sessions) are filled from the earliest matching leaves, not the most relevant ones.",
+        "The released config does not load the complexity-specific gate prompts shown in App. E.3.6; if the reported runs used this config, the gate was a generic keep/drop prompt.",
+        "Complex-query budgets in Table 7 (L2 8, L3 4) are twice the LoCoMo config values (L2 4, L3 2).",
+        "Baselines were rerun by the authors with gpt-4o-mini, Qwen3-Embedding-0.6B and k = 20 for all; each baseline's own retrieval settings may differ from its paper, and the number of runs behind the ± values is not stated.",
+        "LoCoMo numbers use Mem0's lenient judge prompt over 1,540 questions (adversarial excluded), so they are comparable only with rows using the same judge."
+      ]
+    },
+    "abstract": {
+      "text": "TiMem stores a long conversation as a time-ordered tree: each exchange becomes a short LLM-written fragment, and fragments are consolidated on a schedule into session, day, week and monthly-profile memories, each covering the time span of its children. No model is fine-tuned; each level has its own prompt. At question time an LLM judges how complex the question is, fragments are found by dense and keyword search, their ancestors at the matching levels are added, and an LLM gate keeps only what is needed. The authors report the best accuracy among evaluated systems on LoCoMo (75.30) and LongMemEval-S (76.88) with about half Mem0's recalled context on LoCoMo.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2601.02845"
+    },
+    "sections": {
+      "Memory architecture": "§3",
+      "Results": "§4.2, §4.5",
+      "Ablation": "§4.3, §4.6",
+      "Discussion": "§4.8, §6 Limitations",
+      "Details": "§4.1, App. B, App. E.3"
+    }
+  }
+}

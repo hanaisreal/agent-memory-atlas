@@ -1,0 +1,385 @@
+{
+  "id": "dynamic-memory-recall",
+  "name": "Human-like Memory Recall and Consolidation",
+  "paper": {
+    "title": "\"My agent understands me better\": Integrating Dynamic Human-like Memory Recall and Consolidation in LLM-Based Agents",
+    "arxiv": "2404.00573",
+    "url": "https://arxiv.org/abs/2404.00573",
+    "venue": "CHI 2024 Late-Breaking Work (CHI EA '24)",
+    "venue_short": "CHI",
+    "track": "short",
+    "year": 2024,
+    "code": null
+  },
+  "design": {
+    "construction": {
+      "unit": "event: a short statement about the user (e.g. \"User stayed at home\") with its time",
+      "kept_as": "short event sentences derived from the chat history; how they are generated is not described",
+      "processing": "chat events generated from the dialogue history and embedded into a vector store (details not given)",
+      "trigger": null,
+      "writer": null
+    },
+    "organization": {
+      "structure": "flat event store + raw chat history",
+      "stores": "Qdrant vector store of events (content, time, recall strength g); Firestore chat history",
+      "index": "dense vectors, cosine similarity (embedding model not stated)"
+    },
+    "management": {
+      "operations": "on each recall the event's decay slows: g_n = g_(n-1) + S(t), S(t) = (1 - e^-t)/(1 + e^-t)",
+      "conflicts": null,
+      "forgetting": "none by design: recall probability decays with time but never reaches zero",
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "the user's current message",
+      "candidates": "Qdrant vector search over events",
+      "selection": "recall probability p_n(t) from cosine relevance r, elapsed time t and strength g_n; recall when p exceeds k = 0.86",
+      "budget": "one past dialogue history / event added to the prompt"
+    },
+    "use": {
+      "context": "agent persona prompt, system prompt with the user's schedule and current time, plus the recalled event",
+      "reasoning": "single GPT-4-0613 reply"
+    },
+    "control": {
+      "construction": "none",
+      "management": "fixed-rule",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "flat",
+    "index": "vector",
+    "management": "update in place",
+    "candidates": "dense",
+    "decides": "top-k rule",
+    "note": "Selection is a fixed formula plus a threshold (p > 0.86), with one event passed on; the only update is the recall-strength counter g of a recalled event. How events are written is not described."
+  },
+  "tags": {
+    "fidelity": "extracted",
+    "structure": [
+      "flat"
+    ],
+    "write_time": [
+      "extract"
+    ],
+    "selection": [
+      "dense"
+    ],
+    "memory_type": [
+      "episodic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "conversation"
+    ]
+  },
+  "stages": {
+    "ingestion": "Chat turns are kept in a Firestore chat history; an EventHandler builds chat events from past dialogue (the paper gives no prompt or rule for this).",
+    "construction": "Each event is a short sentence about the user (e.g. \"User went to the university today\") stored in Qdrant with its time and a recall strength g that starts at 1.",
+    "organization": "One flat vector collection of events alongside the raw chat history.",
+    "update": "When an event is recalled, its g grows by S(t) = (1 - e^-t)/(1 + e^-t), which is larger for longer gaps since the last recall, so the event decays more slowly afterwards; nothing is deleted.",
+    "retrieval": "The user's message is embedded; each candidate event gets p_n(t) = (1 - exp(-r e^(-t/g_n)))/(1 - e^-1) with r the cosine similarity and t the elapsed time, and is recalled when p exceeds 0.86.",
+    "answer": "GPT-4-0613 answers with a persona prompt, a system prompt holding the current time and the user's schedule, and a single recalled past dialogue.",
+    "learning": ""
+  },
+  "summary": "Dialogue-agent memory that recalls a past event only when a cognitive-psychology recall probability (relevance x time decay, slowed by each spaced recall) passes a threshold, instead of summing recency, importance and relevance scores.",
+  "verified": false,
+  "notes": "Venue: CHI 2024 Late-Breaking Work, published in the Extended Abstracts (CHI EA '24, Honolulu, 7 pages, DOI 10.1145/3613905.3650839; ACM reference in the PDF and dx.doi.org page). Track set to 'short' (extended abstract), not 'main'. Text read from arXiv v1. No code link in the paper and none found by web search; everything here is from the 7-page paper. Construction details (how events are generated, embedding model, time units) are not given, so those design fields are null. The per-task losses come from the bar labels of Fig. 3-A.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2404.00573v1 (PDF read 2026-09-30)",
+      "code": null,
+      "code_note": "No official code: the paper gives no repository link, and a web search found only unrelated projects. Everything is taken from the paper; the implementation of event generation, the embedding model and the time units of t cannot be checked."
+    },
+    "headline": [
+      "The recall score is a formula, not a learned or prompted choice: cosine relevance decayed by elapsed time, with slower decay for events recalled at long intervals.",
+      "Only one past event or dialogue enters the prompt, and only when its recall probability passes 0.86.",
+      "The evaluation is 10 hand-built recall tasks with 4 candidate events each, scored against Generative Agents' scoring rule; no public benchmark is used."
+    ],
+    "units": [
+      {
+        "name": "Event",
+        "role": "one thing the user did or said, with a time",
+        "made_by": "EventHandler from the chat history (method not described)",
+        "fields": [
+          {
+            "name": "content",
+            "what": "short third-person sentence, e.g. \"User worked at restaurant today\"",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper §3.2, Tables 2-4",
+            "url": "https://arxiv.org/pdf/2404.00573"
+          },
+          {
+            "name": "time",
+            "what": "time of the event, giving elapsed time t",
+            "kept_as": "derived",
+            "used_for": [
+              "rerank"
+            ],
+            "src": "paper §3.1, §4.1",
+            "url": "https://arxiv.org/pdf/2404.00573"
+          },
+          {
+            "name": "g (recall strength)",
+            "what": "starts at 1, grows by S(t) on each recall; sets the decay rate a = 1/g",
+            "kept_as": "derived",
+            "used_for": [
+              "rerank"
+            ],
+            "src": "paper Eq. 6-9",
+            "url": "https://arxiv.org/pdf/2404.00573"
+          }
+        ]
+      },
+      {
+        "name": "Chat history",
+        "role": "raw past dialogue in Firestore",
+        "made_by": "ChatHistory module",
+        "fields": [
+          {
+            "name": "dialogue",
+            "what": "past turns the agent can reference to generate events",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §4.1, §5",
+            "url": "https://arxiv.org/pdf/2404.00573"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Store dialogue",
+        "how": "ChatHistory module keeps past turns in Firestore",
+        "src": "paper §4.1",
+        "url": "https://arxiv.org/pdf/2404.00573"
+      },
+      {
+        "step": "Make events",
+        "how": "EventHandler derives chat events from the history and stores them in Qdrant with a time and g = 1 (no prompt or rule given)",
+        "src": "paper §3.2, §4.1",
+        "url": "https://arxiv.org/pdf/2404.00573"
+      },
+      {
+        "step": "Consolidate on recall",
+        "how": "g_n = g_(n-1) + S(t), S(t) = (1 - e^-t)/(1 + e^-t)",
+        "src": "paper Eq. 7, 9",
+        "url": "https://arxiv.org/pdf/2404.00573"
+      }
+    ],
+    "read": [
+      {
+        "step": "Search",
+        "round": 1,
+        "input": "user message",
+        "scores": "event content",
+        "how": "Qdrant vector search, cosine relevance r",
+        "src": "paper Eq. 5, §4.1",
+        "url": "https://arxiv.org/pdf/2404.00573"
+      },
+      {
+        "step": "Score",
+        "round": 1,
+        "how": "p_n(t) = (1 - exp(-r e^(-t/g_n))) / (1 - e^-1)",
+        "src": "paper Eq. 8",
+        "url": "https://arxiv.org/pdf/2404.00573"
+      },
+      {
+        "step": "Trigger",
+        "round": 1,
+        "how": "recall when p > k",
+        "params": {
+          "k": "0.86 (set by trial)"
+        },
+        "src": "paper §3.1",
+        "url": "https://arxiv.org/pdf/2404.00573"
+      },
+      {
+        "step": "Answer",
+        "round": 0,
+        "how": "GPT-4-0613 with persona and time prompts plus one recalled past dialogue",
+        "src": "paper §4.1, §5, §6",
+        "url": "https://arxiv.org/pdf/2404.00573"
+      }
+    ],
+    "answer_context": {
+      "sees": "persona prompt, system prompt with the user's schedule and the current time, and one retrieved past dialogue",
+      "format": "not given beyond the two prompt texts in §6",
+      "excludes": [
+        "other events below the threshold",
+        "the full chat history"
+      ],
+      "includes": [
+        "at most one recalled past dialogue / event"
+      ],
+      "src": "paper §5-6",
+      "url": "https://arxiv.org/pdf/2404.00573"
+    },
+    "compression": [
+      {
+        "what": "recalled items in the prompt vs stored events",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported as a ratio: §5 says only one past dialogue history is added, and the store size is not given.",
+        "src": "paper §5",
+        "url": "https://arxiv.org/pdf/2404.00573"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Recall threshold",
+        "value": "0.86",
+        "src": "paper §3.1"
+      },
+      {
+        "label": "Loss vs Generative Agents",
+        "value": "lower on 10 of 10 tasks; t = -5.687, p = 0.000299",
+        "src": "paper Fig. 3"
+      }
+    ],
+    "paper_vs_code": [],
+    "open_questions": [
+      "The table scores (e.g. Table 1: 0.850 for r 0.776, t 434,700 s, g 5.102) cannot be reproduced with Eq. 8 for any single time unit we tried (seconds to years), so the scaling of t is unclear.",
+      "Several recalls in Tables 1 and 3 have scores below 0.86 (0.850, 0.772), so the evaluation seems to take the top-scoring event rather than apply the threshold."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 232",
+        "body": "<text class=\"fig-t\" x=\"58\" y=\"16\" text-anchor=\"middle\">Dialogue</text><rect class=\"gi-ev\" x=\"14\" y=\"26\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"22\" y1=\"35\" x2=\"70\" y2=\"35\"/><rect class=\"gi-ev\" x=\"34\" y=\"50\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"42\" y1=\"59\" x2=\"90\" y2=\"59\"/><rect class=\"gi-ev\" x=\"14\" y=\"74\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"22\" y1=\"83\" x2=\"70\" y2=\"83\"/><rect class=\"gi-ev\" x=\"34\" y=\"98\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"42\" y1=\"107\" x2=\"90\" y2=\"107\"/><text class=\"fig-s\" x=\"58\" y=\"136\" text-anchor=\"middle\">chat history</text><text class=\"fig-s\" x=\"58\" y=\"149\" text-anchor=\"middle\">kept in Firestore</text><path class=\"gi-a\" d=\"M112 70 L143 70\"/><polygon class=\"gi-ah\" points=\"150,70 143,66 143,74\"/><text class=\"fig-s\" x=\"131\" y=\"60\" text-anchor=\"middle\">events</text><rect class=\"gi-ev\" x=\"152\" y=\"20\" width=\"190\" height=\"150\" rx=\"10\"/><text class=\"fig-t\" x=\"247\" y=\"38\" text-anchor=\"middle\">Event</text><rect class=\"gi-hi\" x=\"162\" y=\"48\" width=\"170\" height=\"36\" rx=\"6\"/><text class=\"fig-t\" x=\"170\" y=\"62\" text-anchor=\"start\">text</text><text class=\"fig-s\" x=\"170\" y=\"76\" text-anchor=\"start\">\"User stayed at home\"</text><rect class=\"gi-f\" x=\"162\" y=\"90\" width=\"170\" height=\"32\" rx=\"6\"/><text class=\"fig-t\" x=\"170\" y=\"104\" text-anchor=\"start\">time</text><text class=\"fig-s\" x=\"170\" y=\"116\" text-anchor=\"start\">gives the elapsed time t</text><rect class=\"gi-w\" x=\"162\" y=\"128\" width=\"170\" height=\"34\" rx=\"6\"/><text class=\"fig-t\" x=\"170\" y=\"142\" text-anchor=\"start\">g: recall strength</text><text class=\"fig-s\" x=\"170\" y=\"155\" text-anchor=\"start\">starts at 1</text><path class=\"gi-a\" d=\"M344 70 L377 70\"/><polygon class=\"gi-ah\" points=\"384,70 377,66 377,74\"/><text class=\"fig-s\" x=\"364\" y=\"60\" text-anchor=\"middle\">embed</text><text class=\"fig-t\" x=\"466\" y=\"16\" text-anchor=\"middle\">Qdrant</text><rect class=\"gi-l\" x=\"388\" y=\"26\" width=\"160\" height=\"92\" rx=\"8\"/><circle class=\"gi-n\" cx=\"410\" cy=\"50\" r=\"6\"/><circle class=\"gi-n\" cx=\"440\" cy=\"80\" r=\"6\"/><circle class=\"gi-n\" cx=\"470\" cy=\"46\" r=\"6\"/><circle class=\"gi-n\" cx=\"500\" cy=\"92\" r=\"6\"/><circle class=\"gi-n\" cx=\"526\" cy=\"60\" r=\"6\"/><circle class=\"gi-n\" cx=\"420\" cy=\"100\" r=\"6\"/><text class=\"fig-s\" x=\"468\" y=\"134\" text-anchor=\"middle\">one vector per event</text><rect class=\"gi-f\" x=\"152\" y=\"186\" width=\"396\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"160\" y=\"202\" text-anchor=\"start\">On each recall: g ← g + S(t)</text><text class=\"fig-s\" x=\"160\" y=\"216\" text-anchor=\"start\">S(t) = (1 − e^−t) / (1 + e^−t) &lt; 1; longer gaps add more</text><path class=\"gi-a d\" d=\"M247 186 L247 169\"/><polygon class=\"gi-ah\" points=\"247,162 243,169 251,169\"/><text class=\"fig-s\" x=\"40\" y=\"202\" text-anchor=\"middle\">no deletion:</text><text class=\"fig-s\" x=\"40\" y=\"215\" text-anchor=\"middle\">p never hits 0</text>",
+        "text": [
+          "Past dialogue is kept in Firestore and turned into short events about the user, each stored in Qdrant with its time and a recall strength g that starts at 1.",
+          "Every time an event is recalled, g grows (more for longer gaps), so the event fades more slowly; nothing is ever deleted."
+        ],
+        "src": "paper §3.1-3.2, §4.1, Eq. 6-9",
+        "url": "https://arxiv.org/pdf/2404.00573"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 236",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"30\" width=\"74\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"41.0\" y=\"50.0\" text-anchor=\"middle\">User turn</text><text class=\"fig-s\" x=\"41.0\" y=\"63.0\" text-anchor=\"middle\">new message</text><path class=\"gi-a\" d=\"M78 52 L85 52\"/><polygon class=\"gi-ah\" points=\"92,52 85,48 85,56\"/><rect class=\"gi-v fig-soft\" x=\"92\" y=\"30\" width=\"92\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"138\" y=\"50\" text-anchor=\"middle\">Search</text><text class=\"fig-s\" x=\"138\" y=\"63\" text-anchor=\"middle\">Qdrant events</text><path class=\"gi-a\" d=\"M184 52 L191 52\"/><polygon class=\"gi-ah\" points=\"198,52 191,48 191,56\"/><rect class=\"gi-w\" x=\"198\" y=\"22\" width=\"184\" height=\"60\" rx=\"8\"/><text class=\"fig-t\" x=\"290\" y=\"40\" text-anchor=\"middle\">Recall probability</text><text class=\"fig-s\" x=\"290\" y=\"55\" text-anchor=\"middle\">p = (1 − e^(−r·e^(−t/g))) / (1 − e⁻¹)</text><text class=\"fig-s\" x=\"290\" y=\"70\" text-anchor=\"middle\">r cosine, t elapsed, g strength</text><path class=\"gi-a\" d=\"M382 52 L393 52\"/><polygon class=\"gi-ah\" points=\"400,52 393,48 393,56\"/><polygon class=\"gi-llm\" points=\"448,24 496,52 448,80 400,52\"/><text class=\"fig-t\" x=\"448\" y=\"50\" text-anchor=\"middle\">p &gt; 0.86?</text><text class=\"fig-s\" x=\"448\" y=\"64\" text-anchor=\"middle\">rule</text><path class=\"gi-a\" d=\"M448 80 L448 143\"/><polygon class=\"gi-ah\" points=\"448,150 444,143 452,143\"/><text class=\"fig-yes\" x=\"456\" y=\"116\" text-anchor=\"start\">Yes</text><text class=\"fig-s\" x=\"456\" y=\"129\" text-anchor=\"start\">top event only</text><path class=\"gi-a\" d=\"M496 52 L530 52 L530 143\"/><polygon class=\"gi-ah\" points=\"530,150 526,143 534,143\"/><text class=\"fig-no\" x=\"538\" y=\"90\" text-anchor=\"end\">No</text><rect class=\"gi-llm\" x=\"372\" y=\"150\" width=\"184\" height=\"54\" rx=\"8\"/><text class=\"fig-t\" x=\"464\" y=\"170\" text-anchor=\"middle\">GPT-4-0613 answers</text><text class=\"fig-s\" x=\"464\" y=\"184\" text-anchor=\"middle\">persona + current time</text><text class=\"fig-s\" x=\"464\" y=\"197\" text-anchor=\"middle\">+ at most 1 recalled event</text><rect class=\"gi-f\" x=\"92\" y=\"150\" width=\"232\" height=\"54\" rx=\"8\"/><text class=\"fig-t\" x=\"208\" y=\"170\" text-anchor=\"middle\">Consolidate the recalled event</text><text class=\"fig-s\" x=\"208\" y=\"184\" text-anchor=\"middle\">g ← g + S(t): it decays more slowly</text><text class=\"fig-s\" x=\"208\" y=\"197\" text-anchor=\"middle\">from now on</text><path class=\"gi-a d\" d=\"M448 110 L208 110 L208 143\"/><polygon class=\"gi-ah\" points=\"208,150 204,143 212,143\"/><text class=\"fig-s\" x=\"214\" y=\"104\" text-anchor=\"start\">recalled event</text><text class=\"fig-s\" x=\"280\" y=\"228\" text-anchor=\"middle\">the 0.86 threshold was chosen by trial; how t is scaled is not stated</text>",
+        "text": [
+          "Candidate events are scored by a recall probability that combines cosine relevance, elapsed time and recall strength.",
+          "An event whose probability passes 0.86 is added to GPT-4's prompt and consolidated; at most one past dialogue is used."
+        ],
+        "src": "paper §3.1, §4.1, §5, Eq. 5, 8",
+        "url": "https://arxiv.org/pdf/2404.00573"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Initial recall strength",
+        "value": "g0 = 1",
+        "src": "paper Eq. 6",
+        "section": "construction"
+      },
+      {
+        "label": "Strength added per recall",
+        "value": "S(t) = (1 − e^−t)/(1 + e^−t), below 1",
+        "src": "paper Eq. 7",
+        "section": "construction"
+      },
+      {
+        "label": "Recall threshold",
+        "value": "p > 0.86",
+        "src": "paper §3.1",
+        "section": "method"
+      },
+      {
+        "label": "Items added to the prompt",
+        "value": "1 past dialogue",
+        "src": "paper §5",
+        "section": "method"
+      },
+      {
+        "label": "Evaluation tasks",
+        "value": "10, each with 4 candidate events",
+        "src": "paper §4.1",
+        "section": "results"
+      },
+      {
+        "label": "User study",
+        "value": "6 participants, 1 week to 3 months",
+        "src": "paper §4.1",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Event search",
+        "model": "Qdrant vector search (embedding model not stated)",
+        "kind": "retriever",
+        "src": "paper §4.1"
+      },
+      {
+        "role": "Recall decision",
+        "model": "recall-probability formula, threshold 0.86",
+        "kind": "rule",
+        "src": "paper Eq. 8, §3.1"
+      },
+      {
+        "role": "Consolidation",
+        "model": "g update rule",
+        "kind": "rule",
+        "src": "paper Eq. 9"
+      },
+      {
+        "role": "Answer",
+        "model": "GPT-4-0613",
+        "kind": "llm",
+        "src": "paper §4.1"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Replacing a weighted recency/importance/relevance score with a recall-probability model in which spaced recalls slow forgetting picks the expected event in 9 of 10 small hand-built tasks where Generative Agents' scoring picks 1.",
+      "claims": [
+        {
+          "claim": "Lower recall loss than Generative Agents' scoring.",
+          "evidence": "Loss lower on all 10 tasks (e.g. 0.200 vs 0.500 on task 1); paired t = -5.687, p = 0.000299, 95% CI of the difference [-0.27, -0.12]. Fig. 3, §4.2"
+        },
+        {
+          "claim": "The agent's replies reflect recalled user habits and preferences.",
+          "evidence": "Two dialogue examples from the user study (ice cream reward, Hawaii paper deadline). Tables 3-4, §4.3.1"
+        },
+        {
+          "claim": "Keeps prompts short.",
+          "evidence": "Only one past dialogue is added to the prompt. §5"
+        }
+      ],
+      "limits": [
+        "Relies on long-term behaviour patterns, so it adapts poorly when the user's habits change (e.g. Task 0, where both models fail).",
+        "Needs a larger, high-quality dataset; the combination of relevance, time and frequency is not tuned.",
+        "Storage and compute costs of the database interaction are not studied.",
+        "Evaluated on specific domains and tasks only."
+      ],
+      "limits_src": "paper §4.3, §5, §7",
+      "reading": [
+        "The quantitative test is 10 tasks built from the authors' own conversation logs, each asking which of 4 events should be recalled; the loss compares softmax-normalised scores with a one-hot label, not answer quality.",
+        "The comparison changes only the scoring rule: Generative Agents' recency, importance and relevance scores are recomputed on the same events, with importance values (2-7) whose source is not stated.",
+        "The threshold 0.86 is set by trial, and scores below it are still counted as recalls in the examples, so the trigger itself is not evaluated.",
+        "The time unit inside Eq. 8 is not stated, and the reported scores do not follow Eq. 8 with t in any single unit we tried.",
+        "No code, embedding model or event-generation prompt is given, and the user study reports two example dialogues and no measured outcome."
+      ]
+    },
+    "abstract": {
+      "text": "The paper gives an LLM dialogue agent a memory modelled on human cued recall and consolidation. Past events about the user are kept in a vector database with their time, and a recall probability built from cosine relevance and elapsed time decides whether an event is brought back. Each recall slows the event's future decay, more so when recalls are spaced out, and memories never fully disappear. On 10 small recall tasks the model has lower loss than Generative Agents' scoring, and a short user study shows replies that use recalled preferences.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2404.00573"
+    },
+    "sections": {
+      "Memory architecture": "§3",
+      "Results": "§4.2, §4.3",
+      "Discussion": "§5, §7",
+      "Details": "§4.1, §6"
+    }
+  }
+}

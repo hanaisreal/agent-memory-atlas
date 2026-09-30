@@ -1,0 +1,522 @@
+{
+  "id": "synapse",
+  "name": "Synapse",
+  "paper": {
+    "title": "Synapse: Trajectory-as-Exemplar Prompting with Memory for Computer Control",
+    "arxiv": "2306.07863",
+    "url": "https://arxiv.org/abs/2306.07863",
+    "venue": "ICLR 2024",
+    "venue_short": "ICLR",
+    "track": "main",
+    "year": 2024,
+    "code": "https://github.com/ltzheng/Synapse"
+  },
+  "design": {
+    "construction": {
+      "unit": "exemplar: task-metadata key mapped to full successful trajectories (clean observation, action pairs) and, on MiniWoB++, state-abstraction prompts",
+      "kept_as": "demonstrations kept as given: hand-written MiniWoB++ trajectories with human-cleaned observations; Mind2Web training trajectories with ranker top-3 observations and gold actions",
+      "processing": "embed each key (task text plus first HTML state, or website/domain/subdomain/task) with text-embedding-ada-002 into FAISS",
+      "trigger": "offline-batch",
+      "writer": "humans and the Mind2Web training set; the agent never writes"
+    },
+    "organization": {
+      "structure": "flat key-value store",
+      "stores": "one FAISS index per benchmark: MiniWoB++ 240 keys (48 tasks x 5 seeds) mapped to 48 exemplar sets; Mind2Web 1,009 training trajectories",
+      "index": "text-embedding-ada-002 dense vectors, Euclidean distance"
+    },
+    "management": {
+      "operations": null,
+      "conflicts": null,
+      "forgetting": null,
+      "timing": "none"
+    },
+    "retrieval": {
+      "query": "MiniWoB++: task text + initial raw HTML state; Mind2Web: website, domain, subdomain and task",
+      "candidates": "dense top-3 nearest keys",
+      "selection": "MiniWoB++: majority task name among the 3, then all exemplars of that task; Mind2Web: the 3 trajectories, later ones dropped if they overflow the context",
+      "budget": "top-3 keys; once per episode"
+    },
+    "use": {
+      "context": "retrieved exemplar trajectories, then the task and the current trajectory of clean observations and actions",
+      "reasoning": "per step: one state-abstraction call (LLM, LLM-written code, or the Mind2Web ranker) and one acting call that may emit several actions"
+    },
+    "control": {
+      "construction": "none",
+      "management": "none",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "flat",
+    "index": "vector",
+    "management": "append-only",
+    "candidates": "dense",
+    "decides": "top-k rule",
+    "note": "The store is built once from demonstrations and never changes at test time; 'append-only' is the closest level. On MiniWoB++ a majority vote over the top 3 picks one task whose exemplars are all used."
+  },
+  "tags": {
+    "fidelity": "verbatim+derived",
+    "structure": [
+      "flat"
+    ],
+    "write_time": [
+      "filter"
+    ],
+    "selection": [
+      "dense"
+    ],
+    "memory_type": [
+      "procedural",
+      "episodic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "web",
+      "gui"
+    ]
+  },
+  "stages": {
+    "ingestion": "Demonstrations are collected before evaluation: hand-made MiniWoB++ trajectories for 48 tasks (observations cleaned by humans, parsing code sampled from GPT-4 and checked) and the 1,009 Mind2Web training tasks.",
+    "construction": "Each exemplar keeps a complete trajectory (task, clean observation, action, ..., observation, action); on Mind2Web the observations are the element ranker's top 3 elements. The key is task metadata embedded with text-embedding-ada-002.",
+    "organization": "Keys go into one FAISS index per benchmark; each key points to its exemplar (MiniWoB++: 5 keys per task from 5 random seeds).",
+    "update": "",
+    "retrieval": "At the start of a task its metadata is embedded and the 3 nearest keys (Euclidean) are found. MiniWoB++ takes the most common task among them and loads all its exemplars; Mind2Web uses the 3 trajectories.",
+    "answer": "At every step the LLM first abstracts the raw state into a short observation, then reads the exemplar trajectories plus the current task history and writes the next action(s), possibly several before asking for a new state.",
+    "learning": ""
+  },
+  "summary": "Computer-control agent that prompts with whole trajectories of abstracted states and actions, picked from a FAISS memory of demonstrations by similarity of task metadata instead of a hard-coded task-to-exemplar map.",
+  "verified": false,
+  "notes": "Venue: ICLR 2024 poster (PDF header 'Published as a conference paper at ICLR 2024'; iclr.cc/virtual/2024/poster/18701; README links openreview Pc8AU1aF5e). Text read from arXiv v3 (19 Jan 2024). Code: github.com/ltzheng/Synapse at HEAD 08c3a25 (2026-01-07); the last .py change is 89dbbf8 (2024-03-05), so the code at HEAD is the code after the camera-ready. The memory is a read-only exemplar library, not a record of the agent's own experience: management fields are null and timing none. control.construction=none because demonstrations are prepared by humans / the dataset, not by the system.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2306.07863v3 (PDF read 2026-09-30)",
+      "code": "https://github.com/ltzheng/Synapse/tree/08c3a252ff158822e50e9c109c1cd49dc2f6147d/",
+      "code_note": "Official repository linked from the paper's project page. HEAD 08c3a25 (2026-01-07) is used; commits after 2024-03-05 only touch figures and the licence, so the Python code is the post-camera-ready release. Memory contents for MiniWoB++ (specifiers.json, exemplars.json) are in the repo; the Mind2Web memory is built by build_memory.py from the dataset."
+    },
+    "headline": [
+      "The memory holds demonstrations prepared before evaluation, not the agent's own experience; nothing is written back during or after a task.",
+      "Retrieval runs once per task, on task metadata; the retrieved trajectories stay fixed for every step of the episode.",
+      "On MiniWoB++ the 3 nearest keys only vote for a task name; the agent then gets every exemplar of that task, as a hard-coded map would."
+    ],
+    "units": [
+      {
+        "name": "MiniWoB++ exemplar set",
+        "role": "all demonstrations for one of 48 tasks",
+        "made_by": "the authors (observations cleaned by humans; parsing code sampled from GPT-4 and checked by humans)",
+        "fields": [
+          {
+            "name": "key (specifier)",
+            "what": "\"Task: ...\\nState:\\n<raw HTML>\" from one random seed; 5 per task",
+            "kept_as": "verbatim",
+            "used_for": [
+              "index"
+            ],
+            "src": "code memory/miniwob/specifiers.json; build_memory.py L63-L85",
+            "url": "https://github.com/ltzheng/Synapse/blob/08c3a252ff158822e50e9c109c1cd49dc2f6147d/synapse/memory/miniwob/build_memory.py#L63-L85"
+          },
+          {
+            "name": "task name",
+            "what": "label the vote is taken on",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code build_memory.py L88-L96",
+            "url": "https://github.com/ltzheng/Synapse/blob/08c3a252ff158822e50e9c109c1cd49dc2f6147d/synapse/memory/miniwob/build_memory.py#L88-L96"
+          },
+          {
+            "name": "demo trajectories",
+            "what": "task, then state / clean observation / action per step; 2-36 demos per task in the file",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code memory/miniwob/exemplars.json; agents/miniwob.py L105-L194",
+            "url": "https://github.com/ltzheng/Synapse/blob/08c3a252ff158822e50e9c109c1cd49dc2f6147d/synapse/agents/miniwob.py#L105-L194"
+          },
+          {
+            "name": "state-abstraction prompt",
+            "what": "state-observation pairs or task-code pairs (e.g. book-flight parsing code)",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.2, App. B.1; code agents/miniwob.py L196-L327",
+            "url": "https://github.com/ltzheng/Synapse/blob/08c3a252ff158822e50e9c109c1cd49dc2f6147d/synapse/agents/miniwob.py#L196-L327"
+          }
+        ]
+      },
+      {
+        "name": "Mind2Web exemplar",
+        "role": "one training-set task as a trajectory",
+        "made_by": "build_memory.py from the Mind2Web training split and its element-ranker scores",
+        "fields": [
+          {
+            "name": "key (specifier)",
+            "what": "Website, Domain, Subdomain, Task (paper names website, domain and task)",
+            "kept_as": "verbatim",
+            "used_for": [
+              "index"
+            ],
+            "src": "code memory/mind2web/build_memory.py L16-L25",
+            "url": "https://github.com/ltzheng/Synapse/blob/08c3a252ff158822e50e9c109c1cd49dc2f6147d/synapse/memory/mind2web/build_memory.py#L16-L25"
+          },
+          {
+            "name": "observations",
+            "what": "HTML pruned to the gold element plus the top-2 ranked others (k=3)",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code build_memory.py L53-L61; env_utils.py L122-L132",
+            "url": "https://github.com/ltzheng/Synapse/blob/08c3a252ff158822e50e9c109c1cd49dc2f6147d/synapse/envs/mind2web/env_utils.py#L122-L132"
+          },
+          {
+            "name": "actions",
+            "what": "gold action with its readable form, e.g. CLICK [131] ([link] Shopping Cart -> CLICK)",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code build_memory.py L53-L67; paper App. C.4",
+            "url": "https://github.com/ltzheng/Synapse/blob/08c3a252ff158822e50e9c109c1cd49dc2f6147d/synapse/memory/mind2web/build_memory.py#L53-L67"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Collect demonstrations",
+        "how": "MiniWoB++: trajectories for 48 tasks with human-cleaned observations; Mind2Web: the training split",
+        "out": "48 tasks (5 keys each) / 1,009 tasks",
+        "src": "paper §3.4, App. B.1-B.2",
+        "url": "https://arxiv.org/pdf/2306.07863"
+      },
+      {
+        "step": "Embed keys",
+        "how": "text-embedding-ada-002 over the key text, stored in FAISS with the exemplar name as metadata",
+        "src": "code miniwob/build_memory.py L75-L85; mind2web/build_memory.py L74-L82",
+        "url": "https://github.com/ltzheng/Synapse/blob/08c3a252ff158822e50e9c109c1cd49dc2f6147d/synapse/memory/mind2web/build_memory.py#L74-L82"
+      }
+    ],
+    "read": [
+      {
+        "step": "Match task",
+        "round": 1,
+        "input": "task metadata",
+        "scores": "MiniWoB++: task text + first raw HTML state; Mind2Web: website, domain, subdomain, task",
+        "how": "ada-002 embedding, FAISS nearest neighbours (Euclidean)",
+        "params": {
+          "k": "3"
+        },
+        "src": "paper §3.4; code agents/miniwob.py L94-L95; run_mind2web.py L26",
+        "url": "https://github.com/ltzheng/Synapse/blob/08c3a252ff158822e50e9c109c1cd49dc2f6147d/synapse/agents/miniwob.py#L94-L95"
+      },
+      {
+        "step": "Pick exemplars",
+        "round": 1,
+        "how": "MiniWoB++: most common task name among the 3, load all its exemplars; Mind2Web: the 3 trajectories, dropping later ones that overflow the 16k context",
+        "src": "code miniwob/build_memory.py L88-L96; agents/mind2web.py L174-L186",
+        "url": "https://github.com/ltzheng/Synapse/blob/08c3a252ff158822e50e9c109c1cd49dc2f6147d/synapse/agents/mind2web.py#L174-L186"
+      },
+      {
+        "step": "Abstract state",
+        "round": 0,
+        "how": "few-shot LLM (state-observation pairs) or LLM-written parsing code, zero-shot fallback on error; Mind2Web uses the ranker's top 5 elements",
+        "params": {
+          "Mind2Web k": "5 current, 3 history"
+        },
+        "src": "paper §3.2, App. C.4; code agents/miniwob.py L196-L327",
+        "url": "https://github.com/ltzheng/Synapse/blob/08c3a252ff158822e50e9c109c1cd49dc2f6147d/synapse/agents/miniwob.py#L196-L327"
+      },
+      {
+        "step": "Act",
+        "round": 0,
+        "how": "LLM reads exemplars, task and current trajectory; may emit several actions before the next state",
+        "src": "paper §3.3; code agents/miniwob.py L329-L384",
+        "url": "https://github.com/ltzheng/Synapse/blob/08c3a252ff158822e50e9c109c1cd49dc2f6147d/synapse/agents/miniwob.py#L329-L384"
+      }
+    ],
+    "answer_context": {
+      "sees": "system prompt with the action API, retrieved exemplar trajectories, the task, the history of clean observations and actions, the current clean observation",
+      "format": "chat messages: user \"Task: ...\\nTrajectory:\", then user \"Observation: ...\" / assistant action pairs; the same shape for exemplars and the current episode",
+      "excludes": [
+        "raw HTML (except tasks without state abstraction)",
+        "the retrieval keys",
+        "failed trajectories"
+      ],
+      "includes": [
+        "whole exemplar trajectories",
+        "own previous actions"
+      ],
+      "src": "code agents/miniwob.py L329-L354; agents/mind2web.py L129-L187",
+      "url": "https://github.com/ltzheng/Synapse/blob/08c3a252ff158822e50e9c109c1cd49dc2f6147d/synapse/agents/mind2web.py#L129-L187"
+    },
+    "compression": [
+      {
+        "what": "elements in the current Mind2Web observation vs MindAct",
+        "kept": 5,
+        "of": 50,
+        "unit": "elements",
+        "basis": "k=5 current (3 for history) vs MindAct's top-50; recall of the target element falls from 86% to 53% (§3.2)",
+        "src": "paper §3.2, §4.4",
+        "url": "https://arxiv.org/pdf/2306.07863"
+      },
+      {
+        "what": "clean MiniWoB++ observation vs raw HTML",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported. The paper gives no token counts for abstracted states.",
+        "src": "paper §3.2",
+        "url": "https://arxiv.org/pdf/2306.07863"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "MiniWoB++ mean success, 64 tasks",
+        "value": "99.2%",
+        "src": "paper Table 3"
+      },
+      {
+        "label": "Tasks with exemplars / unseen",
+        "value": "48 / 16",
+        "src": "paper App. B.1"
+      },
+      {
+        "label": "Mind2Web Step SR, GPT-3.5 (task / website / domain)",
+        "value": "30.6 / 24.2 / 26.4 vs MindAct 17.4 / 16.2 / 18.6",
+        "src": "paper Table 1"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Where state abstraction runs on MiniWoB++",
+        "paper": "described as the first step of every task",
+        "code": "only the 20 tasks in ENV_TO_FILTER; the other tasks pass the raw HTML to the acting LLM",
+        "src": "agents/miniwob.py L25-L54",
+        "url": "https://github.com/ltzheng/Synapse/blob/08c3a252ff158822e50e9c109c1cd49dc2f6147d/synapse/agents/miniwob.py#L25-L54"
+      },
+      {
+        "topic": "Mind2Web key",
+        "paper": "website name, domain and task description",
+        "code": "also includes the subdomain",
+        "src": "memory/mind2web/build_memory.py L16-L25",
+        "url": "https://github.com/ltzheng/Synapse/blob/08c3a252ff158822e50e9c109c1cd49dc2f6147d/synapse/memory/mind2web/build_memory.py#L16-L25"
+      },
+      {
+        "topic": "History in Mind2Web",
+        "paper": "states filtered by the ranker and target actions are appended",
+        "code": "history observations always contain the gold element (taken from raw HTML if the ranker missed it) plus the top-2 others; history actions are gold, not predicted",
+        "src": "agents/mind2web.py L118-L156; env_utils.py L122-L140",
+        "url": "https://github.com/ltzheng/Synapse/blob/08c3a252ff158822e50e9c109c1cd49dc2f6147d/synapse/agents/mind2web.py#L118-L156"
+      },
+      {
+        "topic": "LLM calls per episode",
+        "paper": "iterates until the task is done or a maximum number of steps",
+        "code": "max_steps is 1 for most tasks (2 for book-flight, terminal, use-autocomplete; 3 login; 10 guess-number, tic-tac-toe)",
+        "src": "run_miniwob.py L36-L43",
+        "url": "https://github.com/ltzheng/Synapse/blob/08c3a252ff158822e50e9c109c1cd49dc2f6147d/run_miniwob.py#L36-L43"
+      }
+    ],
+    "open_questions": [
+      "MiniWoB++ has no memory-off ablation: the gain of memory is shown only as solving 16 unseen tasks, where the code's no-memory mode maps tasks to exemplars by hand.",
+      "On Mind2Web memory adds little (Step SR +1.4 / +1.5 / +0.2 with GPT-3.5); the static baseline uses 3 random training trajectories, so the test is similar vs random exemplars."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 218",
+        "body": "<text class=\"fig-t\" x=\"62\" y=\"16\" text-anchor=\"middle\">Demonstrations</text><rect class=\"gi-ev\" x=\"8\" y=\"26\" width=\"108\" height=\"56\" rx=\"8\"/><text class=\"fig-t\" x=\"62\" y=\"43\" text-anchor=\"middle\">MiniWoB++</text><text class=\"fig-s\" x=\"62\" y=\"57\" text-anchor=\"middle\">48 tasks, 5 seeds</text><text class=\"fig-s\" x=\"62\" y=\"70\" text-anchor=\"middle\">obs cleaned by hand</text><rect class=\"gi-ev\" x=\"8\" y=\"92\" width=\"108\" height=\"56\" rx=\"8\"/><text class=\"fig-t\" x=\"62\" y=\"109\" text-anchor=\"middle\">Mind2Web</text><text class=\"fig-s\" x=\"62\" y=\"123\" text-anchor=\"middle\">1,009 train tasks</text><text class=\"fig-s\" x=\"62\" y=\"136\" text-anchor=\"middle\">gold actions</text><rect class=\"gi-ev d\" x=\"8\" y=\"160\" width=\"108\" height=\"44\" rx=\"8\"/><text class=\"fig-s\" x=\"62\" y=\"178\" text-anchor=\"middle\">agent's own runs</text><text class=\"fig-s\" x=\"62\" y=\"191\" text-anchor=\"middle\">never added</text><path class=\"gi-a\" d=\"M118 100 L143 100\"/><polygon class=\"gi-ah\" points=\"150,100 143,96 143,104\"/><rect class=\"gi-ev\" x=\"152\" y=\"20\" width=\"198\" height=\"190\" rx=\"10\"/><text class=\"fig-t\" x=\"251\" y=\"38\" text-anchor=\"middle\">Exemplar</text><rect class=\"gi-hi\" x=\"162\" y=\"48\" width=\"178\" height=\"48\" rx=\"6\"/><text class=\"fig-t\" x=\"170\" y=\"63\" text-anchor=\"start\">key: task metadata</text><text class=\"fig-s\" x=\"170\" y=\"77\" text-anchor=\"start\">task + first HTML state</text><text class=\"fig-s\" x=\"170\" y=\"89\" text-anchor=\"start\">or site, domain, task</text><rect class=\"gi-f\" x=\"162\" y=\"102\" width=\"178\" height=\"56\" rx=\"6\"/><text class=\"fig-t\" x=\"170\" y=\"117\" text-anchor=\"start\">value: whole trajectory</text><rect class=\"gi-r\" x=\"170\" y=\"127\" width=\"32\" height=\"16\" rx=\"3\"/><text class=\"gi-lbl\" x=\"186\" y=\"138\" text-anchor=\"middle\">obs</text><rect class=\"gi-r\" x=\"210\" y=\"127\" width=\"32\" height=\"16\" rx=\"3\"/><text class=\"gi-lbl\" x=\"226\" y=\"138\" text-anchor=\"middle\">act</text><rect class=\"gi-r\" x=\"250\" y=\"127\" width=\"32\" height=\"16\" rx=\"3\"/><text class=\"gi-lbl\" x=\"266\" y=\"138\" text-anchor=\"middle\">obs</text><rect class=\"gi-r\" x=\"290\" y=\"127\" width=\"32\" height=\"16\" rx=\"3\"/><text class=\"gi-lbl\" x=\"306\" y=\"138\" text-anchor=\"middle\">act</text><text class=\"fig-s\" x=\"332\" y=\"139\" text-anchor=\"start\">…</text><rect class=\"gi-f\" x=\"162\" y=\"164\" width=\"178\" height=\"38\" rx=\"6\"/><text class=\"fig-t\" x=\"170\" y=\"179\" text-anchor=\"start\">abstraction prompts</text><text class=\"fig-s\" x=\"170\" y=\"193\" text-anchor=\"start\">MiniWoB++ only</text><path class=\"gi-a\" d=\"M352 100 L385 100\"/><polygon class=\"gi-ah\" points=\"392,100 385,96 385,104\"/><text class=\"fig-s\" x=\"372\" y=\"90\" text-anchor=\"middle\">ada-002</text><text class=\"fig-t\" x=\"476\" y=\"16\" text-anchor=\"middle\">FAISS store</text><rect class=\"gi-v\" x=\"424\" y=\"28\" width=\"16\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"446\" y=\"28\" width=\"16\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"468\" y=\"28\" width=\"16\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"490\" y=\"28\" width=\"16\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"512\" y=\"28\" width=\"16\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"424\" y=\"50\" width=\"16\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"446\" y=\"50\" width=\"16\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"468\" y=\"50\" width=\"16\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"490\" y=\"50\" width=\"16\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"512\" y=\"50\" width=\"16\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"424\" y=\"72\" width=\"16\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"446\" y=\"72\" width=\"16\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"468\" y=\"72\" width=\"16\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"490\" y=\"72\" width=\"16\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"512\" y=\"72\" width=\"16\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"424\" y=\"94\" width=\"16\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"446\" y=\"94\" width=\"16\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"468\" y=\"94\" width=\"16\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"490\" y=\"94\" width=\"16\" height=\"16\" rx=\"2\"/><rect class=\"gi-v\" x=\"512\" y=\"94\" width=\"16\" height=\"16\" rx=\"2\"/><text class=\"fig-s\" x=\"476\" y=\"136\" text-anchor=\"middle\">MiniWoB++: 240 keys</text><text class=\"fig-s\" x=\"476\" y=\"149\" text-anchor=\"middle\">→ 48 exemplar sets</text><text class=\"fig-s\" x=\"476\" y=\"166\" text-anchor=\"middle\">Mind2Web: 1,009 keys</text><text class=\"fig-s\" x=\"476\" y=\"196\" text-anchor=\"middle\">built once, offline;</text><text class=\"fig-s\" x=\"476\" y=\"209\" text-anchor=\"middle\">never updated</text>",
+        "text": [
+          "Demonstrations are stored as whole trajectories keyed by task metadata: task text plus the first HTML state on MiniWoB++, website, domain and task on Mind2Web.",
+          "Keys are embedded with ada-002 into FAISS once, before evaluation; the agent never adds its own runs."
+        ],
+        "src": "paper §3.4, App. B; code memory/*/build_memory.py",
+        "url": "https://github.com/ltzheng/Synapse/blob/08c3a252ff158822e50e9c109c1cd49dc2f6147d/synapse/memory/mind2web/build_memory.py#L28-L82"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 250",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"26\" width=\"60\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"34.0\" y=\"46.0\" text-anchor=\"middle\">Task</text><text class=\"fig-s\" x=\"34.0\" y=\"59.0\" text-anchor=\"middle\">new episode</text><path class=\"gi-a\" d=\"M64 48 L71 48\"/><polygon class=\"gi-ah\" points=\"78,48 71,44 71,52\"/><rect class=\"gi-v fig-soft\" x=\"78\" y=\"26\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"126\" y=\"46\" text-anchor=\"middle\">Embed key</text><text class=\"fig-s\" x=\"126\" y=\"59\" text-anchor=\"middle\">task metadata</text><path class=\"gi-a\" d=\"M174 48 L181 48\"/><polygon class=\"gi-ah\" points=\"188,48 181,44 181,52\"/><rect class=\"gi-f\" x=\"188\" y=\"26\" width=\"80\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"228.0\" y=\"46.0\" text-anchor=\"middle\">Top 3</text><text class=\"fig-s\" x=\"228.0\" y=\"59.0\" text-anchor=\"middle\">FAISS, L2</text><path class=\"gi-a\" d=\"M268 48 L280 48 L280 27 L285 27\"/><polygon class=\"gi-ah\" points=\"292,27 285,23 285,31\"/><path class=\"gi-a\" d=\"M280 48 L280 69 L285 69\"/><polygon class=\"gi-ah\" points=\"292,69 285,65 285,73\"/><rect class=\"gi-f\" x=\"292\" y=\"10\" width=\"264\" height=\"34\" rx=\"8\"/><text class=\"fig-t\" x=\"300\" y=\"24\" text-anchor=\"start\">MiniWoB++: majority task</text><text class=\"fig-s\" x=\"300\" y=\"37\" text-anchor=\"start\">→ all exemplars of that task (2-36)</text><rect class=\"gi-f\" x=\"292\" y=\"52\" width=\"264\" height=\"34\" rx=\"8\"/><text class=\"fig-t\" x=\"300\" y=\"66\" text-anchor=\"start\">Mind2Web: the 3 trajectories</text><text class=\"fig-s\" x=\"300\" y=\"79\" text-anchor=\"start\">dropped from the end if context is full</text><path class=\"gi-a d\" d=\"M424 86 L424 118 L145 118 L145 143\"/><polygon class=\"gi-ah\" points=\"145,150 141,143 149,143\"/><path class=\"gi-a d\" d=\"M276 118 L276 143\"/><polygon class=\"gi-ah\" points=\"276,150 272,143 280,143\"/><text class=\"fig-s\" x=\"432\" y=\"112\" text-anchor=\"start\">fixed for the episode</text><rect class=\"gi-f\" x=\"4\" y=\"150\" width=\"70\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"39.0\" y=\"172.0\" text-anchor=\"middle\">Raw state</text><text class=\"fig-s\" x=\"39.0\" y=\"185.0\" text-anchor=\"middle\">HTML</text><path class=\"gi-a\" d=\"M74 174 L79 174\"/><polygon class=\"gi-ah\" points=\"86,174 79,170 79,178\"/><rect class=\"gi-llm\" x=\"86\" y=\"150\" width=\"118\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"145\" y=\"170\" text-anchor=\"middle\">Abstract state</text><text class=\"fig-s\" x=\"145\" y=\"183\" text-anchor=\"middle\">few-shot LLM or code</text><path class=\"gi-a\" d=\"M204 174 L209 174\"/><polygon class=\"gi-ah\" points=\"216,174 209,170 209,178\"/><rect class=\"gi-llm\" x=\"216\" y=\"150\" width=\"120\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"276\" y=\"170\" text-anchor=\"middle\">Act</text><text class=\"fig-s\" x=\"276\" y=\"183\" text-anchor=\"middle\">exemplars + history</text><path class=\"gi-a\" d=\"M336 174 L341 174\"/><polygon class=\"gi-ah\" points=\"348,174 341,170 341,178\"/><rect class=\"gi-hi\" x=\"348\" y=\"150\" width=\"92\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"394.0\" y=\"172.0\" text-anchor=\"middle\">Actions</text><text class=\"fig-s\" x=\"394.0\" y=\"185.0\" text-anchor=\"middle\">one or more</text><path class=\"gi-a\" d=\"M440 174 L445 174\"/><polygon class=\"gi-ah\" points=\"452,174 445,170 445,178\"/><rect class=\"gi-f\" x=\"452\" y=\"150\" width=\"102\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"503.0\" y=\"172.0\" text-anchor=\"middle\">Environment</text><text class=\"fig-s\" x=\"503.0\" y=\"185.0\" text-anchor=\"middle\">next state</text><path class=\"gi-a\" d=\"M503 198 L503 226 L39 226 L39 212\"/><polygon class=\"gi-ah\" points=\"39,205 35,212 43,212\"/><text class=\"fig-s\" x=\"271\" y=\"242\" text-anchor=\"middle\">next step: the clean observation and actions join the history</text><text class=\"fig-s\" x=\"145\" y=\"212\" text-anchor=\"middle\">Mind2Web: ranker top 5</text>",
+        "text": [
+          "At the start of a task the 3 nearest keys are found; MiniWoB++ keeps every exemplar of the majority task, Mind2Web the 3 trajectories.",
+          "The same exemplars are then used at every step, both to abstract the raw state and to prompt the acting LLM with the growing history."
+        ],
+        "src": "paper §3.2-3.4; code agents/miniwob.py L94-L384, agents/mind2web.py L66-L193",
+        "url": "https://github.com/ltzheng/Synapse/blob/08c3a252ff158822e50e9c109c1cd49dc2f6147d/synapse/agents/miniwob.py#L94-L384"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Keys in MiniWoB++ memory",
+        "value": "240 (48 tasks x 5 seeds)",
+        "src": "paper §3.4; code specifiers.json",
+        "section": "construction"
+      },
+      {
+        "label": "Trajectories in Mind2Web memory",
+        "value": "1,009 training tasks",
+        "src": "paper App. B.2",
+        "section": "construction"
+      },
+      {
+        "label": "Exemplars per task (MiniWoB++)",
+        "value": "3.45 on average (RCI 1.32); 5 for book-flight",
+        "src": "paper App. B.1",
+        "section": "construction"
+      },
+      {
+        "label": "Keys retrieved",
+        "value": "top 3, once per task",
+        "src": "paper §3.4; code run_mind2web.py L26",
+        "section": "method"
+      },
+      {
+        "label": "Mind2Web elements per observation",
+        "value": "5 current, 3 in history (MindAct: 50)",
+        "src": "paper §3.2, App. C.4",
+        "section": "method"
+      },
+      {
+        "label": "Target element recall after pruning",
+        "value": "53% (86% at k=50)",
+        "src": "paper §3.2",
+        "section": "method"
+      },
+      {
+        "label": "Retrieval distance, Mind2Web",
+        "value": "17.0 task · 24.3 website · 32.9 domain",
+        "src": "paper Table 2",
+        "section": "method"
+      },
+      {
+        "label": "Episodes per MiniWoB++ task",
+        "value": "50",
+        "src": "paper §4.1",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Embed task metadata",
+        "model": "text-embedding-ada-002",
+        "kind": "retriever",
+        "src": "paper §4.1"
+      },
+      {
+        "role": "Nearest-neighbour search",
+        "model": "FAISS, Euclidean, top 3",
+        "kind": "rule",
+        "src": "paper §3.4, §4.1"
+      },
+      {
+        "role": "Pick task by vote (MiniWoB++)",
+        "model": "majority over top 3",
+        "kind": "rule",
+        "src": "code build_memory.py L88-L96",
+        "url": "https://github.com/ltzheng/Synapse/blob/08c3a252ff158822e50e9c109c1cd49dc2f6147d/synapse/memory/miniwob/build_memory.py#L88-L96"
+      },
+      {
+        "role": "State abstraction",
+        "model": "same LLM, few-shot or code; Mind2Web: pretrained element ranker",
+        "kind": "llm",
+        "src": "paper §3.2"
+      },
+      {
+        "role": "Act",
+        "model": "gpt-3.5-turbo-0301 (MiniWoB++); gpt-3.5-turbo-16k-0613 or CodeLlama-7B (Mind2Web), temperature 0",
+        "kind": "llm",
+        "src": "paper §4.1, Table 1"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "Cross-Task",
+        "Cross-Website",
+        "Cross-Domain"
+      ],
+      "rows": [
+        [
+          "MindAct (MCQ, top-50)",
+          "17.4",
+          "16.2",
+          "18.6"
+        ],
+        [
+          "+ state abstraction (direct gen., top-5)",
+          "25.2",
+          "19.6",
+          "24.3"
+        ],
+        [
+          "+ trajectory-as-exemplar",
+          "29.2",
+          "22.7",
+          "26.2"
+        ],
+        [
+          "+ exemplar memory (full Synapse)",
+          "30.6",
+          "24.2",
+          "26.4"
+        ]
+      ],
+      "src": "paper Table 1 (Mind2Web Step SR, GPT-3.5)"
+    },
+    "discussion": {
+      "takeaway": "Cleaning states so that whole trajectories fit in context, and choosing those trajectories by task similarity, lets an in-context agent reach 99.2% on MiniWoB++ without self-correction; memory is the smallest of the three gains on Mind2Web.",
+      "claims": [
+        {
+          "claim": "First ICL method at human level on MiniWoB++.",
+          "evidence": "99.2% mean over 64 tasks vs human 93.5%, RCI 90.6% (54 tasks), AdaPlanner 92.9% (53). Table 3, Fig. 3"
+        },
+        {
+          "claim": "State abstraction makes long pages solvable and leaves room for more exemplars.",
+          "evidence": "book-flight solved (1.00); email-inbox-nl-turk 52% to 100%. Fig. 5, §4.5"
+        },
+        {
+          "claim": "Trajectory exemplars cut error build-up on long tasks.",
+          "evidence": "guess-number / use-spinner / use-autocomplete 100 / 100 / 98% vs RCI 20 / 88 / 58%; Mind2Web Step SR +19% over abstraction only. §4.5, Table 1"
+        },
+        {
+          "claim": "Exemplar memory generalises to unseen tasks.",
+          "evidence": "16 unseen MiniWoB++ tasks solved at almost 100%; Mind2Web Step SR +1.4 / +1.5 / +0.2 (GPT-3.5). §4.5, Table 2"
+        },
+        {
+          "claim": "56% relative Step SR gain over MindAct on Mind2Web.",
+          "evidence": "GPT-3.5 average; 2.5x with CodeLlama-7B. §4.4, Table 1"
+        }
+      ],
+      "limits": [
+        "High inference latency from LLM calls.",
+        "Depends on the quality of the exemplars.",
+        "Memory structure and retrieval are left for further study.",
+        "Text-only; no multimodal or pixel-based control."
+      ],
+      "limits_src": "paper §5",
+      "reading": [
+        "The memory is a curated demonstration library built before evaluation; the agent does not store its own successes, so 'memory' here means exemplar selection.",
+        "On MiniWoB++ retrieval is a vote for a task name; with a clear task split this reproduces a task-to-exemplar map automatically. There is no MiniWoB++ run that swaps memory for a hand map, so its effect is shown only on the 16 unseen tasks.",
+        "On Mind2Web the memory gain is small (Step SR +0.2 to +1.5 with GPT-3.5; -0.2 cross-domain with CodeLlama), and the no-memory variant uses 3 random training trajectories.",
+        "In code, Mind2Web history observations always include the gold element and history actions are gold, so each step is scored with a teacher-forced history; this is how the static dataset is used, not an online run.",
+        "State abstraction runs only on 20 MiniWoB++ tasks in the code; the rest act on raw HTML.",
+        "Baseline MiniWoB++ averages cover different task sets (64 vs 104 vs 54 tasks), so the averages are not directly comparable."
+      ]
+    },
+    "abstract": {
+      "text": "Synapse is an in-context computer-control agent built from three parts. State abstraction shrinks raw HTML to the parts a task needs, so several complete demonstrations fit in the prompt. Trajectory-as-exemplar prompting shows the LLM whole successful trajectories of observations and actions and lets it continue the current one. An exemplar memory embeds task metadata and retrieves the closest demonstrations, so tasks without their own demonstrations can borrow from similar ones. The authors report 99.2% mean success on 64 MiniWoB++ tasks with demonstrations for 48, and a 56% relative step-success gain over MindAct on Mind2Web.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2306.07863"
+    },
+    "sections": {
+      "Memory architecture": "§3.2-3.4",
+      "Results": "§4.3-4.4, App. A",
+      "Ablation": "§4.5, Table 1-2, App. B (Fig. 7)",
+      "Discussion": "§5",
+      "Details": "§4.1, App. B-C"
+    }
+  }
+}

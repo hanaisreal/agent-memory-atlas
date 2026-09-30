@@ -1,0 +1,704 @@
+{
+  "id": "comorag",
+  "name": "ComoRAG",
+  "paper": {
+    "title": "ComoRAG: A Cognitive-Inspired Memory-Organized RAG for Stateful Long Narrative Reasoning",
+    "arxiv": "2508.10419",
+    "url": "https://arxiv.org/abs/2508.10419",
+    "venue": "AAAI 2026",
+    "venue_short": "AAAI",
+    "track": "main",
+    "year": 2026,
+    "code": "https://github.com/EternityJune25/ComoRAG"
+  },
+  "design": {
+    "construction": {
+      "unit": "three indexes over a book (raw chunks with KG triples, cluster summaries, window summaries) + per-question memory units (probe, evidence, cue)",
+      "kept_as": "verbatim 512-token chunks plus LLM summaries; memory units hold LLM-written cues",
+      "processing": "LLM extracts triples per chunk (HippoRAG 2 recipe); GMM clusters summarized recursively (RAPTOR recipe); non-overlapping windows of W chunks summarized in story order",
+      "trigger": "offline-batch",
+      "writer": "GPT-4o-mini (triples, summaries, cues)"
+    },
+    "organization": {
+      "structure": "Veridical layer (chunk-entity graph), Semantic layer (summary tree), Episodic layer (timeline summaries); a per-question memory pool beside them",
+      "stores": "three BGE-M3 embedding stores + igraph KG; memory pool of units (probe, evidence, cue, embedding)",
+      "index": "BGE-M3 dense vectors; fact embeddings seed Personalized PageRank on the KG"
+    },
+    "management": {
+      "operations": "knowledge source is static; each failed cycle appends new memory units and one fused note to the per-question pool",
+      "conflicts": null,
+      "forgetting": "pool is discarded after each question",
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "question at step 0; afterwards up to 3 LLM-written probes per cycle",
+      "candidates": "Veridical: top-5 facts by similarity, LLM fact filter, PPR over KG; Semantic and Episodic: dense similarity; top 50 per layer, items already in the pool dropped",
+      "selection": "per-layer token budget; Mem-Fuse picks the top 50% of pool units by similarity to the question",
+      "budget": "answer context capped at 6k tokens, 8:2:2:1 across Veridical, Semantic, Episodic and fused history (paper); code caps each layer separately (3,000/1,000/1,000 default, 2,000 each in the example script)"
+    },
+    "use": {
+      "context": "step 0: raw retrieved chunks and summaries; later cycles: LLM cues of the new units plus fused notes",
+      "reasoning": "answer LLM returns an answer or a failure signal ('*'); on failure another probe cycle runs, up to 5 cycles"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "fixed-rule",
+      "retrieval": "prompted-llm"
+    }
+  },
+  "classify": {
+    "structure": "typed stores",
+    "index": "vector",
+    "management": "append-only",
+    "candidates": "graph walk",
+    "decides": "top-k rule",
+    "note": "Three different indexes, of which the Veridical one (PPR over a KG) carries most of the gain in the ablation; Semantic and Episodic use plain dense search. The set is fixed by top-50 plus a token cap; the LLM only decides whether to run another probe cycle and what to probe."
+  },
+  "tags": {
+    "fidelity": "mixed",
+    "structure": [
+      "graph",
+      "tree",
+      "typed-stores"
+    ],
+    "write_time": [
+      "extract",
+      "summarize",
+      "link"
+    ],
+    "selection": [
+      "dense",
+      "graph-expansion",
+      "planner"
+    ],
+    "memory_type": [
+      "episodic",
+      "semantic",
+      "working"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "long-document"
+    ]
+  },
+  "stages": {
+    "ingestion": "The book is split into 512-token chunks.",
+    "construction": "Three indexes are built once: chunks with LLM-extracted triples linked into an entity graph (Veridical), recursive GMM-cluster summaries (Semantic), and summaries of consecutive chunk windows in story order (Episodic).",
+    "organization": "The three layers are separate embedding stores (BGE-M3); a question-specific memory pool holds units of (probe, retrieved evidence from one layer, LLM cue).",
+    "update": "When the answer LLM signals failure, new units from the probes are appended to the pool and an LLM fuses the most question-similar half of the pool into a background note.",
+    "retrieval": "Each query hits all three layers (PPR over the KG for Veridical, dense search for the others), keeps the top 50 per layer minus items already seen, then cuts to a per-layer token budget; after a failure an LLM writes up to 3 new probes that are searched the same way.",
+    "answer": "Step 0 answers from the raw evidence; later cycles answer from the new cues plus fused notes, with multiple-choice options shown only at this step.",
+    "learning": ""
+  },
+  "summary": "Long-narrative RAG that, when a first answer fails, loops up to five times: an LLM writes new probes, evidence from three indexes (entity graph, summary tree, timeline summaries) is turned into query-focused cues, and past cues are fused before answering again.",
+  "verified": false,
+  "notes": "Venue checked: AAAI 2026, Proceedings vol. 40 no. 39, 'AAAI Technical Track on Natural Language Processing IV', pp. 33557-33565 (ojs.aaai.org/index.php/AAAI/article/view/40644); the repo README calls it a poster. Paper text from arXiv v3 (12 Nov 2025). Code: official repo at commit a4f8433 (2025-08-28, latest). The paper describes memory units as holding the retrieved evidence, but the answer LLM only sees raw evidence at step 0.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2508.10419 v3 (PDF read 2026-09-30)",
+      "code": "https://github.com/EternityJune25/ComoRAG/tree/a4f84337094a023bc48e70c3f89cc969536c08a0/",
+      "code_note": "Official repository linked from the paper. Commit a4f8433 (2025-08-28) is the newest; it only has three commits, all from 2025-08-28, so it was released after the first arXiv version (2025-08-14). The repo ships an example on a toy corpus, not the evaluation scripts or configs for the four benchmarks, so the exact settings behind Table 1 cannot be checked."
+    },
+    "headline": [
+      "The answer LLM reads raw text only at step 0. After a failure it reads LLM-written cues (up to 5 'key findings' per layer per probe) and fused notes, never the chunks themselves.",
+      "Almost all of the gain comes from the loop: step 0 alone is within 1% of the best baseline on EN.MC (64.6), the full loop reaches 72.93.",
+      "The memory pool lives for one question; nothing is carried across questions."
+    ],
+    "units": [
+      {
+        "name": "Veridical layer",
+        "role": "raw text of the book, the ground truth for facts",
+        "made_by": "chunking + LLM triple extraction (HippoRAG 2 procedure)",
+        "fields": [
+          {
+            "name": "chunk",
+            "what": "512-token text chunk",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §2.2, Table 6; code ComoRAG.py L286-L288 (step 0 only)",
+            "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/ComoRAG.py#L286-L288"
+          },
+          {
+            "name": "triples",
+            "what": "subject-predicate-object facts per chunk; entities become graph nodes",
+            "kept_as": "extracted",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper App. B.1; code ComoRAG.py L228-L263",
+            "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/ComoRAG.py#L228-L263"
+          },
+          {
+            "name": "entity graph",
+            "what": "entities, chunk nodes, fact edges and synonym edges (similarity > 0.8)",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code ComoRAG.py L250-L263; config_utils.py L164-L166",
+            "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/ComoRAG.py#L250-L263"
+          }
+        ]
+      },
+      {
+        "name": "Semantic layer",
+        "role": "thematic summaries across distant parts of the book",
+        "made_by": "UMAP + GMM soft clustering of chunks, LLM summary per cluster, repeated on the summaries (RAPTOR procedure)",
+        "fields": [
+          {
+            "name": "cluster summary",
+            "what": "one LLM summary per cluster, all levels pooled in one store",
+            "kept_as": "summarized",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper §2.2; code ComoRAG.py L218-L224, L1107-L1194",
+            "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/ComoRAG.py#L1107-L1194"
+          }
+        ]
+      },
+      {
+        "name": "Episodic layer",
+        "role": "plot progression in story order",
+        "made_by": "LLM summary of each window of W consecutive chunks",
+        "fields": [
+          {
+            "name": "window summary",
+            "what": "chronological summary of W chunks; W from 2 (≤5 chunks) up to min(20, max(10, 2·log2 N))",
+            "kept_as": "summarized",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper App. B.2; code timeline_utils.py L41-L56, L287-L315",
+            "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/utils/timeline_utils.py#L41-L56"
+          }
+        ]
+      },
+      {
+        "name": "Memory unit",
+        "role": "record of one retrieval for one question: probe, evidence from one layer, and what it says about the question",
+        "made_by": "Comprehension Agent (LLM), three units per probe",
+        "fields": [
+          {
+            "name": "probe",
+            "what": "the question (step 0) or an LLM-written probing query",
+            "kept_as": "rewritten",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §2.3; code memory_utils.py L24-L30",
+            "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/utils/memory_utils.py#L24-L30"
+          },
+          {
+            "name": "evidence",
+            "what": "items from one layer that fit its token budget",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "code ComoRAG.py L557-L623; after step 0 only the hashes are used, to skip already-seen items",
+            "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/ComoRAG.py#L557-L623"
+          },
+          {
+            "name": "cue",
+            "what": "up to 5 'Key Finding' lines relating the evidence to the question",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper App. D (Mem-Encode); code memory_fusion.py L1-L46",
+            "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/prompts/templates/memory_fusion.py#L1-L46"
+          },
+          {
+            "name": "embedding",
+            "what": "BGE-M3 embedding of probe + cue, used to pick units for fusion",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code memory_utils.py L149-L186",
+            "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/utils/memory_utils.py#L149-L186"
+          }
+        ]
+      },
+      {
+        "name": "Fused note",
+        "role": "background summary of the relevant past units",
+        "made_by": "Integration Agent (LLM), once per failed cycle",
+        "fields": [
+          {
+            "name": "fused cue",
+            "what": "LLM synthesis of the cues of the top 50% of pool units (≤ 1,000 generated tokens)",
+            "kept_as": "summarized",
+            "used_for": [
+              "answer",
+              "index"
+            ],
+            "src": "paper §2.3 Eq. 2; code memory_utils.py L238-L300",
+            "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/utils/memory_utils.py#L238-L300"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Chunk",
+        "how": "split the book into 512-token chunks",
+        "out": "4,446 chunks NarrativeQA · 26,465 EN.QA · 47,074 EN.MC · 2,406 DetectiveQA (whole dataset)",
+        "src": "paper Table 4, Table 6",
+        "url": "https://arxiv.org/pdf/2508.10419"
+      },
+      {
+        "step": "Triples and graph",
+        "how": "LLM extracts triples per chunk; entities, facts and chunks form a graph with synonym edges",
+        "out": "51,012 / 372,339 / 576,595 / 33,696 triples",
+        "src": "paper App. B.1, Table 4; code ComoRAG.py L228-L263",
+        "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/ComoRAG.py#L228-L263"
+      },
+      {
+        "step": "Cluster summaries",
+        "how": "UMAP to 10 dims, GMM with BIC-chosen cluster count, soft membership threshold 0.01, LLM summary per cluster, recurse up to 5 levels",
+        "params": {
+          "levels": "≤ 5"
+        },
+        "src": "paper §2.2; code ComoRAG.py L1107-L1194",
+        "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/ComoRAG.py#L1107-L1194"
+      },
+      {
+        "step": "Window summaries",
+        "how": "consecutive, non-overlapping windows of W chunks summarized by the LLM in chronological order; one level only in the code",
+        "params": {
+          "W": "3/5/8/10 up to 200 chunks; 10-20 beyond"
+        },
+        "src": "paper App. B.2; code timeline_utils.py L287-L315",
+        "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/utils/timeline_utils.py#L287-L315"
+      }
+    ],
+    "read": [
+      {
+        "step": "Tri-Retrieve",
+        "round": 0,
+        "input": "question",
+        "scores": "Veridical: question vs triple embeddings, then PPR over the graph; Semantic, Episodic: question vs summary embeddings",
+        "how": "top 5 facts, LLM fact filter, PPR (damping 0.5, passage weight 0.005); dense search on the other two; keep top 50 per layer; re-sort chunks and window summaries into book order",
+        "params": {
+          "facts": "5",
+          "per layer": "50"
+        },
+        "src": "code ComoRAG.py L456-L555; config_utils.py L176-L218",
+        "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/ComoRAG.py#L456-L555"
+      },
+      {
+        "step": "Budget cut",
+        "round": 0,
+        "how": "walk each layer's list in order and stop at its token budget",
+        "params": {
+          "budget": "paper 6k total (8:2:2:1); code 3,000/1,000/1,000 default"
+        },
+        "src": "paper App. B.4; code ComoRAG.py L557-L581",
+        "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/ComoRAG.py#L557-L581"
+      },
+      {
+        "step": "Try-Answer",
+        "round": 0,
+        "how": "LLM answers from the raw evidence or outputs '*'",
+        "src": "code ComoRAG.py L295-L350",
+        "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/ComoRAG.py#L295-L350"
+      },
+      {
+        "step": "Self-Probe",
+        "round": 1,
+        "input": "question, current answer prompt, all earlier probes",
+        "how": "LLM writes up to 3 probes that avoid entities already probed",
+        "params": {
+          "probes": "≤ 3"
+        },
+        "src": "paper §2.3 Eq. 1; code ComoRAG.py L350-L354; agents.py L133-L166",
+        "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/ComoRAG.py#L350-L354"
+      },
+      {
+        "step": "Tri-Retrieve + Mem-Encode",
+        "round": 1,
+        "how": "each probe searches the three layers (items already in the pool dropped); the LLM writes one cue per layer",
+        "out": "3 units per probe",
+        "src": "code ComoRAG.py L355-L358",
+        "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/ComoRAG.py#L355-L358"
+      },
+      {
+        "step": "Mem-Fuse",
+        "round": 1,
+        "input": "question",
+        "scores": "question vs probe + cue embeddings of earlier units",
+        "how": "top 50% of the pool by cosine similarity; LLM fuses their cues into one note",
+        "params": {
+          "share": "50%"
+        },
+        "src": "paper App. B.4; code memory_utils.py L188-L276",
+        "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/utils/memory_utils.py#L188-L276"
+      },
+      {
+        "step": "Try-Answer again",
+        "round": 1,
+        "how": "LLM reads the new cues and all fused notes; stops on an answer, else another cycle",
+        "params": {
+          "cycles": "≤ 5"
+        },
+        "src": "code ComoRAG.py L360-L376",
+        "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/ComoRAG.py#L360-L376"
+      }
+    ],
+    "answer_context": {
+      "sees": "step 0: raw chunks, cluster and window summaries; later: cues of this cycle's units and fused notes",
+      "format": "sections '### Detail Chunks', '### Semantic Summary', '### Timeline Summary', '### Historical Information' (probe : Finding), then the question",
+      "excludes": [
+        "raw chunks after step 0",
+        "cues from earlier cycles except through fused notes",
+        "multiple-choice options during retrieval"
+      ],
+      "src": "code ComoRAG.py L306-L372",
+      "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/ComoRAG.py#L306-L372",
+      "includes": [
+        "LLM cues ('Key Finding' lines) per layer",
+        "fused background notes"
+      ]
+    },
+    "compression": [
+      {
+        "what": "answer context vs one book",
+        "kept": 6,
+        "of": 200,
+        "unit": "k tokens",
+        "basis": "context cap of 6k tokens (§3, App. B.4) against EN.QA books averaging over 200k tokens (§3); NarrativeQA averages 58k",
+        "src": "paper §3, App. B.4",
+        "url": "https://arxiv.org/pdf/2508.10419"
+      },
+      {
+        "what": "cue vs the evidence it summarizes",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported; the prompt asks for up to 5 key findings.",
+        "src": "paper App. D",
+        "url": "https://arxiv.org/pdf/2508.10419"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "EN.MC accuracy, step 0 only vs full loop",
+        "value": "64.6 → 72.93",
+        "src": "paper Fig. 4, §4.3"
+      },
+      {
+        "label": "EN.MC with GPT-4.1 agents",
+        "value": "78.17",
+        "src": "paper Table 3"
+      },
+      {
+        "label": "GraphRAG vs ComoRAG on a subset",
+        "value": "F1 14.20 vs 33.61; 27.12M vs 5.90M tokens; index 1,936 s vs 291 s",
+        "src": "paper Table 5"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "What the answer model reads after step 0",
+        "paper": "new memory units (probe, evidence, cue) plus the fused cue",
+        "code": "only the cues of this cycle's units and the fused notes; raw evidence is not passed",
+        "src": "ComoRAG.py L363-L372",
+        "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/ComoRAG.py#L363-L372"
+      },
+      {
+        "topic": "Which retrieved items survive the budget",
+        "paper": "retrieval by embedding similarity, context capped at 6k tokens",
+        "code": "the top 50 chunks (and window summaries) are re-sorted into book order before the token cut, so the earliest ones in the book are kept, not the best-scored",
+        "src": "ComoRAG.py L499-L511, L557-L581",
+        "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/ComoRAG.py#L499-L581"
+      },
+      {
+        "topic": "Token budget",
+        "paper": "6k tokens split 8:2:2:1 (Veridical, Semantic, Episodic, history)",
+        "code": "per-layer caps 3,000/1,000/1,000 by default and 2,000 each in the example script; fused history is not capped by the budget",
+        "src": "config_utils.py L241-L251; main_openai.py L68-L70",
+        "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/utils/config_utils.py#L241-L251"
+      },
+      {
+        "topic": "Mem-Encode at step 0",
+        "paper": "only after the first attempt fails (Algorithm 1)",
+        "code": "always runs before the first answer (three LLM calls per question even when step 0 succeeds)",
+        "src": "ComoRAG.py L284-L285",
+        "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/ComoRAG.py#L284-L285"
+      },
+      {
+        "topic": "Episodic windows",
+        "paper": "sliding window, optionally recursive",
+        "code": "non-overlapping windows, one level",
+        "src": "timeline_utils.py L287-L315",
+        "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/utils/timeline_utils.py#L287-L315"
+      }
+    ],
+    "open_questions": [
+      "The w/o Metacognition ablation removes cues and fusion together; no run keeps cues but drops fusion, so the separate value of Mem-Fuse is unknown.",
+      "Because the answer LLM reads cues instead of text after step 0, gains could come from LLM pre-reading (query-focused summarization) as much as from multi-step memory; no baseline gives IRCoT the same summarization.",
+      "The loop costs up to 5 cycles of 3 probes × (fact filter + 3 cue calls) per question; the paper reports no per-question tokens or latency for Table 1."
+    ],
+    "glance": [
+      {
+        "q": "What is stored?",
+        "a": "A three-part index over the book (chunks in an entity graph, a tree of cluster summaries, window summaries in story order), plus a per-question pool of LLM-written cues.",
+        "src": "paper §2.2-2.3",
+        "url": "https://arxiv.org/pdf/2508.10419"
+      },
+      {
+        "q": "Is memory kept across questions?",
+        "a": "No. The pool is created for each question and dropped afterwards; only the static index is shared.",
+        "src": "code ComoRAG.py L265-L282",
+        "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/ComoRAG.py#L265-L282"
+      },
+      {
+        "q": "Is there reranking?",
+        "a": "Not of chunks. The Veridical path filters the top 5 triples with an LLM before PageRank; the other two layers are plain dense top-k.",
+        "src": "code ComoRAG.py L470-L497",
+        "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/ComoRAG.py#L470-L497"
+      },
+      {
+        "q": "What does the answer model read?",
+        "a": "First the raw retrieved text; after a failure, only LLM cues and fused notes.",
+        "src": "code ComoRAG.py L286-L372",
+        "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/ComoRAG.py#L286-L372"
+      }
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 252",
+        "body": "<text class=\"fig-t\" x=\"42\" y=\"16\" text-anchor=\"middle\">Book</text><rect class=\"gi-ev\" x=\"12\" y=\"26\" width=\"60\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"19\" y1=\"34\" x2=\"58\" y2=\"34\"/><rect class=\"gi-ev\" x=\"20\" y=\"48\" width=\"60\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"27\" y1=\"56\" x2=\"66\" y2=\"56\"/><rect class=\"gi-ev\" x=\"12\" y=\"70\" width=\"60\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"19\" y1=\"78\" x2=\"58\" y2=\"78\"/><rect class=\"gi-ev\" x=\"20\" y=\"92\" width=\"60\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"27\" y1=\"100\" x2=\"66\" y2=\"100\"/><rect class=\"gi-ev\" x=\"12\" y=\"114\" width=\"60\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"19\" y1=\"122\" x2=\"58\" y2=\"122\"/><rect class=\"gi-ev\" x=\"20\" y=\"136\" width=\"60\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"27\" y1=\"144\" x2=\"66\" y2=\"144\"/><text class=\"fig-s\" x=\"46\" y=\"172\" text-anchor=\"middle\">58k to 200k+</text><text class=\"fig-s\" x=\"46\" y=\"185\" text-anchor=\"middle\">tokens, cut into</text><text class=\"fig-s\" x=\"46\" y=\"198\" text-anchor=\"middle\">512-token chunks</text><path class=\"gi-a\" d=\"M86 88 L96 88 L96 42 L96 202\"/><path class=\"gi-a\" d=\"M96 42 L103 42\"/><polygon class=\"gi-ah\" points=\"110,42 103,38 103,46\"/><path class=\"gi-a\" d=\"M96 122 L103 122\"/><polygon class=\"gi-ah\" points=\"110,122 103,118 103,126\"/><path class=\"gi-a\" d=\"M96 202 L103 202\"/><polygon class=\"gi-ah\" points=\"110,202 103,198 103,206\"/><rect class=\"gi-f\" x=\"110\" y=\"20\" width=\"94\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"157\" y=\"40\" text-anchor=\"middle\">Veridical</text><text class=\"fig-s\" x=\"157\" y=\"53\" text-anchor=\"middle\">raw chunks</text><path class=\"gi-a\" d=\"M204 42 L215 42\"/><polygon class=\"gi-ah\" points=\"222,42 215,38 215,46\"/><rect class=\"gi-llm\" x=\"222\" y=\"26\" width=\"62\" height=\"32\" rx=\"6\"/><text class=\"gi-lbl\" x=\"253\" y=\"39\" text-anchor=\"middle\">LLM</text><text class=\"fig-s\" x=\"253\" y=\"52\" text-anchor=\"middle\">triples</text><path class=\"gi-a\" d=\"M284 42 L293 42\"/><polygon class=\"gi-ah\" points=\"300,42 293,38 293,46\"/><rect class=\"gi-f\" x=\"110\" y=\"100\" width=\"94\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"157\" y=\"120\" text-anchor=\"middle\">Semantic</text><text class=\"fig-s\" x=\"157\" y=\"133\" text-anchor=\"middle\">chunk clusters</text><path class=\"gi-a\" d=\"M204 122 L215 122\"/><polygon class=\"gi-ah\" points=\"222,122 215,118 215,126\"/><rect class=\"gi-llm\" x=\"222\" y=\"106\" width=\"62\" height=\"32\" rx=\"6\"/><text class=\"gi-lbl\" x=\"253\" y=\"119\" text-anchor=\"middle\">LLM</text><text class=\"fig-s\" x=\"253\" y=\"132\" text-anchor=\"middle\">summarize</text><path class=\"gi-a\" d=\"M284 122 L293 122\"/><polygon class=\"gi-ah\" points=\"300,122 293,118 293,126\"/><rect class=\"gi-f\" x=\"110\" y=\"180\" width=\"94\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"157\" y=\"200\" text-anchor=\"middle\">Episodic</text><text class=\"fig-s\" x=\"157\" y=\"213\" text-anchor=\"middle\">W-chunk windows</text><path class=\"gi-a\" d=\"M204 202 L215 202\"/><polygon class=\"gi-ah\" points=\"222,202 215,198 215,206\"/><rect class=\"gi-llm\" x=\"222\" y=\"186\" width=\"62\" height=\"32\" rx=\"6\"/><text class=\"gi-lbl\" x=\"253\" y=\"199\" text-anchor=\"middle\">LLM</text><text class=\"fig-s\" x=\"253\" y=\"212\" text-anchor=\"middle\">summarize</text><path class=\"gi-a\" d=\"M284 202 L293 202\"/><polygon class=\"gi-ah\" points=\"300,202 293,198 293,206\"/><line class=\"gi-e\" x1=\"314\" y1=\"30\" x2=\"338\" y2=\"24\"/><line class=\"gi-e\" x1=\"338\" y1=\"24\" x2=\"356\" y2=\"42\"/><line class=\"gi-e\" x1=\"314\" y1=\"30\" x2=\"330\" y2=\"54\"/><line class=\"gi-e\" x1=\"330\" y1=\"54\" x2=\"356\" y2=\"42\"/><line class=\"gi-e\" x1=\"312\" y1=\"50\" x2=\"330\" y2=\"54\"/><line class=\"gi-e\" x1=\"356\" y1=\"42\" x2=\"366\" y2=\"60\"/><line class=\"gi-e d\" x1=\"312\" y1=\"50\" x2=\"314\" y2=\"30\"/><circle class=\"gi-n\" cx=\"314\" cy=\"30\" r=\"5\"/><circle class=\"gi-n\" cx=\"338\" cy=\"24\" r=\"5\"/><circle class=\"gi-n\" cx=\"356\" cy=\"42\" r=\"5\"/><circle class=\"gi-n\" cx=\"330\" cy=\"54\" r=\"5\"/><circle class=\"gi-n\" cx=\"312\" cy=\"50\" r=\"5\"/><circle class=\"gi-n\" cx=\"366\" cy=\"60\" r=\"5\"/><text class=\"fig-s\" x=\"384\" y=\"37\" text-anchor=\"start\">entity graph from triples,</text><text class=\"fig-s\" x=\"384\" y=\"50\" text-anchor=\"start\">chunks linked to entities</text><text class=\"fig-s\" x=\"384\" y=\"63\" text-anchor=\"start\">(HippoRAG 2 recipe)</text><line class=\"gi-e\" x1=\"338\" y1=\"104\" x2=\"318\" y2=\"122\"/><line class=\"gi-e\" x1=\"338\" y1=\"104\" x2=\"358\" y2=\"122\"/><line class=\"gi-e\" x1=\"318\" y1=\"122\" x2=\"308\" y2=\"140\"/><line class=\"gi-e\" x1=\"318\" y1=\"122\" x2=\"326\" y2=\"140\"/><line class=\"gi-e\" x1=\"358\" y1=\"122\" x2=\"348\" y2=\"140\"/><line class=\"gi-e\" x1=\"358\" y1=\"122\" x2=\"368\" y2=\"140\"/><circle class=\"gi-n\" cx=\"338\" cy=\"104\" r=\"5\"/><circle class=\"gi-n\" cx=\"318\" cy=\"122\" r=\"5\"/><circle class=\"gi-n\" cx=\"358\" cy=\"122\" r=\"5\"/><rect class=\"gi-r\" x=\"303\" y=\"135\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"321\" y=\"135\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"343\" y=\"135\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"363\" y=\"135\" width=\"10\" height=\"10\" rx=\"2\"/><text class=\"fig-s\" x=\"384\" y=\"117\" text-anchor=\"start\">GMM clusters of chunks,</text><text class=\"fig-s\" x=\"384\" y=\"130\" text-anchor=\"start\">each cluster summarized,</text><text class=\"fig-s\" x=\"384\" y=\"143\" text-anchor=\"start\">repeated up to 5 levels</text><rect class=\"gi-ev\" x=\"302\" y=\"192\" width=\"20\" height=\"20\" rx=\"5\"/><line class=\"gi-t\" x1=\"309\" y1=\"202\" x2=\"308\" y2=\"202\"/><rect class=\"gi-ev\" x=\"326\" y=\"192\" width=\"20\" height=\"20\" rx=\"5\"/><line class=\"gi-t\" x1=\"333\" y1=\"202\" x2=\"332\" y2=\"202\"/><rect class=\"gi-ev\" x=\"350\" y=\"192\" width=\"20\" height=\"20\" rx=\"5\"/><line class=\"gi-t\" x1=\"357\" y1=\"202\" x2=\"356\" y2=\"202\"/><text class=\"fig-s\" x=\"384\" y=\"197\" text-anchor=\"start\">one summary per window,</text><text class=\"fig-s\" x=\"384\" y=\"210\" text-anchor=\"start\">kept in story order;</text><text class=\"fig-s\" x=\"384\" y=\"223\" text-anchor=\"start\">W = 10 to 20 for long books</text><text class=\"fig-s\" x=\"280\" y=\"244\" text-anchor=\"middle\">every layer is embedded with BGE-M3; this index is built once, before any question</text>",
+        "text": [
+          "The book is cut into 512-token chunks and indexed three ways: an entity graph from LLM triples, a tree of cluster summaries, and summaries of consecutive windows in story order.",
+          "This index is built once per book; the question-specific memory is built later, during answering."
+        ],
+        "src": "paper §2.2, App. B.1-B.2; code ComoRAG.py L198-L263, timeline_utils.py L41-L56",
+        "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/ComoRAG.py#L198-L263"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 246",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"30\" width=\"60\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"34\" y=\"56\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M64 52 L71 52\"/><polygon class=\"gi-ah\" points=\"78,52 71,48 71,56\"/><rect class=\"gi-v fig-soft\" x=\"78\" y=\"30\" width=\"104\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"130\" y=\"50\" text-anchor=\"middle\">Tri-Retrieve</text><text class=\"fig-s\" x=\"130\" y=\"63\" text-anchor=\"middle\">top 50 per layer</text><text class=\"fig-s\" x=\"130\" y=\"88\" text-anchor=\"middle\">KG + PPR · dense · dense</text><path class=\"gi-a\" d=\"M182 52 L189 52\"/><polygon class=\"gi-ah\" points=\"196,52 189,48 189,56\"/><rect class=\"gi-f\" x=\"196\" y=\"30\" width=\"92\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"242\" y=\"50\" text-anchor=\"middle\">Raw evidence</text><text class=\"fig-s\" x=\"242\" y=\"63\" text-anchor=\"middle\">token-capped</text><path class=\"gi-a\" d=\"M288 52 L295 52\"/><polygon class=\"gi-ah\" points=\"302,52 295,48 295,56\"/><polygon class=\"gi-llm\" points=\"344,26 386,52 344,78 302,52\"/><text class=\"fig-t\" x=\"344\" y=\"51\" text-anchor=\"middle\">Answer?</text><text class=\"fig-s\" x=\"344\" y=\"63\" text-anchor=\"middle\">LLM</text><path class=\"gi-a\" d=\"M386 52 L433 52\"/><polygon class=\"gi-ah\" points=\"440,52 433,48 433,56\"/><text class=\"fig-yes\" x=\"412\" y=\"44\" text-anchor=\"middle\">Yes</text><rect class=\"gi-hi\" x=\"440\" y=\"30\" width=\"112\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"496\" y=\"50\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"496\" y=\"63\" text-anchor=\"middle\">option or short text</text><path class=\"gi-a\" d=\"M323 61 L323 118 L14 118 L14 146\"/><polygon class=\"gi-ah\" points=\"14,153 18,146 10,146\"/><text class=\"fig-no\" x=\"317\" y=\"108\" text-anchor=\"end\">No: \"*\"</text><rect class=\"gi-llm\" x=\"4\" y=\"154\" width=\"92\" height=\"46\" rx=\"8\"/><text class=\"fig-t\" x=\"50\" y=\"175\" text-anchor=\"middle\">Self-Probe</text><text class=\"fig-s\" x=\"50\" y=\"188\" text-anchor=\"middle\">≤ 3 new probes</text><path class=\"gi-a\" d=\"M96 177 L103 177\"/><polygon class=\"gi-ah\" points=\"110,177 103,173 103,181\"/><rect class=\"gi-v fig-soft\" x=\"110\" y=\"154\" width=\"100\" height=\"46\" rx=\"8\"/><text class=\"fig-t\" x=\"160\" y=\"175\" text-anchor=\"middle\">Tri-Retrieve</text><text class=\"fig-s\" x=\"160\" y=\"188\" text-anchor=\"middle\">per probe, new only</text><path class=\"gi-a\" d=\"M210 177 L217 177\"/><polygon class=\"gi-ah\" points=\"224,177 217,173 217,181\"/><rect class=\"gi-llm\" x=\"224\" y=\"154\" width=\"96\" height=\"46\" rx=\"8\"/><text class=\"fig-t\" x=\"272\" y=\"175\" text-anchor=\"middle\">Mem-Encode</text><text class=\"fig-s\" x=\"272\" y=\"188\" text-anchor=\"middle\">1 cue per layer</text><path class=\"gi-a\" d=\"M320 177 L327 177\"/><polygon class=\"gi-ah\" points=\"334,177 327,173 327,181\"/><rect class=\"gi-llm\" x=\"334\" y=\"154\" width=\"100\" height=\"46\" rx=\"8\"/><text class=\"fig-t\" x=\"384\" y=\"175\" text-anchor=\"middle\">Mem-Fuse</text><text class=\"fig-s\" x=\"384\" y=\"188\" text-anchor=\"middle\">top 50% of pool</text><path class=\"gi-a\" d=\"M365 154 L365 73\"/><polygon class=\"gi-ah\" points=\"365,66 361,73 369,73\"/><text class=\"fig-s\" x=\"372\" y=\"118\" text-anchor=\"start\">new cues +</text><text class=\"fig-s\" x=\"372\" y=\"130\" text-anchor=\"start\">fused notes</text><text class=\"fig-s\" x=\"280\" y=\"224\" text-anchor=\"middle\">step 0 answers from raw evidence; after that the answer LLM reads only cues and fused notes</text><text class=\"fig-s\" x=\"280\" y=\"238\" text-anchor=\"middle\">each failed cycle adds its cue units to the pool · at most 5 cycles</text>",
+        "text": [
+          "The question searches all three layers and the LLM tries to answer from the raw results.",
+          "If it outputs '*', it writes up to 3 probes, turns each probe's evidence into cues, fuses the most relevant past cues, and tries again, for at most 5 cycles."
+        ],
+        "src": "paper §2.3, Alg. 1; code ComoRAG.py L265-L376, memory_utils.py L188-L276",
+        "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/ComoRAG.py#L265-L376"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Chunk size",
+        "value": "512 tokens",
+        "src": "paper Table 6",
+        "section": "construction"
+      },
+      {
+        "label": "Episodic window",
+        "value": "W = 3 to 10 chunks up to 200 chunks, 10 to 20 beyond",
+        "src": "paper App. B.2",
+        "section": "construction"
+      },
+      {
+        "label": "Triples extracted",
+        "value": "51k NarrativeQA · 372k EN.QA · 577k EN.MC · 34k DetectiveQA",
+        "src": "paper Table 4",
+        "section": "construction"
+      },
+      {
+        "label": "Candidates per layer",
+        "value": "top 50, then a token cap",
+        "src": "code config_utils.py L208-L218",
+        "section": "method"
+      },
+      {
+        "label": "Probes per cycle",
+        "value": "≤ 3",
+        "src": "paper Table 6",
+        "section": "method"
+      },
+      {
+        "label": "Cycles",
+        "value": "≤ 5",
+        "src": "paper Table 6",
+        "section": "method"
+      },
+      {
+        "label": "Pool share fused",
+        "value": "top 50% by similarity to the question",
+        "src": "paper App. B.4",
+        "section": "method"
+      },
+      {
+        "label": "Answer context",
+        "value": "6k tokens (8:2:2:1)",
+        "src": "paper Table 6",
+        "section": "method"
+      },
+      {
+        "label": "Index vs GraphRAG (subset)",
+        "value": "291 s vs 1,936 s; 5.90M vs 27.12M tokens",
+        "src": "paper Table 5",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "EN.MC ACC",
+        "EN.QA F1",
+        "EN.QA EM"
+      ],
+      "rows": [
+        [
+          "Full ComoRAG",
+          "72.93",
+          "34.52",
+          "25.07"
+        ],
+        [
+          "without Veridical layer",
+          "51.97",
+          "22.24",
+          "15.88"
+        ],
+        [
+          "without Semantic layer",
+          "64.63",
+          "30.82",
+          "22.65"
+        ],
+        [
+          "without Episodic layer",
+          "64.63",
+          "31.48",
+          "21.47"
+        ],
+        [
+          "without Metacognition (no cues, no fusion)",
+          "62.01",
+          "26.95",
+          "18.53"
+        ],
+        [
+          "without Regulation (no probes, reuse question)",
+          "55.02",
+          "27.95",
+          "20.59"
+        ],
+        [
+          "without both",
+          "54.15",
+          "25.64",
+          "17.35"
+        ],
+        [
+          "HippoRAGv2 (baseline)",
+          "60.26",
+          "24.45",
+          "17.09"
+        ],
+        [
+          "RAPTOR (baseline)",
+          "57.21",
+          "26.33",
+          "19.65"
+        ]
+      ],
+      "src": "paper Table 2 (GPT-4o-mini)"
+    },
+    "components": [
+      {
+        "role": "Triples, summaries, probes, cues, fusion, answer",
+        "model": "GPT-4o-mini (GPT-4.1 or Qwen3-32B in Table 3)",
+        "kind": "llm",
+        "src": "paper §3, Table 6"
+      },
+      {
+        "role": "Dense search, all layers and the pool",
+        "model": "BGE-M3 (0.3B)",
+        "kind": "retriever",
+        "src": "paper §3, Table 6"
+      },
+      {
+        "role": "Fact filter before graph search",
+        "model": "same LLM, HippoRAG 2 DSPy filter prompt",
+        "kind": "llm",
+        "src": "code ComoRAG.py L1057-L1084; rerank.py",
+        "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/ComoRAG.py#L1057-L1084"
+      },
+      {
+        "role": "Graph search",
+        "model": "Personalized PageRank, damping 0.5",
+        "kind": "rule",
+        "src": "code ComoRAG.py L1086-L1105",
+        "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/ComoRAG.py#L1086-L1105"
+      },
+      {
+        "role": "Clustering",
+        "model": "UMAP + Gaussian mixture (BIC)",
+        "kind": "rule",
+        "src": "code cluster_utils.py L175-L211",
+        "url": "https://github.com/EternityJune25/ComoRAG/blob/a4f84337094a023bc48e70c3f89cc969536c08a0/src/comorag/utils/cluster_utils.py#L175-L211"
+      }
+    ],
+    "discussion": {
+      "takeaway": "For questions over whole novels, retrieving once is not enough: letting an LLM probe again after a failed answer, and carrying forward short cues from earlier probes, gives the best scores on four narrative benchmarks with a small retriever.",
+      "claims": [
+        {
+          "claim": "Best results on all four long-narrative benchmarks.",
+          "evidence": "EN.MC 72.93 vs 64.19 (HippoRAGv2+IRCoT), EN.QA F1 34.52 vs 34.34 (NV-Embed-v2 RAG), DetectiveQA 68.18 vs 64.77 (RAPTOR+IRCoT). Table 1"
+        },
+        {
+          "claim": "The gain comes from the iterative loop, converging in 2-3 cycles.",
+          "evidence": "Step 0 is within 1% of the best baseline; EN.MC rises from 64.6 to 72.93. Fig. 4, §4.3"
+        },
+        {
+          "claim": "The Veridical layer matters most among the indexes.",
+          "evidence": "Without it EN.MC falls to 51.97 (about -30% relative). Table 2"
+        },
+        {
+          "claim": "The loop plugs into other indexes.",
+          "evidence": "EN.MC 60.26 → 68.56 on HippoRAGv2 and 57.21 → 69.00 on RAPTOR. Table 3"
+        },
+        {
+          "claim": "Largest advantage on narrative questions.",
+          "evidence": "19% relative F1 on EN.QA and 16% accuracy on EN.MC over the strongest baselines for narrative queries. Fig. 6, §4.4"
+        }
+      ],
+      "limits": [
+        "The paper has no limitations section. It notes that the remaining unsolved queries reflect the base LLM's reasoning limits (§4.3)."
+      ],
+      "limits_src": "paper §4.3 (no dedicated limitations section)",
+      "reading": [
+        "Baselines and ComoRAG share GPT-4o-mini and BGE-M3 and a 6k context, but ComoRAG makes many more LLM calls per question (probes, cues, fusion, up to 6 answer attempts); cost per question is not reported for Table 1.",
+        "In the released code the answer model reads raw text only at step 0; later answers rest on LLM cues, so wrong cues cannot be checked against the source.",
+        "Chunks are re-sorted into book order before the token cut, so the kept chunks are the earliest among the top 50 rather than the highest scored; the paper does not mention this.",
+        "The query-type analysis (factoid, narrative, inferential) uses the authors' own manual labels (Table 7).",
+        "NarrativeQA uses a random 500-question sample and DetectiveQA a random 20% of stories; the samples are not released, so other papers' numbers on these sets are not directly comparable.",
+        "The repo has no evaluation scripts or configs for the paper's datasets, so the settings behind Table 1 could not be checked in code."
+      ]
+    },
+    "abstract": {
+      "text": "ComoRAG targets question answering over whole novels, where one-shot retrieval misses how plot and motives change over hundreds of thousands of tokens. It indexes a book three ways (raw chunks linked through an entity graph, recursive cluster summaries, and summaries of consecutive passages). When the model cannot answer, a loop writes new probing queries, turns what each probe finds into short cues in a per-question memory pool, fuses relevant past cues, and tries again. On NarrativeQA, InfiniteBench EN.QA and EN.MC, and DetectiveQA it beats single-step, graph-based and multi-step RAG baselines, with the clearest gains on questions that need the whole storyline.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2508.10419"
+    },
+    "sections": {
+      "Memory architecture": "§2",
+      "Results": "§4.1, §4.3",
+      "Ablation": "§4.2",
+      "Discussion": "§4.3-4.4, §5",
+      "Details": "§3, App. A, B, D"
+    }
+  }
+}

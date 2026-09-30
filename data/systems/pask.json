@@ -1,0 +1,565 @@
+{
+  "id": "pask",
+  "name": "PASK",
+  "paper": {
+    "title": "PASK: Toward Intent-Aware Proactive Agents with Long-Term Memory",
+    "arxiv": "2604.08000",
+    "url": "https://arxiv.org/abs/2604.08000",
+    "venue": "arXiv",
+    "venue_short": "arXiv",
+    "track": "preprint",
+    "year": 2026,
+    "code": "https://github.com/xzf-thu/Pask"
+  },
+  "design": {
+    "construction": {
+      "unit": "three tiers: user profile, session workspace, global tree with episode leaves ⟨fine tag, content⟩",
+      "kept_as": "profile traits (summarized); session history in the context window; episodes extracted from finished sessions",
+      "processing": "workspace state tracked every step; after a session, candidate traits are extracted for the profile and new episodes are inserted as raw leaves under a buffer node",
+      "trigger": "session-end",
+      "writer": "not stated (a 'memory agent'; model unnamed)"
+    },
+    "organization": {
+      "structure": "cache / main memory / external storage; the global memory is a bounded-depth rooted tree of tag nodes over episode leaves",
+      "stores": "user memory (system prompt), workspace memory (context window), global memory (tree + RAG; Redis-style hot state and object/vector-store persistence per §5)",
+      "index": "RAG over leaf content under the anchor node (retriever not named)"
+    },
+    "management": {
+      "operations": "time-decayed profile update with conflict resolution; lazy CompressAndMerge of a node's children once their count exceeds η_merge; depth capped at D_max",
+      "conflicts": "ResolveConflict reinforces matching traits, overwrites decayed contradictions and discards low-confidence anomalies",
+      "forgetting": "confidence decay of outdated preferences; obsolete information pruned during merges",
+      "timing": "offline"
+    },
+    "retrieval": {
+      "query": "q_t built from the latest segment, the history, an LLM observation summary and salient entities",
+      "candidates": "coarse: tag of the anchor node reused from the previous step; fine: RAG over leaves under that anchor",
+      "selection": "MemLoader (trained Qwen3-4B) distills the evidence; the Demand Detector then replies or stays silent",
+      "budget": null
+    },
+    "use": {
+      "context": "user profile + workspace state + anchor tag + distilled RAG evidence",
+      "reasoning": "memory is read only when the detector emits <full_assistance>; otherwise silence or a fast reply from context"
+    },
+    "control": {
+      "construction": null,
+      "management": "fixed-rule",
+      "retrieval": "learned-rl"
+    }
+  },
+  "classify": {
+    "structure": "tiers",
+    "index": "vector",
+    "management": "consolidate",
+    "candidates": "dense",
+    "decides": "LLM decides",
+    "note": "Index and candidate type are read from 'RAG' and the vector-store backend in §5; the retriever itself is not described. A trained detector decides whether to retrieve and a trained MemLoader distills what is kept."
+  },
+  "tags": {
+    "fidelity": "mixed",
+    "structure": [
+      "tiered",
+      "tree",
+      "profile"
+    ],
+    "write_time": [
+      "extract",
+      "summarize",
+      "consolidate"
+    ],
+    "selection": [
+      "dense",
+      "model-reads"
+    ],
+    "memory_type": [
+      "working",
+      "episodic",
+      "profile"
+    ],
+    "learning": "mixed",
+    "domain": [
+      "conversation",
+      "multimodal"
+    ]
+  },
+  "stages": {
+    "ingestion": "A frontend (glasses, computer, phone) turns speech and vision into a stream of text segments; the detector reads one segment per step.",
+    "construction": "Within a session the workspace memory keeps the history and a tracked state; after the session, traits are extracted for the user profile and episodes become new leaves under a buffer node of the global tree.",
+    "organization": "User memory sits in the system prompt (reused via KV cache), workspace memory in the context window, and global memory in a rooted tree whose internal nodes hold semantic tags and whose leaves hold a fine tag and episodic content.",
+    "update": "Offline only: profile traits decay over time and conflicts are resolved; a node's children are compressed and merged once they exceed η_merge, and depth is capped at D_max.",
+    "retrieval": "Only on a <full_assistance> token: an LLM summarizes the recent context and entities into a query, the anchor node from the previous step supplies a coarse tag, and RAG searches only that node's leaves; MemLoader distills the result.",
+    "answer": "The Demand Detector (Qwen3-30B-A3B, SFT + RL) writes the proactive reply or stays silent, using the profile, workspace and distilled evidence.",
+    "learning": "Demand Detector and MemLoader are fine-tuned separately on 100k synthetic samples, then jointly with DAPO RL on 2K real sessions (rule + LLM-judge rewards). The memory store itself is not trained."
+  },
+  "summary": "Proactive assistant whose trained detector decides each turn whether to stay silent, answer from context, or load memory from a three-tier store (profile cache, session workspace, lazily merged global tree).",
+  "verified": false,
+  "notes": "Memory is one of three parts (DD-MM-PAS); most of the paper is the IntentFlow demand detector and the LatentNeeds benchmark. The released code (eval/, bench/) covers the benchmark only: no Pask-MM tree, RAG or MemLoader. In the benchmark every model, IntentFlow included in the released results, sees the same precomputed session 'memory' summary. Paper lists no η_merge, D_max, top-k or retriever.\nDESIGN: §3.1, §4.1-4.3, §5, §6.1; code eval/prompts.py, bench/02_build_turns.py.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2604.08000v1 (PDF read 2026-09-30)",
+      "code": "https://github.com/xzf-thu/Pask/tree/d54646c52b1555232ce4ab39103768d7f65b8267/",
+      "code_note": "The official repo (latest commit d54646c5, 2026-04-18) releases the LatentNeeds-Bench pipeline, evaluation prompts and per-model result/score files, but no code for Pask-MM (tree, RAG, merge, MemLoader) or IntentFlow training. The memory figures therefore follow the paper only; the benchmark facts follow the code."
+    },
+    "headline": [
+      "Memory is read only when the trained detector asks for it; most turns are silence or a fast reply from context.",
+      "Global retrieval does not search the whole tree: it reuses the previous step's anchor node and runs RAG only under it.",
+      "The benchmark gives every model the same precomputed memory summary, so none of the reported numbers isolates Pask-MM."
+    ],
+    "units": [
+      {
+        "name": "User memory (M_user)",
+        "role": "stable user profile; the cache tier",
+        "made_by": "offline update from finished sessions",
+        "fields": [
+          {
+            "name": "profile traits",
+            "what": "domain expertise, thresholds, behavioural priors, with confidence weights that decay",
+            "kept_as": "summarized",
+            "used_for": [
+              "answer",
+              "profile"
+            ],
+            "src": "paper §4.1, Eq. 10",
+            "url": "https://arxiv.org/pdf/2604.08000"
+          }
+        ]
+      },
+      {
+        "name": "Workspace memory (M_wsp)",
+        "role": "session state; the main-memory tier",
+        "made_by": "updated every step (TrackState)",
+        "fields": [
+          {
+            "name": "history H_t",
+            "what": "the session's text segments so far, in the detector's context window",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §4.1-4.2, Eqs. 4-6",
+            "url": "https://arxiv.org/pdf/2604.08000"
+          },
+          {
+            "name": "state s_t, contexts g, l, trace i",
+            "what": "tracked session state and global/local session contexts",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §4.2, Eqs. 4-6",
+            "url": "https://arxiv.org/pdf/2604.08000"
+          }
+        ]
+      },
+      {
+        "name": "Global memory (M_global)",
+        "role": "long-term episodes; the external-storage tier",
+        "made_by": "leaves inserted after each session, merged lazily",
+        "fields": [
+          {
+            "name": "internal node tag",
+            "what": "semantic tag abstracting the subtree; the anchor's tag is returned as coarse memory",
+            "kept_as": "summarized",
+            "used_for": [
+              "scene routing",
+              "answer"
+            ],
+            "src": "paper §4.1-4.2, Eq. 7",
+            "url": "https://arxiv.org/pdf/2604.08000"
+          },
+          {
+            "name": "leaf ⟨t_m, c_m⟩",
+            "what": "fine-grained tag and episodic content extracted from a finished session",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper Eqs. 2, 8, 11",
+            "url": "https://arxiv.org/pdf/2604.08000"
+          }
+        ]
+      },
+      {
+        "name": "Benchmark memory field",
+        "role": "what the evaluated models actually receive as memory",
+        "made_by": "gpt-5-nano summary in the released pipeline",
+        "fields": [
+          {
+            "name": "memory",
+            "what": "2-4 sentence (200-300 character) summary of all earlier 60-turn parts of the same recording; empty for the first part. A separate script (bench/03c_memory.py, not in run_pipeline.sh) can write a longer gpt-5.2 memory instead; the data file is not released, so which one the scored runs saw cannot be checked",
+            "kept_as": "summarized",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code bench/02_build_turns.py L102-L117, L180-L193",
+            "url": "https://github.com/xzf-thu/Pask/blob/d54646c52b1555232ce4ab39103768d7f65b8267/bench/02_build_turns.py#L102-L117"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Track state",
+        "how": "each step updates the workspace state from the observation, history and time",
+        "src": "paper §4.2, Eq. 5",
+        "url": "https://arxiv.org/pdf/2604.08000"
+      },
+      {
+        "step": "Update profile",
+        "how": "after a session, candidate traits U′ are extracted; old traits decay with elapsed time and ResolveConflict reinforces, overwrites or discards",
+        "src": "paper §4.3, Eq. 10",
+        "url": "https://arxiv.org/pdf/2604.08000"
+      },
+      {
+        "step": "Insert leaves",
+        "how": "episodes from the finished session become raw leaves under a buffer node; ancestors are not recomputed",
+        "src": "paper §4.3, Eq. 11",
+        "url": "https://arxiv.org/pdf/2604.08000"
+      },
+      {
+        "step": "Merge",
+        "how": "when a node's children exceed η_merge, CompressAndMerge deduplicates siblings and prunes obsolete items; depth is capped at D_max",
+        "params": {
+          "η_merge": "not stated",
+          "D_max": "not stated"
+        },
+        "src": "paper §4.3, Eq. 12",
+        "url": "https://arxiv.org/pdf/2604.08000"
+      }
+    ],
+    "read": [
+      {
+        "step": "Decide",
+        "round": 1,
+        "input": "latest segment x_t + history",
+        "how": "Demand Detector emits <silent>, <fast_intervention> or <full_assistance>",
+        "src": "paper §3.1",
+        "url": "https://arxiv.org/pdf/2604.08000"
+      },
+      {
+        "step": "Build query",
+        "round": 1,
+        "input": "x_t, H_t",
+        "how": "an LLM agent writes an observation summary o_t and salient entities e_t; combined into q_t",
+        "src": "paper §3.1, §4.2 Eq. 3",
+        "url": "https://arxiv.org/pdf/2604.08000"
+      },
+      {
+        "step": "Anchor",
+        "round": 1,
+        "how": "reuse the node located at the previous step; its tag is the coarse event memory (no full-tree traversal)",
+        "src": "paper §4.2, Eq. 7",
+        "url": "https://arxiv.org/pdf/2604.08000"
+      },
+      {
+        "step": "Local RAG",
+        "round": 1,
+        "input": "q_t",
+        "scores": "episodic content c_m of leaves under the anchor",
+        "how": "RAG, asynchronous",
+        "params": {
+          "k": "not stated"
+        },
+        "src": "paper §4.2, Eq. 8",
+        "url": "https://arxiv.org/pdf/2604.08000"
+      },
+      {
+        "step": "Distill",
+        "round": 1,
+        "how": "MemLoader (Qwen3-4B-Instruct, SFT + RL) condenses the retrieved evidence",
+        "src": "paper §3.1",
+        "url": "https://arxiv.org/pdf/2604.08000"
+      },
+      {
+        "step": "Respond or abstain",
+        "round": 1,
+        "how": "Demand Detector reads profile, workspace, anchor tag and distilled evidence; replies or returns nothing",
+        "src": "paper §3.1, Eq. 9",
+        "url": "https://arxiv.org/pdf/2604.08000"
+      }
+    ],
+    "answer_context": {
+      "sees": "user profile, workspace state, anchor tag and MemLoader-distilled evidence (paper); in the benchmark: scene, one memory summary and the full part history",
+      "format": "benchmark user message: \"[Scene] ... [Memory from earlier conversation] ... [Conversation] speaker: text ... [Current turn] speaker: text\" after a system prompt at one of three intervention levels",
+      "includes": [
+        "scene and character backgrounds",
+        "memory summary of earlier parts",
+        "all earlier turns of the 60-turn part"
+      ],
+      "excludes": [
+        "global-memory tree",
+        "RAG evidence",
+        "MemLoader output"
+      ],
+      "note": "The paper's runtime context (Eq. 9) cannot be checked in code; the benchmark prompt is what the released results use.",
+      "src": "code eval/prompts.py L92-L131; paper Eq. 9",
+      "url": "https://github.com/xzf-thu/Pask/blob/d54646c52b1555232ce4ab39103768d7f65b8267/eval/prompts.py#L92-L131"
+    },
+    "compression": [
+      {
+        "what": "benchmark memory summary vs the earlier conversation it replaces",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported in the paper. The released pipeline asks gpt-5-nano for 200-300 characters (max 200 tokens) over earlier turns, each cut to 200 characters.",
+        "src": "code bench/02_build_turns.py L102-L117, L183",
+        "url": "https://github.com/xzf-thu/Pask/blob/d54646c52b1555232ce4ab39103768d7f65b8267/bench/02_build_turns.py#L102-L117"
+      },
+      {
+        "what": "Pask-MM global memory",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported: the paper gives no leaf counts, tree sizes or token budgets.",
+        "src": "paper §4",
+        "url": "https://arxiv.org/pdf/2604.08000"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "LatentNeeds-Bench balanced accuracy, IntentFlow",
+        "value": "84.2 (Gemini-3-Flash 80.8, GPT-5-Mini 77.2)",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "Demand / no-demand accuracy, IntentFlow",
+        "value": "83.1 / 85.2",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "Untrained base (Qwen3-30B-A3B)",
+        "value": "58.9",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "Turns 1-4 → 57-60, IntentFlow",
+        "value": "86.1 → 81.8 (−5.0%)",
+        "src": "paper Table 3"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Judge model",
+        "paper": "two-round LLM-as-judge with GPT-5.2",
+        "code": "JUDGE_MODEL = gpt-4.1-mini",
+        "src": "eval/config.py L24",
+        "url": "https://github.com/xzf-thu/Pask/blob/d54646c52b1555232ce4ab39103768d7f65b8267/eval/config.py#L24"
+      },
+      {
+        "topic": "Memory in the benchmark",
+        "paper": "IntentFlow keeps performance stable 'with Pask-MM' over long interactions",
+        "code": "every model's prompt carries the same session memory summary produced by the data pipeline; no Pask-MM retrieval is run",
+        "src": "eval/prompts.py L113-L123",
+        "url": "https://github.com/xzf-thu/Pask/blob/d54646c52b1555232ce4ab39103768d7f65b8267/eval/prompts.py#L113-L123"
+      },
+      {
+        "topic": "Overall score",
+        "paper": "balanced average of demand and non-demand accuracy",
+        "code": "the per-model best prompt level is chosen by pooled balanced accuracy; the released score files reproduce the table's Overall Avg. as the mean of the 10 subcategory averages",
+        "src": "eval/report.py L66-L86",
+        "url": "https://github.com/xzf-thu/Pask/blob/d54646c52b1555232ce4ab39103768d7f65b8267/eval/report.py#L66-L86"
+      }
+    ],
+    "open_questions": [
+      "No run removes or swaps the memory module, so the benchmark cannot show what Pask-MM adds; the stability claim rests on IntentFlow vs other models, all given the same summary.",
+      "IntentFlow is the fine-tuned model; its gain over its base (58.9 → 84.2) mixes intent training with anything memory-related."
+    ],
+    "glance": [
+      {
+        "q": "What is one memory item?",
+        "a": "Three kinds: profile traits in the system prompt, the session history in the context window, and leaves in a global tree holding a fine tag and an episode.",
+        "src": "paper §4.1, Eq. 2",
+        "url": "https://arxiv.org/pdf/2604.08000"
+      },
+      {
+        "q": "How is memory organised?",
+        "a": "As a cache / main memory / external storage hierarchy; the global tier is a rooted tree of semantic tags with a capped depth.",
+        "src": "paper §4.1, §4.3",
+        "url": "https://arxiv.org/pdf/2604.08000"
+      },
+      {
+        "q": "When is memory written?",
+        "a": "The workspace is updated every step; profile and tree are updated only after the session ends.",
+        "src": "paper §4.3, Fig. 6",
+        "url": "https://arxiv.org/pdf/2604.08000"
+      },
+      {
+        "q": "When is memory read?",
+        "a": "Only when the detector emits <full_assistance>; retrieval then searches the leaves under the previous step's anchor node.",
+        "src": "paper §3.1, §4.2",
+        "url": "https://arxiv.org/pdf/2604.08000"
+      },
+      {
+        "q": "Is the memory module evaluated?",
+        "a": "Not in isolation. The benchmark gives every model one precomputed summary of earlier parts; long-term memory is shown only through case studies.",
+        "src": "code eval/prompts.py L113-L123; paper §6.5.2",
+        "url": "https://github.com/xzf-thu/Pask/blob/d54646c52b1555232ce4ab39103768d7f65b8267/eval/prompts.py#L113-L123"
+      }
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 252",
+        "body": "<text class=\"fig-s\" x=\"6\" y=\"12\" text-anchor=\"start\">during a session</text><rect class=\"gi-f\" x=\"6\" y=\"24\" width=\"90\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"51.0\" y=\"44.0\" text-anchor=\"middle\">Live stream</text><text class=\"fig-s\" x=\"51.0\" y=\"57.0\" text-anchor=\"middle\">speech → text</text><path class=\"gi-a\" d=\"M96.0 46.0 L115.0 46.0\"/><polygon class=\"gi-ah\" points=\"122.0,46.0 115.0,50.0 115.0,42.0\"/><rect class=\"gi-ev\" x=\"122\" y=\"18\" width=\"200\" height=\"56\" rx=\"8\"/><text class=\"fig-t\" x=\"130\" y=\"34\" text-anchor=\"start\">Workspace memory</text><text class=\"fig-s\" x=\"130\" y=\"48\" text-anchor=\"start\">history, state s_t, trace</text><text class=\"fig-s\" x=\"130\" y=\"61\" text-anchor=\"start\">in the detector's context window</text><rect class=\"gi-hi\" x=\"340\" y=\"18\" width=\"214\" height=\"56\" rx=\"8\"/><text class=\"fig-t\" x=\"348\" y=\"34\" text-anchor=\"start\">User memory</text><text class=\"fig-s\" x=\"348\" y=\"48\" text-anchor=\"start\">stable traits, in the system prompt</text><text class=\"fig-s\" x=\"348\" y=\"61\" text-anchor=\"start\">reused through the KV cache</text><line class=\"gi-e d\" x1=\"4\" y1=\"88\" x2=\"556\" y2=\"88\"/><text class=\"fig-s\" x=\"6\" y=\"102\" text-anchor=\"start\">after the session ends (offline)</text><rect class=\"gi-f\" x=\"6\" y=\"128\" width=\"92\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"52.0\" y=\"148.0\" text-anchor=\"middle\">Session log</text><text class=\"fig-s\" x=\"52.0\" y=\"161.0\" text-anchor=\"middle\">requests q1..qn</text><path class=\"gi-a\" d=\"M98.0 158.0 L121.0 158.0\"/><polygon class=\"gi-ah\" points=\"128.0,158.0 121.0,162.0 121.0,154.0\"/><text class=\"fig-t\" x=\"240\" y=\"112\" text-anchor=\"middle\">Global memory (tree)</text><circle class=\"gi-n\" cx=\"240\" cy=\"124\" r=\"6\"/><line class=\"gi-e\" x1=\"240\" y1=\"130\" x2=\"150\" y2=\"150\"/><line class=\"gi-e\" x1=\"240\" y1=\"130\" x2=\"210\" y2=\"150\"/><line class=\"gi-e\" x1=\"240\" y1=\"130\" x2=\"270\" y2=\"150\"/><line class=\"gi-e\" x1=\"240\" y1=\"130\" x2=\"330\" y2=\"150\"/><rect class=\"gi-ev d\" x=\"128\" y=\"150\" width=\"44\" height=\"16\" rx=\"4\"/><text class=\"fig-s\" x=\"150\" y=\"161\" text-anchor=\"middle\">buffer</text><rect class=\"gi-r\" x=\"190\" y=\"150\" width=\"40\" height=\"14\" rx=\"3\"/><rect class=\"gi-r\" x=\"250\" y=\"150\" width=\"40\" height=\"14\" rx=\"3\"/><rect class=\"gi-r\" x=\"310\" y=\"150\" width=\"40\" height=\"14\" rx=\"3\"/><line class=\"gi-e\" x1=\"150\" y1=\"166\" x2=\"140\" y2=\"189\"/><line class=\"gi-e\" x1=\"150\" y1=\"166\" x2=\"160\" y2=\"189\"/><line class=\"gi-e\" x1=\"210\" y1=\"164\" x2=\"202\" y2=\"189\"/><line class=\"gi-e\" x1=\"210\" y1=\"164\" x2=\"218\" y2=\"189\"/><line class=\"gi-e\" x1=\"270\" y1=\"164\" x2=\"262\" y2=\"189\"/><line class=\"gi-e\" x1=\"270\" y1=\"164\" x2=\"278\" y2=\"189\"/><line class=\"gi-e\" x1=\"330\" y1=\"164\" x2=\"322\" y2=\"189\"/><line class=\"gi-e\" x1=\"330\" y1=\"164\" x2=\"338\" y2=\"189\"/><circle class=\"gi-hi\" cx=\"140\" cy=\"194\" r=\"5\"/><circle class=\"gi-hi\" cx=\"160\" cy=\"194\" r=\"5\"/><circle class=\"gi-n\" cx=\"202\" cy=\"194\" r=\"4\"/><circle class=\"gi-n\" cx=\"218\" cy=\"194\" r=\"4\"/><circle class=\"gi-n\" cx=\"262\" cy=\"194\" r=\"4\"/><circle class=\"gi-n\" cx=\"278\" cy=\"194\" r=\"4\"/><circle class=\"gi-n\" cx=\"322\" cy=\"194\" r=\"4\"/><circle class=\"gi-n\" cx=\"338\" cy=\"194\" r=\"4\"/><text class=\"fig-s\" x=\"150\" y=\"214\" text-anchor=\"middle\">new leaves</text><text class=\"fig-s\" x=\"272\" y=\"214\" text-anchor=\"middle\">leaf = fine tag + episode</text><text class=\"fig-s\" x=\"240\" y=\"231\" text-anchor=\"middle\">merge a node's children once &gt; η_merge; depth ≤ D_max</text><rect class=\"gi-f\" x=\"384\" y=\"128\" width=\"170\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"469.0\" y=\"148.0\" text-anchor=\"middle\">Update user profile</text><text class=\"fig-s\" x=\"469.0\" y=\"161.0\" text-anchor=\"middle\">decay, reinforce, overwrite</text><path class=\"gi-a\" d=\"M469.0 128.0 L469.0 81.0\"/><polygon class=\"gi-ah\" points=\"469.0,74.0 473.0,81.0 465.0,81.0\"/><path class=\"gi-a\" d=\"M52 172 L52 246 L469 246 L469.0 179.0\"/><polygon class=\"gi-ah\" points=\"469.0,172.0 473.0,179.0 465.0,179.0\"/>",
+        "text": [
+          "During a session only the workspace memory changes; the user profile sits in the system prompt.",
+          "After the session, traits update the profile with decay and conflict checks, and episodes become new leaves that are merged lazily once a node has too many children."
+        ],
+        "src": "paper §4.1, §4.3, Fig. 6",
+        "url": "https://arxiv.org/pdf/2604.08000"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 250",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"26\" width=\"80\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"44.0\" y=\"46.0\" text-anchor=\"middle\">New segment</text><text class=\"fig-s\" x=\"44.0\" y=\"59.0\" text-anchor=\"middle\">text x_t</text><path class=\"gi-a\" d=\"M84.0 48.0 L90.0 48.0\"/><polygon class=\"gi-ah\" points=\"97.0,48.0 90.0,52.0 90.0,44.0\"/><polygon class=\"gi-llm\" points=\"154,14 211,48 154,82 97,48\"/><text class=\"fig-t\" x=\"154\" y=\"47\" text-anchor=\"middle\">Detector</text><text class=\"fig-s\" x=\"154\" y=\"60\" text-anchor=\"middle\">one token</text><text class=\"fig-no\" x=\"216\" y=\"20\" text-anchor=\"start\">silent: wait for the next segment</text><path class=\"gi-a\" d=\"M211.0 48.0 L243.0 48.0\"/><polygon class=\"gi-ah\" points=\"250.0,48.0 243.0,52.0 243.0,44.0\"/><text class=\"fig-yes\" x=\"230\" y=\"42\" text-anchor=\"middle\">fast</text><rect class=\"gi-f\" x=\"250\" y=\"30\" width=\"150\" height=\"36\" rx=\"8\"/><text class=\"fig-t\" x=\"325.0\" y=\"46.0\" text-anchor=\"middle\">Reply now</text><text class=\"fig-s\" x=\"325.0\" y=\"59.0\" text-anchor=\"middle\">from context, no memory</text><path class=\"gi-a\" d=\"M154.0 82.0 L154.0 105.0\"/><polygon class=\"gi-ah\" points=\"154.0,112.0 150.0,105.0 158.0,105.0\"/><text class=\"fig-yes\" x=\"160\" y=\"101\" text-anchor=\"start\">full</text><rect class=\"gi-llm\" x=\"100\" y=\"112\" width=\"108\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"154.0\" y=\"132.0\" text-anchor=\"middle\">Summarize</text><text class=\"fig-s\" x=\"154.0\" y=\"145.0\" text-anchor=\"middle\">o_t + entities e_t</text><path class=\"gi-a\" d=\"M208 134 L220 134 L220 121 L231.0 121.0\"/><polygon class=\"gi-ah\" points=\"238.0,121.0 231.0,125.0 231.0,117.0\"/><path class=\"gi-a\" d=\"M220 134 L220 163 L231.0 163.0\"/><polygon class=\"gi-ah\" points=\"238.0,163.0 231.0,167.0 231.0,159.0\"/><rect class=\"gi-f\" x=\"238\" y=\"104\" width=\"116\" height=\"34\" rx=\"8\"/><text class=\"fig-t\" x=\"296.0\" y=\"119.0\" text-anchor=\"middle\">Anchor tag</text><text class=\"fig-s\" x=\"296.0\" y=\"132.0\" text-anchor=\"middle\">node from last step</text><rect class=\"gi-v fig-soft\" x=\"238\" y=\"146\" width=\"116\" height=\"34\" rx=\"8\"/><text class=\"fig-t\" x=\"296.0\" y=\"161.0\" text-anchor=\"middle\">Local RAG</text><text class=\"fig-s\" x=\"296.0\" y=\"174.0\" text-anchor=\"middle\">leaves under anchor</text><text class=\"fig-s\" x=\"296\" y=\"194\" text-anchor=\"middle\">k and retriever not stated</text><path class=\"gi-a\" d=\"M354 121 L364 121 L364 134 L367.0 134.0\"/><polygon class=\"gi-ah\" points=\"374.0,134.0 367.0,138.0 367.0,130.0\"/><path class=\"gi-a\" d=\"M354 163 L364 163 L364 134 L367.0 134.0\"/><polygon class=\"gi-ah\" points=\"374.0,134.0 367.0,138.0 367.0,130.0\"/><rect class=\"gi-llm\" x=\"374\" y=\"112\" width=\"86\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"417.0\" y=\"132.0\" text-anchor=\"middle\">MemLoader</text><text class=\"fig-s\" x=\"417.0\" y=\"145.0\" text-anchor=\"middle\">Qwen3-4B</text><path class=\"gi-a\" d=\"M460.0 134.0 L467.0 134.0\"/><polygon class=\"gi-ah\" points=\"474.0,134.0 467.0,138.0 467.0,130.0\"/><rect class=\"gi-hi\" x=\"474\" y=\"112\" width=\"80\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"514.0\" y=\"132.0\" text-anchor=\"middle\">Detector</text><text class=\"fig-s\" x=\"514.0\" y=\"145.0\" text-anchor=\"middle\">reply or silent</text><rect class=\"gi-f\" x=\"4\" y=\"204\" width=\"550\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"14\" y=\"220\" text-anchor=\"start\">Always in the detector's input</text><text class=\"fig-s\" x=\"14\" y=\"235\" text-anchor=\"start\">user memory (system prompt) + workspace memory (session history, state)</text>",
+        "text": [
+          "The detector emits one token per segment: stay silent, reply from context, or load memory.",
+          "Loading memory reuses the last anchor node's tag and runs RAG only under it; a small trained model distills the evidence before the detector replies."
+        ],
+        "src": "paper §3.1, §4.2, Fig. 3",
+        "url": "https://arxiv.org/pdf/2604.08000"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Memory tiers",
+        "value": "3: user, workspace, global",
+        "src": "paper §4.1",
+        "section": "construction"
+      },
+      {
+        "label": "Latency target for memory access",
+        "value": "≤ 1 s",
+        "src": "paper §4, §4.2",
+        "section": "method"
+      },
+      {
+        "label": "Detector / MemLoader",
+        "value": "Qwen3-30B-A3B-Instruct / Qwen3-4B-Instruct",
+        "src": "paper §3.1",
+        "section": "method"
+      },
+      {
+        "label": "Training data",
+        "value": "100k synthetic (SFT) + 2K real sessions (RL)",
+        "src": "paper §3.2",
+        "section": "method"
+      },
+      {
+        "label": "Benchmark",
+        "value": "100 sessions, 3,936 turns, 41.9% demand",
+        "src": "paper §6.1.1",
+        "section": "method"
+      },
+      {
+        "label": "Benchmark memory summary",
+        "value": "200-300 characters, gpt-5-nano",
+        "src": "code bench/02_build_turns.py L102-L117",
+        "section": "method"
+      },
+      {
+        "label": "Merge threshold, depth cap, top-k",
+        "value": "not stated",
+        "src": "paper §4.2-4.3",
+        "section": "construction"
+      },
+      {
+        "label": "Per-turn latency, IntentFlow",
+        "value": "1.3-1.5 s (Gemini-3-Flash 3.2-4.4 s)",
+        "src": "paper Table 4, §6.5.1",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Demand Detector (decide, answer)",
+        "model": "IntentFlow: Qwen3-30B-A3B-Instruct, SFT + DAPO RL",
+        "kind": "llm",
+        "src": "paper §3.1, §3.3"
+      },
+      {
+        "role": "MemLoader (distill retrieved memory)",
+        "model": "Qwen3-4B-Instruct, SFT + DAPO RL",
+        "kind": "llm",
+        "src": "paper §3.1, §3.3"
+      },
+      {
+        "role": "Observation summary and entities",
+        "model": "LLM-based agent (not named)",
+        "kind": "llm",
+        "src": "paper §3.1"
+      },
+      {
+        "role": "Global-memory search",
+        "model": "RAG (retriever not named)",
+        "kind": "retriever",
+        "src": "paper §4.2"
+      },
+      {
+        "role": "Merge trigger and depth cap",
+        "model": "rule: children > η_merge, depth ≤ D_max",
+        "kind": "rule",
+        "src": "paper §4.3"
+      },
+      {
+        "role": "Benchmark memory summary",
+        "model": "gpt-5-nano",
+        "kind": "llm",
+        "src": "code bench/02_build_turns.py L186-L193",
+        "url": "https://github.com/xzf-thu/Pask/blob/d54646c52b1555232ce4ab39103768d7f65b8267/bench/02_build_turns.py#L186-L193"
+      }
+    ],
+    "discussion": {
+      "takeaway": "A proactive agent needs a fast gate that decides when to speak and when to load memory. PASK trains that gate (IntentFlow) and pairs it with a tiered memory, and reports the best balanced accuracy on its own LatentNeeds-Bench at the lowest latency.",
+      "claims": [
+        {
+          "claim": "A trained open model matches fast frontier models on latent-need detection.",
+          "evidence": "Balanced accuracy 84.2 vs 80.8 (Gemini-3-Flash), 77.2 (GPT-5-Mini); demand accuracy 83.1 vs 83.3 (Gemini-3-Flash). Table 1, §6.2"
+        },
+        {
+          "claim": "Training, not the base model, gives the gain.",
+          "evidence": "Qwen3-30B-A3B base 58.9 → IntentFlow 84.2. Table 1"
+        },
+        {
+          "claim": "Performance stays stable over long sessions with Pask-MM.",
+          "evidence": "86.1 → 81.8 from turns 1-4 to 57-60 (−5.0%), vs −17.3% Gemini-3-Flash and −19.0% GPT-5-Mini. Table 3, §6.4"
+        },
+        {
+          "claim": "Lowest latency.",
+          "evidence": "1.3-1.5 s per turn vs 3.2-4.4 s for Gemini-3-Flash. Table 4, §6.5.1"
+        },
+        {
+          "claim": "Long-term memory helps with background, knowledge and preferences.",
+          "evidence": "Case studies only, no metric. Fig. 9, §6.5.2"
+        }
+      ],
+      "limits": [
+        "The benefits of long-term memory are hard to measure in open-ended settings, so they are shown by case studies.",
+        "IntentFlow does not set a new ceiling; it trails Gemini-3-Flash on demand accuracy (83.1 vs 83.3) and in Work scenarios (84.8 vs 91.5).",
+        "Daily-life assistance is the hardest in the user study; deep intent understanding remains unsolved."
+      ],
+      "limits_src": "paper §6.3, §6.5.2-6.5.3, §8",
+      "reading": [
+        "The benchmark input gives all models the same scene description, a precomputed summary of earlier parts and the full 60-turn part history; none of the scored runs uses the global tree, RAG or MemLoader, so Table 1 and Table 3 measure the detector, not Pask-MM.",
+        "No memory ablation is reported; the multi-turn stability claim compares different models, not IntentFlow with and without memory.",
+        "The released code sets the judge to gpt-4.1-mini while the paper names GPT-5.2.",
+        "Each baseline is reported at its best of three prompt levels, while the released IntentFlow scores are from the neutral level only.",
+        "A reply on a no-demand turn counts as correct if the judge accepts it (score files label it fp_accepted), so No-Dem. accuracy is not simply staying silent.",
+        "Key memory settings (η_merge, D_max, top-k, retriever, what extracts traits and episodes) are not given anywhere."
+      ]
+    },
+    "abstract": {
+      "text": "PASK studies proactive assistants that listen to a live stream and must decide, turn by turn, whether and how to help without being asked. It proposes a three-part design: demand detection, memory modelling and an always-on agent system. Demand detection is done by IntentFlow, a Qwen3-30B-A3B model trained with SFT and RL that emits a silence, fast-reply or memory-backed token; memory is split into a user profile, a session workspace and a lazily merged global tree searched by RAG. On a new real-world benchmark, LatentNeeds-Bench, IntentFlow reaches the best balanced accuracy among the tested models at the lowest latency.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2604.08000"
+    },
+    "sections": {
+      "Memory architecture": "§4",
+      "Results": "§6.2-6.5",
+      "Discussion": "§8",
+      "Details": "§3.1, §4.2-4.3, §6.1"
+    }
+  }
+}

@@ -1,0 +1,546 @@
+{
+  "id": "graphplanner",
+  "name": "GraphPlanner",
+  "paper": {
+    "title": "GraphPlanner: Graph Memory-Augmented Agentic Routing for Multi-Agent LLMs",
+    "arxiv": "2604.23626",
+    "url": "https://arxiv.org/abs/2604.23626",
+    "venue": "ICLR 2026",
+    "venue_short": "ICLR",
+    "track": "main",
+    "year": 2026,
+    "code": "https://github.com/ulab-uiuc/GraphPlanner"
+  },
+  "design": {
+    "construction": {
+      "unit": "interaction row: input node, (role, LLM) hub, output node, with task score and cost",
+      "kept_as": "Longformer embeddings of the step's input and output text; the text itself is not kept in memory",
+      "processing": "every routing step logs one row; no LLM processing of memory",
+      "trigger": "other",
+      "writer": "environment logging rule (no LLM)"
+    },
+    "organization": {
+      "structure": "heterogeneous graph: query and response nodes linked to one shared hub node per (role, LLM) pair",
+      "stores": "workflow memory (rows of the current query) and historical memory (rows of all training episodes)",
+      "index": "none; the whole graph is encoded by GARNet at every step"
+    },
+    "management": {
+      "operations": "append a finished training episode's workflow rows to the historical memory",
+      "conflicts": null,
+      "forgetting": null,
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "current node embedding fused with root-query and task-type embeddings",
+      "candidates": "all history rows, averaged per hub (no search or top-k)",
+      "selection": "policy score state · hub, masked to valid roles; sampled in training, argmax at test",
+      "budget": "entire history, every step"
+    },
+    "use": {
+      "context": "memory only chooses the next (role, LLM); the LLM agents read text: original query, parent queries, sibling answers, summary",
+      "reasoning": "multi-step planner / executor / summarizer workflow, 8.1 LLM calls per query on average in Phase 2"
+    },
+    "control": {
+      "construction": "fixed-rule",
+      "management": "fixed-rule",
+      "retrieval": "learned-rl"
+    }
+  },
+  "classify": {
+    "structure": "graph",
+    "index": "none",
+    "management": "append-only",
+    "candidates": "read everything",
+    "decides": "reads everything",
+    "note": "Memory is read by a learned policy network, not searched: every history row is mean-pooled into its (role, LLM) hub at every decision. The output is an action (which role and LLM act next), not retrieved content."
+  },
+  "tags": {
+    "fidelity": "compressed",
+    "structure": [
+      "graph"
+    ],
+    "write_time": [
+      "none"
+    ],
+    "selection": [
+      "model-reads"
+    ],
+    "memory_type": [
+      "episodic",
+      "working"
+    ],
+    "learning": "rl",
+    "domain": [
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "Each step of a query's workflow (plan, answer or summarize, run by one LLM) produces a row: the embedding of the node being processed, the embedding of the LLM's output, the task score and the cost.",
+    "construction": "Rows are stored only as Longformer vectors plus two scalars; query and response nodes connect to a fixed hub node per (role, LLM) pair, whose feature is the role description embedding joined with the LLM description embedding.",
+    "organization": "Two graphs share the hubs: the workflow memory graph of the current query and the historical memory graph of past episodes; rounds are linked only through the shared hubs, not by temporal edges.",
+    "update": "During training the finished episode's rows are appended to the historical memory; nothing is merged or deleted. At test time the history is fixed and only the current query's rows grow.",
+    "retrieval": "At every step GARNet encodes the whole history (a scatter-mean per hub in the released code), injects the resulting hub vectors into the workflow graph encoder, and scores each hub against a fused state (node, root query, task type); invalid roles are masked.",
+    "answer": "The chosen LLM runs its role with a text prompt (original query, parent queries, sibling answers, summary); a final executor writes the answer. Memory vectors never enter a prompt.",
+    "learning": "The policy and value networks (GARNet) are trained with PPO on task score; the paper's reward also subtracts alpha times cost, the released code rewards only the final score."
+  },
+  "summary": "An RL-trained router that decides, step by step, which agent role and which LLM act next, reading a heterogeneous graph memory of past and current (query, role-LLM, response) interactions.",
+  "verified": false,
+  "notes": "Venue: ICLR 2026 main conference, verified on the PDF header ('Published as a conference paper at ICLR 2026') and the arXiv journal reference. Scope: memory here is interaction history for routing decisions, not user or task content; nothing from memory reaches an LLM prompt.\nCODE: released dynamic_router at commit 56010b1 (2026-04-26) read in full for the memory path; static_router is the Phase-1 fixed-workflow variant and was not traced. Paper and code differ on the LLM pool (5 vs 10), the reward (no cost term in code) and PPO settings; see mechanism.paper_vs_code.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2604.23626v1 (PDF read 2026-09-30)",
+      "code": "https://github.com/ulab-uiuc/GraphPlanner/tree/56010b1f43c6096ac1a87736c7a2e110e368ecb7/",
+      "code_note": "Commit 56010b1 (2026-04-26) is the head of the repository and was pushed the same day as arXiv v1; the history has three commits, all on that day, so this is the only released version. The Phase-2 (dynamic) router is traced; the Phase-1 static router shares the design."
+    },
+    "headline": [
+      "Memory stores no text: each step is two Longformer vectors plus a score and a cost, attached to a (role, LLM) hub.",
+      "History is not searched. Every row is averaged into its hub at every step, so the history signal for an action is the same for every query.",
+      "The graph only decides who acts next; the LLM agents themselves read plain-text context (parent queries, sibling answers, summary)."
+    ],
+    "units": [
+      {
+        "name": "Interaction row",
+        "role": "one routing step: a node was handled by one role run on one LLM",
+        "made_by": "environment, after each step (no LLM)",
+        "fields": [
+          {
+            "name": "input node (n_i)",
+            "what": "Longformer embedding (768-d, mean-pooled) of the query or state the step acted on",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code route_env.py L500-L509, L583-L593; utils.py L65-L105",
+            "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/router_planner/dynamic_router/route_env.py#L583-L593"
+          },
+          {
+            "name": "output node (n_o)",
+            "what": "Longformer embedding of the LLM's output: sub-queries, answer or summary",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code route_env.py L584-L593",
+            "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/router_planner/dynamic_router/route_env.py#L584-L593"
+          },
+          {
+            "name": "hub id",
+            "what": "which (role, LLM) action produced the row; links the row to its hub node",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code route_env.py L586-L588",
+            "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/router_planner/dynamic_router/route_env.py#L586-L588"
+          },
+          {
+            "name": "score",
+            "what": "task score of the final answer on the last executor row; 0 on every other row",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code route_env.py L558-L572",
+            "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/router_planner/dynamic_router/route_env.py#L558-L572"
+          },
+          {
+            "name": "cost",
+            "what": "GPT-2 token counts times the LLM's price, divided by 1000",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code route_env.py L781-L787",
+            "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/router_planner/dynamic_router/route_env.py#L781-L787"
+          },
+          {
+            "name": "step text",
+            "what": "the query, response or summary text; kept in the query tree for the next prompts but not in the memory tables",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code route_env.py L822-L873",
+            "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/router_planner/dynamic_router/route_env.py#L822-L873"
+          }
+        ]
+      },
+      {
+        "name": "Role hub",
+        "role": "one node per (role, LLM) pair, shared by the workflow and history graphs",
+        "made_by": "fixed at start from description embeddings",
+        "fields": [
+          {
+            "name": "hub feature",
+            "what": "role description embedding joined with LLM description embedding (1536-d); paper adds utility and cost",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §3.2; code route_env.py L130-L134",
+            "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/router_planner/dynamic_router/route_env.py#L130-L134"
+          }
+        ]
+      },
+      {
+        "name": "Historical memory",
+        "role": "all rows from every training episode",
+        "made_by": "append at episode end, training only",
+        "fields": [
+          {
+            "name": "rows",
+            "what": "same fields as the interaction row; grows with every episode, saved with the best checkpoint",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code train.py L125-L133, L310-L359",
+            "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/router_planner/dynamic_router/train.py#L125-L133"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Act",
+        "how": "the policy picks a (role, LLM); the LLM plans (1-3 sub-queries), answers, or summarizes the children's answers",
+        "params": {
+          "sub-queries per plan": "1-3",
+          "planner calls": "Pmax (code default 2)"
+        },
+        "src": "paper §3.1, Table 19; code route_env.py L458-L528, train.py L732",
+        "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/router_planner/dynamic_router/route_env.py#L458-L528"
+      },
+      {
+        "step": "Log a row",
+        "how": "embed the step's input and output with Longformer; store with hub id, score and cost in the workflow memory",
+        "src": "code route_env.py L500-L509, L583-L593, L650-L660",
+        "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/router_planner/dynamic_router/route_env.py#L583-L593"
+      },
+      {
+        "step": "Append to history",
+        "how": "after a training episode, all its workflow rows are appended to the historical memory; no dedup, merge or deletion",
+        "note": "not done at test time: test episodes read the training history but never add to it",
+        "src": "paper §3, Fig. 2; code train.py L125-L133, L196-L201",
+        "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/router_planner/dynamic_router/train.py#L125-L133"
+      }
+    ],
+    "read": [
+      {
+        "step": "Encode history",
+        "round": 1,
+        "input": "all history rows",
+        "scores": "no matching; every row joins its hub",
+        "how": "per-table linear layer, then scatter-mean of rows onto their hub id, added back to the hub (one DBLayer)",
+        "src": "paper §3.2 'nested dual-graph encoding'; code network.py L58-L172, L253-L262",
+        "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/router_planner/dynamic_router/network.py#L58-L172"
+      },
+      {
+        "step": "Encode workflow",
+        "round": 1,
+        "input": "this query's rows",
+        "how": "same layer over the current workflow rows, starting from the history-enriched hubs",
+        "src": "code network.py L264-L266",
+        "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/router_planner/dynamic_router/network.py#L264-L266"
+      },
+      {
+        "step": "Score actions",
+        "round": 1,
+        "input": "fused state: current node, root query, task type",
+        "scores": "dot product with every hub vector",
+        "how": "mask invalid roles, softmax; sample in training, argmax at test",
+        "params": {
+          "actions": "3 roles x LLMs (15 in code, 30 in paper)"
+        },
+        "src": "paper §3.2; code network.py L268-L283, L404-L421",
+        "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/router_planner/dynamic_router/network.py#L268-L283"
+      }
+    ],
+    "answer_context": {
+      "sees": "text only: the task query, the query hierarchy, earlier sibling answers and the root summary",
+      "format": "'Full context' + 'Summary of sub-query responses' + the task-formatted query (final executor prompt)",
+      "excludes": [
+        "memory rows",
+        "hub vectors",
+        "scores and costs",
+        "other queries' histories"
+      ],
+      "src": "code route_env.py L822-L873; paper Table 20",
+      "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/router_planner/dynamic_router/route_env.py#L822-L873"
+    },
+    "compression": [
+      {
+        "what": "stored row vs the step's text",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported. Each side of a step is stored as one 768-d Longformer vector (texts up to 4096 tokens).",
+        "src": "code utils.py L65-L105",
+        "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/router_planner/shared/utils.py#L65-L105"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "LLM pool",
+        "paper": "10 training LLMs (Table 7), 3K = 30 actions",
+        "code": "the dynamic router keeps 5 of 14 configured LLMs (qwen2.5-7b, codegemma-7b, gemma-2-9b, llama3-chatqa-1.5-8b, mistral-7b), 15 actions",
+        "src": "route_env.py L77",
+        "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/router_planner/dynamic_router/route_env.py#L77"
+      },
+      {
+        "topic": "Reward",
+        "paper": "final utility minus alpha x cost at every step (Eq. 4)",
+        "code": "final task score only; cost is stored as a feature, never subtracted",
+        "src": "route_env.py L525, L558-L572",
+        "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/router_planner/dynamic_router/route_env.py#L558-L572"
+      },
+      {
+        "topic": "PPO settings",
+        "paper": "gamma 0.99, 4 epochs per update, lr 3e-4",
+        "code": "gamma 0.98, 1 epoch, lr 1e-4 (RouteAgent defaults, not overridden)",
+        "src": "network.py L379-L381; train.py L455",
+        "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/router_planner/dynamic_router/network.py#L379-L381"
+      },
+      {
+        "topic": "Hub feature",
+        "paper": "role-LLM text embedding joined with utility and cost",
+        "code": "role and LLM description embeddings only; score and cost sit on the rows",
+        "src": "route_env.py L130-L134",
+        "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/router_planner/dynamic_router/route_env.py#L130-L134"
+      },
+      {
+        "topic": "Data splits",
+        "paper": "Table 8: e.g. HumanEval 120 train / 44 test, GPQA 400 / 44, MATH 500 / 50",
+        "code": "released CSVs: HumanEval 164 / 50, GPQA 448 / 50, MATH 504 / 56; 11 tasks, no out-of-domain tasks",
+        "src": "data/router_data_train.csv, data/router_data_test.csv",
+        "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/data/router_data_test.csv"
+      }
+    ],
+    "open_questions": [
+      "Does the history help because it describes past interactions, or because it gives each hub a learned per-action prior? In the code each hub gets one mean over all its rows, the same for every query, and no ablation separates the two.",
+      "The w/o History, Homo-Graph and Hetero-Graph ablation (Fig. 5b) and the inductive vs transductive comparison (Fig. 5c) are shown only as radar plots, without numbers."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 234",
+        "body": "<text class=\"fig-t\" x=\"55\" y=\"16\" text-anchor=\"middle\">Query tree</text><rect class=\"gi-ev\" x=\"31\" y=\"26\" width=\"48\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"38\" y1=\"34.0\" x2=\"69\" y2=\"34.0\"/><line class=\"gi-e\" x1=\"55\" y1=\"42\" x2=\"23\" y2=\"60\"/><rect class=\"gi-ev\" x=\"8\" y=\"60\" width=\"30\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"15\" y1=\"67.0\" x2=\"28\" y2=\"67.0\"/><line class=\"gi-e\" x1=\"55\" y1=\"42\" x2=\"55\" y2=\"60\"/><rect class=\"gi-ev\" x=\"40\" y=\"60\" width=\"30\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"47\" y1=\"67.0\" x2=\"60\" y2=\"67.0\"/><line class=\"gi-e\" x1=\"55\" y1=\"42\" x2=\"87\" y2=\"60\"/><rect class=\"gi-ev\" x=\"72\" y=\"60\" width=\"30\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"79\" y1=\"67.0\" x2=\"92\" y2=\"67.0\"/><text class=\"fig-s\" x=\"55\" y=\"92\" text-anchor=\"middle\">planner splits a</text><text class=\"fig-s\" x=\"55\" y=\"104\" text-anchor=\"middle\">query into 1-3</text><rect class=\"gi-llm\" x=\"13\" y=\"118\" width=\"84\" height=\"20\" rx=\"4\"/><text class=\"gi-lbl\" x=\"55\" y=\"132\" text-anchor=\"middle\">Planner</text><rect class=\"gi-llm\" x=\"13\" y=\"144\" width=\"84\" height=\"20\" rx=\"4\"/><text class=\"gi-lbl\" x=\"55\" y=\"158\" text-anchor=\"middle\">Executor</text><rect class=\"gi-llm\" x=\"13\" y=\"170\" width=\"84\" height=\"20\" rx=\"4\"/><text class=\"gi-lbl\" x=\"55\" y=\"184\" text-anchor=\"middle\">Summarizer</text><text class=\"fig-s\" x=\"55\" y=\"208\" text-anchor=\"middle\">each step: one role</text><text class=\"fig-s\" x=\"55\" y=\"221\" text-anchor=\"middle\">run by one LLM</text><path class=\"gi-a\" d=\"M104 110 L121 110\"/><polygon class=\"gi-ah\" points=\"128,110 121,106 121,114\"/><text class=\"fig-t\" x=\"200\" y=\"16\" text-anchor=\"middle\">One step, one row</text><rect class=\"gi-ev\" x=\"128\" y=\"26\" width=\"144\" height=\"188\" rx=\"10\"/><text class=\"fig-s\" x=\"140\" y=\"46\" text-anchor=\"start\">input: (sub-)query</text><rect class=\"gi-v\" x=\"140\" y=\"52\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"152\" y=\"52\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"164\" y=\"52\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"176\" y=\"52\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"188\" y=\"52\" width=\"10\" height=\"10\" rx=\"2\"/><path class=\"gi-a\" d=\"M200 66 L200 81\"/><polygon class=\"gi-ah\" points=\"200,88 196,81 204,81\"/><text class=\"fig-s\" x=\"208\" y=\"80\" text-anchor=\"start\">score, cost</text><circle class=\"gi-n\" cx=\"200\" cy=\"98\" r=\"9\"/><text class=\"fig-s\" x=\"200\" y=\"122\" text-anchor=\"middle\">role + LLM hub</text><path class=\"gi-a\" d=\"M200 128 L200 139\"/><polygon class=\"gi-ah\" points=\"200,146 196,139 204,139\"/><rect class=\"gi-v\" x=\"140\" y=\"150\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"152\" y=\"150\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"164\" y=\"150\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"176\" y=\"150\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"188\" y=\"150\" width=\"10\" height=\"10\" rx=\"2\"/><text class=\"fig-s\" x=\"140\" y=\"176\" text-anchor=\"start\">output: its response</text><text class=\"fig-s\" x=\"200\" y=\"194\" text-anchor=\"middle\">Longformer vectors;</text><text class=\"fig-s\" x=\"200\" y=\"206\" text-anchor=\"middle\">no text in memory</text><path class=\"gi-a\" d=\"M274 110 L289 110\"/><polygon class=\"gi-ah\" points=\"296,110 289,106 289,114\"/><text class=\"fig-t\" x=\"354\" y=\"16\" text-anchor=\"middle\">Workflow memory</text><rect class=\"gi-f\" x=\"298\" y=\"26\" width=\"112\" height=\"156\" rx=\"8\"/><line class=\"gi-e\" x1=\"318\" y1=\"48\" x2=\"322\" y2=\"104\"/><line class=\"gi-e\" x1=\"344\" y1=\"62\" x2=\"354\" y2=\"104\"/><line class=\"gi-e\" x1=\"370\" y1=\"48\" x2=\"354\" y2=\"104\"/><line class=\"gi-e\" x1=\"394\" y1=\"62\" x2=\"386\" y2=\"104\"/><line class=\"gi-e\" x1=\"318\" y1=\"150\" x2=\"322\" y2=\"104\"/><line class=\"gi-e\" x1=\"344\" y1=\"164\" x2=\"354\" y2=\"104\"/><line class=\"gi-e\" x1=\"370\" y1=\"150\" x2=\"386\" y2=\"104\"/><line class=\"gi-e\" x1=\"394\" y1=\"164\" x2=\"386\" y2=\"104\"/><rect class=\"gi-r\" x=\"314\" y=\"44\" width=\"8\" height=\"8\" rx=\"2\"/><rect class=\"gi-r\" x=\"340\" y=\"58\" width=\"8\" height=\"8\" rx=\"2\"/><rect class=\"gi-r\" x=\"366\" y=\"44\" width=\"8\" height=\"8\" rx=\"2\"/><rect class=\"gi-r\" x=\"390\" y=\"58\" width=\"8\" height=\"8\" rx=\"2\"/><rect class=\"gi-r\" x=\"314\" y=\"146\" width=\"8\" height=\"8\" rx=\"2\"/><rect class=\"gi-r\" x=\"340\" y=\"160\" width=\"8\" height=\"8\" rx=\"2\"/><rect class=\"gi-r\" x=\"366\" y=\"146\" width=\"8\" height=\"8\" rx=\"2\"/><rect class=\"gi-r\" x=\"390\" y=\"160\" width=\"8\" height=\"8\" rx=\"2\"/><circle class=\"gi-n\" cx=\"322\" cy=\"104\" r=\"7\"/><circle class=\"gi-n\" cx=\"354\" cy=\"104\" r=\"7\"/><circle class=\"gi-n\" cx=\"386\" cy=\"104\" r=\"7\"/><text class=\"fig-s\" x=\"354\" y=\"198\" text-anchor=\"middle\">rows of this query;</text><text class=\"fig-s\" x=\"354\" y=\"211\" text-anchor=\"middle\">hubs shared by all</text><text class=\"fig-s\" x=\"354\" y=\"224\" text-anchor=\"middle\">steps and rounds</text><path class=\"gi-a d\" d=\"M412 96 L431 96\"/><polygon class=\"gi-ah\" points=\"438,96 431,92 431,100\"/><text class=\"fig-t\" x=\"495\" y=\"16\" text-anchor=\"middle\">Historical memory</text><path class=\"gi-h\" d=\"M444 40 C 440 24, 548 22, 552 44 C 556 90, 556 130, 540 146 C 520 160, 460 160, 446 142 C 436 120, 438 70, 444 40 Z\"/><rect class=\"gi-r\" x=\"454\" y=\"40\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"472\" y=\"40\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"490\" y=\"40\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"508\" y=\"40\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"526\" y=\"40\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"454\" y=\"56\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"472\" y=\"56\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"490\" y=\"56\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"508\" y=\"56\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"526\" y=\"56\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"454\" y=\"72\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"472\" y=\"72\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"490\" y=\"72\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"508\" y=\"72\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"526\" y=\"72\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"454\" y=\"88\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"472\" y=\"88\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"490\" y=\"88\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"508\" y=\"88\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"526\" y=\"88\" width=\"10\" height=\"10\" rx=\"2\"/><line class=\"gi-e\" x1=\"470\" y1=\"104\" x2=\"470\" y2=\"118\"/><circle class=\"gi-n\" cx=\"470\" cy=\"126\" r=\"7\"/><line class=\"gi-e\" x1=\"496\" y1=\"104\" x2=\"496\" y2=\"118\"/><circle class=\"gi-n\" cx=\"496\" cy=\"126\" r=\"7\"/><line class=\"gi-e\" x1=\"522\" y1=\"104\" x2=\"522\" y2=\"118\"/><circle class=\"gi-n\" cx=\"522\" cy=\"126\" r=\"7\"/><text class=\"fig-s\" x=\"495\" y=\"176\" text-anchor=\"middle\">appended at the end</text><text class=\"fig-s\" x=\"495\" y=\"189\" text-anchor=\"middle\">of each training run</text><text class=\"fig-s\" x=\"495\" y=\"202\" text-anchor=\"middle\">no merging, no pruning</text><text class=\"fig-s\" x=\"495\" y=\"222\" text-anchor=\"middle\">frozen at test time</text>",
+        "text": [
+          "Each step of a query's workflow (plan, answer or summarize, done by one LLM) is logged as a row: the input and output as Longformer vectors, tied to that role-and-LLM hub with its score and cost.",
+          "Rows of the current query form the workflow memory; after each training episode they are appended to the historical memory, which is never pruned."
+        ],
+        "src": "paper §3.1-3.2, Fig. 2; code route_env.py L500-L593, train.py L125-L133",
+        "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/router_planner/dynamic_router/route_env.py#L583-L593"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 246",
+        "body": "<rect class=\"gi-f\" x=\"420\" y=\"6\" width=\"134\" height=\"34\" rx=\"8\"/><text class=\"fig-t\" x=\"487.0\" y=\"21.0\" text-anchor=\"middle\">State</text><text class=\"fig-s\" x=\"487.0\" y=\"34.0\" text-anchor=\"middle\">node + root query + task</text><path class=\"gi-a\" d=\"M487 40 L487 49\"/><polygon class=\"gi-ah\" points=\"487,56 483,49 491,49\"/><rect class=\"gi-f\" x=\"4\" y=\"56\" width=\"78\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"43.0\" y=\"76.0\" text-anchor=\"middle\">History</text><text class=\"fig-s\" x=\"43.0\" y=\"89.0\" text-anchor=\"middle\">every row</text><path class=\"gi-a\" d=\"M82 78 L89 78\"/><polygon class=\"gi-ah\" points=\"96,78 89,74 89,82\"/><rect class=\"gi-v fig-soft\" x=\"96\" y=\"56\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"144.0\" y=\"76.0\" text-anchor=\"middle\">Mean per hub</text><text class=\"fig-s\" x=\"144.0\" y=\"89.0\" text-anchor=\"middle\">history layer</text><path class=\"gi-a\" d=\"M192 78 L199 78\"/><polygon class=\"gi-ah\" points=\"206,78 199,74 199,82\"/><rect class=\"gi-v fig-soft\" x=\"206\" y=\"56\" width=\"98\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"255.0\" y=\"76.0\" text-anchor=\"middle\">+ this query</text><text class=\"fig-s\" x=\"255.0\" y=\"89.0\" text-anchor=\"middle\">workflow rows</text><path class=\"gi-a\" d=\"M304 78 L311 78\"/><polygon class=\"gi-ah\" points=\"318,78 311,74 311,82\"/><rect class=\"gi-f\" x=\"318\" y=\"56\" width=\"86\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"361.0\" y=\"76.0\" text-anchor=\"middle\">15 hubs</text><text class=\"fig-s\" x=\"361.0\" y=\"89.0\" text-anchor=\"middle\">role + LLM</text><path class=\"gi-a\" d=\"M404 78 L413 78\"/><polygon class=\"gi-ah\" points=\"420,78 413,74 413,82\"/><rect class=\"gi-w fig-soft\" x=\"420\" y=\"56\" width=\"134\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"487.0\" y=\"76.0\" text-anchor=\"middle\">Score</text><text class=\"fig-s\" x=\"487.0\" y=\"89.0\" text-anchor=\"middle\">state · hub</text><text class=\"fig-s\" x=\"148\" y=\"114\" text-anchor=\"middle\">no search: all rows</text><text class=\"fig-s\" x=\"148\" y=\"127\" text-anchor=\"middle\">averaged, every step</text><path class=\"gi-a\" d=\"M487 100 L487 143\"/><polygon class=\"gi-ah\" points=\"487,150 483,143 491,143\"/><text class=\"fig-s\" x=\"495\" y=\"128\" text-anchor=\"start\">softmax</text><rect class=\"gi-hi\" x=\"420\" y=\"150\" width=\"134\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"487.0\" y=\"170.0\" text-anchor=\"middle\">Pick (role, LLM)</text><text class=\"fig-s\" x=\"487.0\" y=\"183.0\" text-anchor=\"middle\">mask, then argmax</text><path class=\"gi-a\" d=\"M420 172 L411 172\"/><polygon class=\"gi-ah\" points=\"404,172 411,168 411,176\"/><rect class=\"gi-llm\" x=\"286\" y=\"150\" width=\"118\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"345.0\" y=\"170.0\" text-anchor=\"middle\">LLM runs step</text><text class=\"fig-s\" x=\"345.0\" y=\"183.0\" text-anchor=\"middle\">plan / answer / sum</text><path class=\"gi-a\" d=\"M286 172 L277 172\"/><polygon class=\"gi-ah\" points=\"270,172 277,168 277,176\"/><rect class=\"gi-f\" x=\"168\" y=\"150\" width=\"102\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"219.0\" y=\"170.0\" text-anchor=\"middle\">New row</text><text class=\"fig-s\" x=\"219.0\" y=\"183.0\" text-anchor=\"middle\">vector in, out</text><path class=\"gi-a d\" d=\"M219 150 L219 128 L255 128 L255 107\"/><polygon class=\"gi-ah\" points=\"255,100 251,107 259,107\"/><text class=\"fig-s\" x=\"263\" y=\"124\" text-anchor=\"start\">next step</text><text class=\"fig-s\" x=\"80\" y=\"162\" text-anchor=\"middle\">at test only this</text><text class=\"fig-s\" x=\"80\" y=\"175\" text-anchor=\"middle\">query's rows grow;</text><text class=\"fig-s\" x=\"80\" y=\"188\" text-anchor=\"middle\">history is fixed</text><text class=\"fig-s\" x=\"280\" y=\"224\" text-anchor=\"middle\">The final executor answers from text: original query, parent queries,</text><text class=\"fig-s\" x=\"280\" y=\"238\" text-anchor=\"middle\">sibling answers and the summary. Graph vectors never reach an LLM.</text>",
+        "text": [
+          "At every step the policy averages all history rows into their hubs, adds the current query's rows, and scores each hub against the current state.",
+          "The best valid (role, LLM) runs next and adds a new row. The LLMs themselves read only text context, never the memory."
+        ],
+        "src": "paper §3.2; code network.py L234-L283",
+        "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/router_planner/dynamic_router/network.py#L234-L283"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Row contents",
+        "value": "2 x 768-d vectors + score + cost",
+        "src": "code route_env.py L583-L593; paper App. C",
+        "section": "construction"
+      },
+      {
+        "label": "Hub nodes",
+        "value": "30 in the paper (3 roles x 10 LLMs) · 15 in the code",
+        "src": "paper §3.1, Table 7; code route_env.py L77",
+        "section": "construction"
+      },
+      {
+        "label": "Sub-queries per plan",
+        "value": "1-3",
+        "src": "paper Table 19",
+        "section": "method"
+      },
+      {
+        "label": "History read per step",
+        "value": "all rows, mean per hub",
+        "src": "code network.py L253-L262",
+        "section": "method"
+      },
+      {
+        "label": "Policy size",
+        "value": "hidden 32, state 768-d, hub 1536-d",
+        "src": "paper App. C",
+        "section": "method"
+      },
+      {
+        "label": "LLM calls per query",
+        "value": "8.1 (Phase 2) vs 1.8 for Router-R1",
+        "src": "paper Table 3",
+        "section": "results"
+      },
+      {
+        "label": "Training GPU memory",
+        "value": "1.04 GiB vs 186.26 GiB for Router-R1",
+        "src": "paper Table 4",
+        "section": "results"
+      },
+      {
+        "label": "Inference latency",
+        "value": "1.2 s per query (routing only)",
+        "src": "paper Table 15",
+        "section": "results"
+      },
+      {
+        "label": "Training time",
+        "value": "120 min vs 300 min for Router-R1",
+        "src": "paper Table 15",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "Math",
+        "Code",
+        "CS",
+        "WK",
+        "Popular"
+      ],
+      "rows": [
+        [
+          "GraphPlanner (GARNet)",
+          "67.0",
+          "76.0",
+          "78.0",
+          "38.0",
+          "52.0"
+        ],
+        [
+          "GAT encoder",
+          "64.3",
+          "73.9",
+          "75.6",
+          "35.8",
+          "49.3"
+        ],
+        [
+          "GraphTransformer encoder",
+          "64.7",
+          "74.3",
+          "75.9",
+          "35.3",
+          "49.1"
+        ],
+        [
+          "Router-R1",
+          "45",
+          "52",
+          "81",
+          "29",
+          "37"
+        ],
+        [
+          "Router-R1 + history retrieval (top-5)",
+          "46",
+          "62",
+          "73",
+          "12",
+          "39"
+        ],
+        [
+          "Router-R1 + history summary",
+          "51",
+          "62",
+          "75",
+          "14",
+          "36"
+        ]
+      ],
+      "src": "paper Tables 12-13 (Phase 2 accuracy x100; Table 13 is given to two decimals)"
+    },
+    "components": [
+      {
+        "role": "Text embedding of nodes",
+        "model": "Longformer (allenai/longformer-base-4096), mean pooling",
+        "kind": "retriever",
+        "src": "paper §3.2; code utils.py L65-L105",
+        "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/router_planner/shared/utils.py#L65-L105"
+      },
+      {
+        "role": "Reads the memory graph, scores actions",
+        "model": "GARNet policy + value networks (hidden 32), PPO",
+        "kind": "rule",
+        "src": "paper §3.2, App. B-C; code network.py L178-L365",
+        "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/router_planner/dynamic_router/network.py#L178-L283"
+      },
+      {
+        "role": "Planner, executor, summarizer",
+        "model": "routed pool of open LLMs (10 in the paper, 5 in the code), via NVIDIA NIM API",
+        "kind": "llm",
+        "src": "paper Table 7; code route_env.py L77",
+        "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/router_planner/dynamic_router/route_env.py#L77"
+      },
+      {
+        "role": "Cost tokens",
+        "model": "GPT-2 tokenizer",
+        "kind": "rule",
+        "src": "paper §4; code route_env.py L28",
+        "url": "https://github.com/ulab-uiuc/GraphPlanner/blob/56010b1f43c6096ac1a87736c7a2e110e368ecb7/router_planner/dynamic_router/route_env.py#L28"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Routing across LLMs can be framed as building a multi-agent workflow, with a small RL policy reading a graph of past and current (query, role-LLM, response) interactions. In its own tests this beats single- and multi-round routers on accuracy with far less training compute.",
+      "claims": [
+        {
+          "claim": "Beats single- and multi-round routers.",
+          "evidence": "Phase 2 average 63.6 vs 54.3 (RouterDC) and 51.8 (Router-R1); Phase 1 58.60 vs 54.80 (d1w3) and 60.40 vs 56.20 (d2w2). Tables 2-3"
+        },
+        {
+          "claim": "Much cheaper to train.",
+          "evidence": "1.04 GiB GPU memory vs 186.26 GiB for Router-R1; 120 min total training vs 300. Tables 4, 15"
+        },
+        {
+          "claim": "Generalizes to unseen tasks and LLMs.",
+          "evidence": "LogicGrid / MGSM / CommonGen average 78 vs 58 (RouterDC); AIME 14.7 vs 7.56. Tables 5, 14; unseen LLMs only in Fig. 5a"
+        },
+        {
+          "claim": "Historical memory is essential, and GARNet uses it better than generic GNNs or LLM-read history.",
+          "evidence": "Fig. 5b (radar, w/o History drops most); Table 12 (GAT, GraphTransformer lower); Table 13 (Router-R1 with retrieved or summarized history 0.12-0.62 vs 0.38-0.78)"
+        },
+        {
+          "claim": "Transductive inference (keep training history) is slightly better than inductive but costlier.",
+          "evidence": "Fig. 5c, radar only"
+        }
+      ],
+      "limits": [
+        "Only three agent roles (planner, executor, summarizer); richer roles are left to future work."
+      ],
+      "limits_src": "paper §5 (no separate Limitations section)",
+      "reading": [
+        "Memory holds no user or task content: it is a log of routing outcomes stored as vectors, and nothing from it reaches an LLM prompt.",
+        "In the released code the history is not matched to the query: each hub receives the mean of all its rows, identical for every question, so its effect is closer to a learned per-action prior than to retrieval.",
+        "Costs are not comparable across the result tables: GraphPlanner averages 605.0 cost units and 8.1 calls per query in Phase 2, against 76.3 and 1.8 for Router-R1; the Pareto claim rests on Fig. 4 only.",
+        "The printed Average column is not the mean of the five domain columns (GraphPlanner 63.6 vs 62.2 by hand; Router-R1 51.8 vs 48.9), so it is presumably weighted by test items; the paper does not say.",
+        "Test sets are small (44-50 questions per task, Table 8), and one percentage point on a domain is about one question.",
+        "Released code differs from the paper in the LLM pool (5 vs 10), the reward (no cost term) and PPO settings, so the code as released does not reproduce the reported configuration.",
+        "The three memory ablations are radar plots without numbers; the only numeric memory ablation (Table 13) compares against Router-R1 variants, not GraphPlanner without history."
+      ]
+    },
+    "abstract": {
+      "text": "GraphPlanner treats LLM routing as building a small multi-agent workflow per query: at each step it chooses both an agent role (planner, executor or summarizer) and which LLM plays it. The choice is made by a graph neural policy, GARNet, that reads a heterogeneous graph of the current workflow and of past interactions, linking queries and responses to shared role-LLM nodes. The whole router is trained with PPO for accuracy and cost. Across 14 tasks the authors report higher accuracy than single- and multi-round routers, far lower training GPU memory, and zero-shot transfer to unseen tasks and LLMs.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2604.23626"
+    },
+    "sections": {
+      "Memory architecture": "§3",
+      "Results": "§4.1-4.2, App. H",
+      "Ablation": "§4.3, App. F-G",
+      "Discussion": "§5",
+      "Details": "§4, App. B-D, I-K"
+    }
+  }
+}

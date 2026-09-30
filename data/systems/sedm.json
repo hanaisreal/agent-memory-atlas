@@ -1,0 +1,520 @@
+{
+  "id": "sedm",
+  "name": "SEDM",
+  "paper": {
+    "title": "SEDM: Scalable Self-Evolving Distributed Memory for Agents",
+    "arxiv": "2509.09498",
+    "url": "https://arxiv.org/abs/2509.09498",
+    "venue": "arXiv preprint",
+    "venue_short": "arXiv",
+    "track": "preprint",
+    "year": 2025,
+    "code": null
+  },
+  "design": {
+    "construction": {
+      "unit": "memory item: one short injectable snippet extracted from a task run, with a utility weight and provenance",
+      "kept_as": "extracted snippet (decisive reasoning or corrective step), deduplicated and canonicalized",
+      "processing": "package the run as an SCEC; extract one candidate; A/B replay with and without it; admit if S = ΔR − λL·ΔL − λT·ΔT ≥ η",
+      "trigger": "other",
+      "writer": "not stated (extraction model and prompt are not described)"
+    },
+    "organization": {
+      "structure": "flat pool of weighted items, each paired with an abstracted general form; trajectory, query and insight graphs keep provenance",
+      "stores": "one repository of specific and general items",
+      "index": "all-MiniLM-L6-v2 dense embeddings (stated for FEVER/HotpotQA)"
+    },
+    "management": {
+      "operations": "weight update w ← w + α·Ū − β·f_use; promote stable items; merge near-duplicates; abstract recurring items into insights",
+      "conflicts": "items whose injections repeatedly lower reward, or that contradict other rules, are demoted and removed below a threshold",
+      "forgetting": "decay of rarely used or unhelpful items; removal or soft-delete below a weight threshold",
+      "timing": "both"
+    },
+    "retrieval": {
+      "query": "task query as is",
+      "candidates": "dense similarity over specific and general items",
+      "selection": "rank by s(q,m) = sim(q,m) × w(m); no reranker",
+      "budget": "same memory budget as baselines (size not stated); top-k not stated"
+    },
+    "use": {
+      "context": "selected items injected into the agent prompt",
+      "reasoning": "the agent's own task loop (ReAct-style Search/Finish trace in the SCEC example)"
+    },
+    "control": {
+      "construction": "fixed-rule",
+      "management": "feedback-optimized",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "flat",
+    "index": "vector",
+    "management": "consolidate",
+    "candidates": "dense",
+    "decides": "top-k rule",
+    "note": "Admission and weights come from measured task feedback, but at read time the rule is fixed: similarity times weight. Merging and abstraction make management 'consolidate' rather than 'update in place'."
+  },
+  "tags": {
+    "fidelity": "extracted",
+    "structure": [
+      "flat"
+    ],
+    "write_time": [
+      "filter",
+      "extract",
+      "consolidate"
+    ],
+    "selection": [
+      "dense"
+    ],
+    "memory_type": [
+      "procedural",
+      "semantic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "general",
+      "conversation"
+    ]
+  },
+  "stages": {
+    "ingestion": "Each task run is packaged as a Self-Contained Execution Context (SCEC): inputs, outputs, summarised tool calls, seeds and config hashes, so it can be replayed without the original environment.",
+    "construction": "One candidate snippet is extracted per SCEC and tested by paired A/B replay (prompt with and without it); it is admitted only if the reward gain minus latency and token costs clears a threshold, and that score becomes its initial weight.",
+    "organization": "Admitted items sit in one weighted pool; right after admission each gets a general form with entities replaced by typed placeholders and a scaled-down weight.",
+    "update": "Weights move with realised utility and usage frequency; near-duplicates are merged, stable items promoted and abstracted, and items that keep hurting reward are demoted or removed.",
+    "retrieval": "Items are scored by embedding similarity to the query multiplied by their weight; specific and general forms compete in the same ranking, with no reranker.",
+    "answer": "Selected items are injected into the agent's prompt.",
+    "learning": "No model is trained; only per-item scalar weights change from observed outcomes."
+  },
+  "summary": "Memory items enter only after an A/B replay shows they raise reward net of latency and token cost; that measured gain becomes a weight that multiplies similarity at retrieval and keeps being updated, merged and abstracted for cross-task transfer.",
+  "verified": false,
+  "notes": "Paper v3 (2025-09-26) read from the arXiv PDF. No code: the abstract says code will be released on acceptance, and no official repository was found. Hyper-parameters λL, λT, η, α, β, top-k and the memory budget are not given. How SCEC replay and extraction are applied to LoCoMo dialogues is not described. The LoCoMo Table 1 rows for LoCoMo, ReadAgent, MemoryBank, MemGPT and A-Mem equal A-Mem's (2502.12110) GPT-4o-mini Table 1 values rounded to one decimal, under different category labels; see results notes.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2509.09498v3 (PDF read 2026-09-30)",
+      "code": null,
+      "code_note": "No official code: the paper says code will be released upon acceptance, and a GitHub search found no repository. Everything here follows the paper text, Eqs. 1-10 and Figure 2."
+    },
+    "headline": [
+      "A memory item is admitted only if replaying the same run with it beats replaying without it, net of latency and token cost; the net score is its starting weight.",
+      "Retrieval is plain similarity times that weight: no reranker and no LLM at read time.",
+      "The paper gives no values for the thresholds, trade-off weights, top-k or memory budget, and does not say how the replay test is run on LoCoMo dialogues."
+    ],
+    "units": [
+      {
+        "name": "Memory item",
+        "role": "one short snippet that can be injected into a prompt on its own",
+        "made_by": "extraction from one SCEC (model not stated), then an A/B admission gate",
+        "fields": [
+          {
+            "name": "snippet (specific form)",
+            "what": "decisive reasoning or corrective step from a run, deduplicated and canonicalized",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper §3.2.2",
+            "url": "https://arxiv.org/pdf/2509.09498"
+          },
+          {
+            "name": "weight w",
+            "what": "starts at max(0, S) from the A/B test, then updated by realised utility and usage",
+            "kept_as": "derived",
+            "used_for": [
+              "rerank"
+            ],
+            "src": "paper Eqs. 5-7",
+            "url": "https://arxiv.org/pdf/2509.09498"
+          },
+          {
+            "name": "general form",
+            "what": "copy with entities and domain terms replaced by typed placeholders; weight α·w with α < 1",
+            "kept_as": "rewritten",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper §3.4, Eq. 9",
+            "url": "https://arxiv.org/pdf/2509.09498"
+          },
+          {
+            "name": "provenance",
+            "what": "hashes, seeds, versions and A/B fingerprints",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "paper §3.2.2",
+            "url": "https://arxiv.org/pdf/2509.09498"
+          }
+        ]
+      },
+      {
+        "name": "SCEC",
+        "role": "self-contained package of one task run, used to replay it",
+        "made_by": "the system, after each task execution",
+        "fields": [
+          {
+            "name": "inputs, trace, output, tool summaries, seeds, config hashes",
+            "what": "everything needed to replay the run without the environment (Figure 2 shows thought/action/observation steps, the final answer, correctness, latency and token use)",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "paper §3.2.1, Figure 2",
+            "url": "https://arxiv.org/pdf/2509.09498"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Package",
+        "how": "wrap a finished run into an SCEC with summarised tool calls so it can be replayed anywhere",
+        "src": "paper §3.2.1",
+        "url": "https://arxiv.org/pdf/2509.09498"
+      },
+      {
+        "step": "Extract",
+        "how": "pull one candidate snippet from the SCEC; deduplicate, canonicalize, attach provenance",
+        "src": "paper §3.2.2",
+        "url": "https://arxiv.org/pdf/2509.09498"
+      },
+      {
+        "step": "A/B replay",
+        "how": "run the SCEC with the original prompt (A) and with the snippet injected (B); measure ΔR, ΔL, ΔT; may average several runs; jobs spread over workers",
+        "params": {
+          "λL, λT": "not stated",
+          "runs": "not stated"
+        },
+        "src": "paper Eqs. 1-4, §3.2.1",
+        "url": "https://arxiv.org/pdf/2509.09498"
+      },
+      {
+        "step": "Admit",
+        "how": "accept if S ≥ η; initial weight w₀ = max(0, S); otherwise discard",
+        "params": {
+          "η": "not stated"
+        },
+        "src": "paper Eq. 5",
+        "url": "https://arxiv.org/pdf/2509.09498"
+      },
+      {
+        "step": "Abstract",
+        "how": "make a general form with typed placeholders; weight α·w (α < 1); generated alongside the A/B test",
+        "params": {
+          "α": "< 1, value not stated"
+        },
+        "src": "paper §3.4, Eq. 9",
+        "url": "https://arxiv.org/pdf/2509.09498"
+      },
+      {
+        "step": "Evolve",
+        "how": "update weights from realised utility and usage; merge similar items without conflicts; demote or remove items that keep lowering reward",
+        "params": {
+          "α, β": "not stated"
+        },
+        "src": "paper §3.3.2, Eqs. 7-8",
+        "url": "https://arxiv.org/pdf/2509.09498"
+      }
+    ],
+    "read": [
+      {
+        "step": "Score",
+        "round": 1,
+        "input": "task query",
+        "scores": "query embedding vs item embedding (specific and general forms)",
+        "how": "s(q,m) = sim(q,m) × w(m)",
+        "params": {
+          "embedder": "all-MiniLM-L6-v2 (FEVER/HotpotQA)",
+          "top-k": "not stated"
+        },
+        "src": "paper Eqs. 6 and 10, §4.3",
+        "url": "https://arxiv.org/pdf/2509.09498"
+      },
+      {
+        "step": "Inject",
+        "round": 1,
+        "how": "selected items go into the agent prompt; the run's outcome later feeds the weight update",
+        "src": "paper §3.3.1, Figure 2",
+        "url": "https://arxiv.org/pdf/2509.09498"
+      }
+    ],
+    "answer_context": {
+      "sees": "the task prompt plus the top-scored memory items",
+      "format": "not given",
+      "excludes": [
+        "SCEC traces",
+        "provenance"
+      ],
+      "src": "paper §3.3.1, Figure 2",
+      "url": "https://arxiv.org/pdf/2509.09498"
+    },
+    "compression": [
+      {
+        "what": "prompt tokens, SEDM vs G-Memory on FEVER",
+        "kept": 2.47,
+        "of": 3.62,
+        "unit": "M tokens",
+        "basis": "Table 2 prompt tokens over the whole FEVER evaluation run (no-memory uses 1.65M)",
+        "src": "paper Table 2",
+        "url": "https://arxiv.org/pdf/2509.09498"
+      },
+      {
+        "what": "prompt tokens, SEDM vs G-Memory on HotpotQA",
+        "kept": 3.88,
+        "of": 4.63,
+        "unit": "M tokens",
+        "basis": "Table 2 prompt tokens over the whole HotpotQA run (no-memory uses 2.46M)",
+        "src": "paper Table 2",
+        "url": "https://arxiv.org/pdf/2509.09498"
+      },
+      {
+        "what": "stored item vs its source run",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported: the paper only calls the item a concise snippet.",
+        "src": "paper §3.2.2",
+        "url": "https://arxiv.org/pdf/2509.09498"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "FEVER score: no memory / G-Memory / SEDM",
+        "value": "57 / 62 / 66",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "HotpotQA EM: no memory / G-Memory / SEDM",
+        "value": "34 / 38 / 39",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "LoCoMo temporal F1: SEDM vs G-Memory",
+        "value": "47.5 vs 32.4",
+        "src": "paper Table 1"
+      }
+    ],
+    "open_questions": [
+      "How is an A/B replay with a task reward run on LoCoMo dialogue QA, and what is extracted from a conversation? The paper describes the pipeline only for agent task runs.",
+      "Gains over G-Memory on FEVER and HotpotQA (4 and 1 points) come without the number of test items, variance or the size of the shared memory budget.",
+      "The ablation adds the admission gate and the scheduler together with their weights; there is no run of weighting without the gate, or the gate without weighted retrieval."
+    ],
+    "glance": [
+      {
+        "q": "What is one memory item?",
+        "a": "A short snippet taken from one task run (a decisive or corrective step), stored with a utility weight, provenance and a generalised copy.",
+        "src": "paper §3.2.2, §3.4",
+        "url": "https://arxiv.org/pdf/2509.09498"
+      },
+      {
+        "q": "What decides whether it is stored?",
+        "a": "A paired replay of the same run with and without the snippet; it is kept only if the reward gain minus latency and token costs reaches a threshold.",
+        "src": "paper Eqs. 1-5",
+        "url": "https://arxiv.org/pdf/2509.09498"
+      },
+      {
+        "q": "How is memory read?",
+        "a": "Embedding similarity to the query times the item's weight; no reranker and no LLM step.",
+        "src": "paper Eq. 6",
+        "url": "https://arxiv.org/pdf/2509.09498"
+      },
+      {
+        "q": "Does memory change after it is written?",
+        "a": "Yes: weights follow observed utility and usage, similar items are merged, and harmful ones are demoted or removed.",
+        "src": "paper §3.3.2",
+        "url": "https://arxiv.org/pdf/2509.09498"
+      },
+      {
+        "q": "What does the answer model read?",
+        "a": "Its task prompt plus the selected items; the exact template and count are not given.",
+        "src": "paper §3.3.1",
+        "url": "https://arxiv.org/pdf/2509.09498"
+      }
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 246",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"30\" width=\"66\" height=\"50\" rx=\"8\"/><text class=\"fig-t\" x=\"37.0\" y=\"53.0\" text-anchor=\"middle\">Task run</text><text class=\"fig-s\" x=\"37.0\" y=\"66.0\" text-anchor=\"middle\">agent + tools</text><path class=\"gi-a\" d=\"M70 55 L77 55\"/><polygon class=\"gi-ah\" points=\"84,55 77,51 77,59\"/><rect class=\"gi-ev\" x=\"84\" y=\"26\" width=\"82\" height=\"58\" rx=\"8\"/><text class=\"fig-t\" x=\"125.0\" y=\"47.0\" text-anchor=\"middle\">SCEC</text><text class=\"fig-s\" x=\"125.0\" y=\"60.0\" text-anchor=\"middle\">inputs, trace,</text><text class=\"fig-s\" x=\"125.0\" y=\"72.0\" text-anchor=\"middle\">seeds, hashes</text><path class=\"gi-a\" d=\"M166 55 L173 55\"/><polygon class=\"gi-ah\" points=\"180,55 173,51 173,59\"/><rect class=\"gi-f\" x=\"180\" y=\"30\" width=\"70\" height=\"50\" rx=\"8\"/><text class=\"fig-t\" x=\"215.0\" y=\"53.0\" text-anchor=\"middle\">Extract m</text><text class=\"fig-s\" x=\"215.0\" y=\"66.0\" text-anchor=\"middle\">one snippet</text><path class=\"gi-a\" d=\"M250 55 L257 55\"/><polygon class=\"gi-ah\" points=\"264,55 257,51 257,59\"/><rect class=\"gi-l\" x=\"264\" y=\"22\" width=\"104\" height=\"66\" rx=\"8\"/><text class=\"fig-t\" x=\"316\" y=\"36\" text-anchor=\"middle\">A/B replay × N</text><rect class=\"gi-r\" x=\"272\" y=\"44\" width=\"88\" height=\"16\" rx=\"3\"/><text class=\"fig-s\" x=\"316\" y=\"56\" text-anchor=\"middle\">A: prompt</text><rect class=\"gi-hi\" x=\"272\" y=\"64\" width=\"88\" height=\"16\" rx=\"3\"/><text class=\"fig-s\" x=\"316\" y=\"76\" text-anchor=\"middle\">B: prompt + m</text><text class=\"fig-s\" x=\"336\" y=\"104\" text-anchor=\"middle\">S = ΔR − λL·ΔL − λT·ΔT</text><path class=\"gi-a\" d=\"M368 55 L371 55\"/><polygon class=\"gi-ah\" points=\"378,55 371,51 371,59\"/><polygon class=\"gi-f\" points=\"412,23 446,55 412,87 378,55\"/><text class=\"fig-t\" x=\"412\" y=\"53\" text-anchor=\"middle\">S ≥ η ?</text><text class=\"fig-s\" x=\"412\" y=\"66\" text-anchor=\"middle\">gate</text><path class=\"gi-a\" d=\"M446 55 L459 55\"/><polygon class=\"gi-ah\" points=\"466,55 459,51 459,59\"/><text class=\"fig-yes\" x=\"456\" y=\"45\" text-anchor=\"middle\">Yes</text><rect class=\"gi-hi\" x=\"466\" y=\"30\" width=\"90\" height=\"50\" rx=\"8\"/><text class=\"fig-t\" x=\"511.0\" y=\"53.0\" text-anchor=\"middle\">Admit m</text><text class=\"fig-s\" x=\"511.0\" y=\"66.0\" text-anchor=\"middle\">w₀ = max(0, S)</text><path class=\"gi-a\" d=\"M412 87 L412 101\"/><polygon class=\"gi-ah\" points=\"412,108 408,101 416,101\"/><text class=\"fig-no\" x=\"420\" y=\"102\" text-anchor=\"start\">No</text><rect class=\"gi-ev d\" x=\"382\" y=\"108\" width=\"60\" height=\"20\" rx=\"6\"/><text class=\"fig-s\" x=\"412\" y=\"122\" text-anchor=\"middle\">discard</text><rect class=\"gi-l\" x=\"4\" y=\"146\" width=\"210\" height=\"84\" rx=\"8\"/><text class=\"fig-t\" x=\"109\" y=\"162\" text-anchor=\"middle\">distributed replay</text><rect class=\"gi-r\" x=\"18\" y=\"172\" width=\"54\" height=\"22\" rx=\"4\"/><text class=\"fig-s\" x=\"45\" y=\"187\" text-anchor=\"middle\">worker 1</text><rect class=\"gi-r\" x=\"82\" y=\"172\" width=\"54\" height=\"22\" rx=\"4\"/><text class=\"fig-s\" x=\"109\" y=\"187\" text-anchor=\"middle\">worker 2</text><rect class=\"gi-r\" x=\"146\" y=\"172\" width=\"54\" height=\"22\" rx=\"4\"/><text class=\"fig-s\" x=\"173\" y=\"187\" text-anchor=\"middle\">worker 3</text><text class=\"fig-s\" x=\"109\" y=\"210\" text-anchor=\"middle\">no original environment needed;</text><text class=\"fig-s\" x=\"109\" y=\"222\" text-anchor=\"middle\">only stats + hashes uploaded</text><path class=\"gi-e d\" d=\"M190 146 L190 100 L270 100 L270 88\"/><path class=\"gi-a\" d=\"M511 80 L511 139\"/><polygon class=\"gi-ah\" points=\"511,146 507,139 515,139\"/><rect class=\"gi-f\" x=\"232\" y=\"146\" width=\"324\" height=\"92\" rx=\"10\"/><text class=\"fig-t\" x=\"242\" y=\"162\" text-anchor=\"start\">Memory repository</text><rect class=\"gi-ev\" x=\"242\" y=\"170\" width=\"128\" height=\"26\" rx=\"6\"/><text class=\"fig-t\" x=\"250\" y=\"187\" text-anchor=\"start\">specific m</text><rect class=\"gi-w\" x=\"326\" y=\"177\" width=\"36\" height=\"12\" rx=\"2\"/><text class=\"gi-lbl\" x=\"344\" y=\"187\" text-anchor=\"middle\">w</text><rect class=\"gi-ev d\" x=\"242\" y=\"206\" width=\"128\" height=\"26\" rx=\"6\"/><text class=\"fig-t\" x=\"250\" y=\"223\" text-anchor=\"start\">general form</text><rect class=\"gi-w\" x=\"336\" y=\"213\" width=\"26\" height=\"12\" rx=\"2\"/><text class=\"gi-lbl\" x=\"349\" y=\"223\" text-anchor=\"middle\">α·w</text><line class=\"gi-e\" x1=\"256\" y1=\"196\" x2=\"256\" y2=\"206\"/><text class=\"fig-s\" x=\"378\" y=\"172\" text-anchor=\"start\">maintained over time:</text><rect class=\"gi-r\" x=\"380\" y=\"180\" width=\"6\" height=\"6\" rx=\"1\"/><text class=\"fig-s\" x=\"392\" y=\"187\" text-anchor=\"start\">w += α·Ū − β·f_use</text><rect class=\"gi-r\" x=\"380\" y=\"196\" width=\"6\" height=\"6\" rx=\"1\"/><text class=\"fig-s\" x=\"392\" y=\"203\" text-anchor=\"start\">merge near-duplicates</text><rect class=\"gi-r\" x=\"380\" y=\"212\" width=\"6\" height=\"6\" rx=\"1\"/><text class=\"fig-s\" x=\"392\" y=\"219\" text-anchor=\"start\">demote or drop conflicts</text>",
+        "text": [
+          "Each run is packed into a replayable SCEC, one snippet is extracted, and the run is replayed with and without it on distributed workers.",
+          "Only snippets whose net gain S clears the threshold are stored, with weight max(0, S) and a generalised copy; weights keep changing as items are used, merged or demoted."
+        ],
+        "src": "paper §3.2-3.4, Eqs. 1-9, Figure 2",
+        "url": "https://arxiv.org/pdf/2509.09498"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 244",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"36\" width=\"58\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"33.0\" y=\"62.0\" text-anchor=\"middle\">Query</text><path class=\"gi-a\" d=\"M62 58 L69 58\"/><polygon class=\"gi-ah\" points=\"76,58 69,54 69,62\"/><rect class=\"gi-v fig-soft\" x=\"76\" y=\"36\" width=\"92\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"122.0\" y=\"56.0\" text-anchor=\"middle\">Similarity</text><text class=\"fig-s\" x=\"122.0\" y=\"69.0\" text-anchor=\"middle\">all-MiniLM-L6-v2</text><path class=\"gi-a\" d=\"M168 58 L175 58\"/><polygon class=\"gi-ah\" points=\"182,58 175,54 175,62\"/><rect class=\"gi-w\" x=\"182\" y=\"36\" width=\"94\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"229.0\" y=\"56.0\" text-anchor=\"middle\">× weight</text><text class=\"fig-s\" x=\"229.0\" y=\"69.0\" text-anchor=\"middle\">s = sim · w(m)</text><path class=\"gi-a\" d=\"M276 58 L283 58\"/><polygon class=\"gi-ah\" points=\"290,58 283,54 283,62\"/><rect class=\"gi-f\" x=\"290\" y=\"36\" width=\"76\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"328.0\" y=\"56.0\" text-anchor=\"middle\">Top items</text><text class=\"fig-s\" x=\"328.0\" y=\"69.0\" text-anchor=\"middle\">k not stated</text><path class=\"gi-a\" d=\"M366 58 L373 58\"/><polygon class=\"gi-ah\" points=\"380,58 373,54 373,62\"/><rect class=\"gi-llm\" x=\"380\" y=\"36\" width=\"84\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"422.0\" y=\"56.0\" text-anchor=\"middle\">Agent</text><text class=\"fig-s\" x=\"422.0\" y=\"69.0\" text-anchor=\"middle\">prompt + items</text><path class=\"gi-a\" d=\"M464 58 L471 58\"/><polygon class=\"gi-ah\" points=\"478,58 471,54 471,62\"/><rect class=\"gi-hi\" x=\"478\" y=\"36\" width=\"78\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"517.0\" y=\"56.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"517.0\" y=\"69.0\" text-anchor=\"middle\">reward, tokens</text><text class=\"fig-s\" x=\"122\" y=\"110\" text-anchor=\"middle\">specific + general items</text><rect class=\"gi-l\" x=\"76\" y=\"118\" width=\"200\" height=\"118\" rx=\"8\"/><text class=\"gi-lbl\" x=\"84\" y=\"136\" text-anchor=\"start\">item</text><text class=\"gi-lbl\" x=\"196\" y=\"136\" text-anchor=\"start\">weight w</text><rect class=\"gi-ev\" x=\"84\" y=\"138\" width=\"100\" height=\"18\" rx=\"4\"/><line class=\"gi-t\" x1=\"92\" y1=\"147\" x2=\"170\" y2=\"147\"/><rect class=\"gi-w\" x=\"196\" y=\"141\" width=\"44\" height=\"12\" rx=\"2\"/><rect class=\"gi-ev\" x=\"84\" y=\"160\" width=\"100\" height=\"18\" rx=\"4\"/><line class=\"gi-t\" x1=\"92\" y1=\"169\" x2=\"170\" y2=\"169\"/><rect class=\"gi-w\" x=\"196\" y=\"163\" width=\"30\" height=\"12\" rx=\"2\"/><rect class=\"gi-ev\" x=\"84\" y=\"182\" width=\"100\" height=\"18\" rx=\"4\"/><line class=\"gi-t\" x1=\"92\" y1=\"191\" x2=\"170\" y2=\"191\"/><rect class=\"gi-w\" x=\"196\" y=\"185\" width=\"12\" height=\"12\" rx=\"2\"/><rect class=\"gi-ev\" x=\"84\" y=\"204\" width=\"100\" height=\"18\" rx=\"4\"/><line class=\"gi-t\" x1=\"92\" y1=\"213\" x2=\"170\" y2=\"213\"/><rect class=\"gi-w\" x=\"196\" y=\"207\" width=\"38\" height=\"12\" rx=\"2\"/><path class=\"gi-e d\" d=\"M122 80 L122 100\"/><path class=\"gi-a d\" d=\"M517 80 L517 190 L284 190\"/><polygon class=\"gi-ah\" points=\"277,190 284,186 284,194\"/><text class=\"fig-s\" x=\"400\" y=\"182\" text-anchor=\"middle\">outcomes update w (eq. 7)</text><text class=\"fig-s\" x=\"400\" y=\"206\" text-anchor=\"middle\">w ← w + α·Ū − β·f_use</text><text class=\"fig-s\" x=\"400\" y=\"222\" text-anchor=\"middle\">repeated harm → demote or remove</text>",
+        "text": [
+          "Every specific and general item is scored by embedding similarity to the query times its weight, and the top items go into the agent's prompt.",
+          "The run's outcome flows back into the weights, so items that help rise and items that hurt sink or are removed."
+        ],
+        "src": "paper §3.3, Eqs. 6-7 and 10, §4.3",
+        "url": "https://arxiv.org/pdf/2509.09498"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Admission score",
+        "value": "S = ΔR − λL·ΔL − λT·ΔT; keep if S ≥ η (values not given)",
+        "src": "paper Eqs. 4-5",
+        "section": "construction"
+      },
+      {
+        "label": "Initial weight",
+        "value": "max(0, S); general form α·w, α < 1",
+        "src": "paper Eq. 5, §3.4",
+        "section": "construction"
+      },
+      {
+        "label": "Retrieval score",
+        "value": "similarity × weight",
+        "src": "paper Eq. 6",
+        "section": "method"
+      },
+      {
+        "label": "Embedder",
+        "value": "all-MiniLM-L6-v2 (FEVER, HotpotQA)",
+        "src": "paper §4.3",
+        "section": "method"
+      },
+      {
+        "label": "Backbone",
+        "value": "GPT-4o-mini in all experiments",
+        "src": "paper §4.1, §4.3",
+        "section": "method"
+      },
+      {
+        "label": "Prompt tokens, FEVER run",
+        "value": "2.47M vs 3.62M for G-Memory, 1.65M without memory",
+        "src": "paper Table 2",
+        "section": "results"
+      },
+      {
+        "label": "Prompt tokens, HotpotQA run",
+        "value": "3.88M vs 4.63M for G-Memory, 2.46M without memory",
+        "src": "paper Table 2",
+        "section": "results"
+      },
+      {
+        "label": "Completion tokens",
+        "value": "53K vs 109K (FEVER), 55K vs 114K (HotpotQA)",
+        "src": "paper Table 2",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "HotpotQA EM",
+        "HotpotQA prompt tokens",
+        "FEVER score",
+        "FEVER prompt tokens"
+      ],
+      "rows": [
+        [
+          "No memory",
+          "34",
+          "2.46M",
+          "57",
+          "1.65M"
+        ],
+        [
+          "+ SCEC admission",
+          "37",
+          "3.52M",
+          "64",
+          "2.19M"
+        ],
+        [
+          "+ SCEC + self-scheduling (full)",
+          "39",
+          "3.88M",
+          "66",
+          "2.47M"
+        ]
+      ],
+      "src": "paper Table 3 (GPT-4o-mini)"
+    },
+    "components": [
+      {
+        "role": "Extracts candidate snippets",
+        "model": "not stated",
+        "kind": "llm",
+        "src": "paper §3.2.2"
+      },
+      {
+        "role": "Admission gate (A/B replay, S ≥ η)",
+        "model": "replays with the backbone LLM",
+        "kind": "rule",
+        "src": "paper Eqs. 1-5"
+      },
+      {
+        "role": "Dense similarity",
+        "model": "all-MiniLM-L6-v2",
+        "kind": "retriever",
+        "src": "paper §4.3"
+      },
+      {
+        "role": "Similarity × weight ranking",
+        "model": "fixed formula",
+        "kind": "rule",
+        "src": "paper Eq. 6"
+      },
+      {
+        "role": "Agent / answer",
+        "model": "GPT-4o-mini",
+        "kind": "llm",
+        "src": "paper §4.1, §4.3"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Gate memory writes with a replay test that measures whether an item actually helps, and reuse that measured gain as a weight at retrieval. On FEVER and HotpotQA this beats G-Memory with fewer tokens, but beats no memory at a token cost.",
+      "claims": [
+        {
+          "claim": "SEDM improves accuracy while using fewer tokens than a strong memory baseline.",
+          "evidence": "FEVER 66 vs 62 (G-Memory) with 2.47M vs 3.62M prompt tokens; HotpotQA 39 vs 38 with 3.88M vs 4.63M. Table 2, §4.3"
+        },
+        {
+          "claim": "Both the admission gate and the scheduler contribute.",
+          "evidence": "HotpotQA 34 → 37 → 39, FEVER 57 → 64 → 66 as SCEC then self-scheduling are added. Table 3, §4.4"
+        },
+        {
+          "claim": "Best on LoCoMo temporal and open-domain questions.",
+          "evidence": "Temporal F1 47.5 vs 32.4 for G-Memory. Table 1, §4.2 (open-domain: see reading)"
+        },
+        {
+          "claim": "Memory learned on one task transfers to another.",
+          "evidence": "FEVER-collected memory gives 41 on HotpotQA vs 39 in-domain; HotpotQA memory gives 64 on FEVER. Table 4, §4.5"
+        }
+      ],
+      "limits": [
+        "The paper has no limitations section.",
+        "It notes that dialogue memory from LoCoMo transfers poorly to the other two tasks (HotpotQA 34, the no-memory level)."
+      ],
+      "limits_src": "paper §4.5, §5",
+      "reading": [
+        "The text says SEDM has the best open-domain F1 and BLEU-1 on LoCoMo, but Table 1 shows G-Memory higher (53.5 vs 51.7 F1, 44.0 vs 37.0 BLEU-1); SEDM is best only on temporal.",
+        "The LoCoMo, ReadAgent, MemoryBank, MemGPT and A-Mem rows equal A-Mem's GPT-4o-mini Table 1 rounded to one decimal, but under different category names, and the paper does not say they were copied. §4.1 lists four question types while the table has five, including adversarial.",
+        "SEDM's LoCoMo run has no ablation, token count, embedder or description of how the replay reward is defined for dialogue QA.",
+        "The scheduler raises token use relative to the gate alone (FEVER 2.19M → 2.47M, HotpotQA 3.52M → 3.88M); the saving is only relative to G-Memory, and both memory methods use more tokens than no memory.",
+        "Every trade-off parameter (λL, λT, η, α, β), top-k and the shared memory budget are unreported, and there is no code, so the results cannot be reproduced from the paper.",
+        "α names both the utility step in Eq. 7 and the general-form weight scale in §3.4."
+      ]
+    },
+    "abstract": {
+      "text": "SEDM targets memory for long-running (multi-)agent systems, where stored trajectories pile up noise and cost. Each task run is packed into a self-contained, replayable context; a candidate memory item is kept only if replaying the run with it beats replaying without it, after charging for extra latency and tokens. The measured gain becomes a weight that multiplies embedding similarity at retrieval and keeps being revised, merged and generalised into placeholder forms that can move across tasks. On FEVER and HotpotQA with GPT-4o-mini it scores above G-Memory with fewer tokens, and it reports competitive LoCoMo scores and cross-task transfer.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2509.09498"
+    },
+    "sections": {
+      "Memory architecture": "§3",
+      "Results": "§4.2, §4.3, §4.5",
+      "Ablation": "§4.4",
+      "Discussion": "§5 (no limitations section)",
+      "Details": "§3.2-3.4, §4.1, §4.3"
+    }
+  }
+}

@@ -1,0 +1,541 @@
+{
+  "id": "finmem",
+  "name": "FinMem",
+  "paper": {
+    "title": "FinMem: A Performance-Enhanced LLM Trading Agent with Layered Memory and Character Design",
+    "arxiv": "2311.13743",
+    "url": "https://arxiv.org/abs/2311.13743",
+    "venue": "IEEE Transactions on Big Data 2025",
+    "venue_short": "IEEE TBD",
+    "track": "journal",
+    "year": 2025,
+    "code": "https://github.com/pipiku915/FinMem-LLM-StockTrading"
+  },
+  "design": {
+    "construction": {
+      "unit": "memory event: an LLM summary of one news item, 10-Q or 10-K, or one daily reflection",
+      "kept_as": "LLM summaries (news summarized to about 200 tokens in the released pipeline); reflections written by the backbone",
+      "processing": "summarize each source document; route it to a layer by source type (news, 10-Q, 10-K); each trading day the backbone writes a reflection that is stored too",
+      "trigger": "other",
+      "writer": "summaries: GPT-3.5-turbo-16k in the released data pipeline (paper does not name it); reflections: backbone LLM (GPT-4-Turbo in the main runs)"
+    },
+    "organization": {
+      "structure": "layered long-term memory per ticker: shallow (news), intermediate (10-Q), deep (10-K); the code adds a fourth reflection layer",
+      "stores": "one FAISS index plus score list per layer and ticker",
+      "index": "text-embedding-ada-002 dense vectors (inner product on normalized vectors = cosine)"
+    },
+    "management": {
+      "operations": "every day recency and importance decay per layer; items move deeper when importance crosses 60 / 80 and back when it falls below (code); trading feedback adds importance to the memories the LLM cited",
+      "conflicts": null,
+      "forgetting": "purge an item when recency < 0.05 or importance < 5",
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "paper: trading inquiry plus character text; code: the fixed character text of the ticker",
+      "candidates": "per layer: top K by cosine plus K by stored recency+importance (the code takes the K lowest)",
+      "selection": "score = cosine + recency + importance/100, keep top K unique IDs per layer",
+      "budget": "K = 5 per layer (paper §5.1): 3K = 15 in the paper, up to 4K = 20 with the code's reflection layer"
+    },
+    "use": {
+      "context": "retrieved memories grouped by layer with their IDs, character text, and (testing) a momentum sentence or (training) the next-day price move",
+      "reasoning": "one LLM call per day returning buy / sell / hold, a reason and the IDs of the memories used"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "fixed-rule",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "tiers",
+    "index": "vector",
+    "management": "evict",
+    "candidates": "dense",
+    "decides": "top-k rule",
+    "note": "Layer moves and deletion are driven by decaying scores and trading feedback, so 'evict' rather than 'update in place'; nothing is rewritten after it is stored."
+  },
+  "tags": {
+    "fidelity": "compressed",
+    "structure": [
+      "tiered"
+    ],
+    "write_time": [
+      "summarize"
+    ],
+    "selection": [
+      "dense"
+    ],
+    "memory_type": [
+      "episodic",
+      "semantic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "Each trading day the agent receives the day's news, any new 10-Q or 10-K filing and the price for one ticker; texts were summarized beforehand by an LLM.",
+    "construction": "News summaries go to the shallow layer, 10-Q summaries to the intermediate layer and 10-K summaries to the deep layer; each gets a sampled importance score and recency 1. The daily reflection from the backbone is stored as well (a separate reflection layer in the code).",
+    "organization": "Three long-term layers with different decay speeds (paper: stability 14 / 90 / 365 days and importance bases 0.9 / 0.967 / 0.988) plus a working-memory step that merges what is retrieved from each layer.",
+    "update": "Every day scores decay; items whose recency falls below 0.05 or importance below 5 are deleted. Memories the LLM cited get +5 importance per access-counter step, set from the sign of the 7-day trading result (code), and cross into deeper layers at importance 60 and 80.",
+    "retrieval": "Per layer, candidates from cosine similarity (ada-002, FAISS) and from the stored recency+importance ranking are scored by the sum of cosine, recency and importance, and the top K = 5 are kept.",
+    "answer": "The backbone LLM reads the memories of all layers with their IDs plus a momentum signal and returns buy, sell or hold with the supporting IDs; in training it instead explains the known next-day move.",
+    "learning": "No weights are trained. The 'training phase' fills and reshapes memory using the true next-day price moves."
+  },
+  "summary": "LLM stock-trading agent whose memory is split into news, quarterly and annual layers with different decay speeds, scored like Generative Agents (recency + relevance + importance), with trading feedback promoting useful memories to deeper layers and a switchable risk character.",
+  "verified": false,
+  "notes": "VENUE: IEEE Transactions on Big Data, vol. 11 no. 6 (Nov/Dec 2025), pp. 3443ff, DOI 10.1109/TBDATA.2025.3593370 (checked on the authors' copy of the journal PDF, suchow.io/assets/docs/yu2024finmem.pdf); received Dec 2023. Numbers here come from arXiv v2 (3 Dec 2023); the journal version renumbers tables (main table is Table I) and its tables are images, so they were not compared value by value.\nCODE: pinned to commit db9c677 (2023-12-28, 'refactor code'), the earliest refactored version whose config (gpt-4-1106-preview, temperature 0.7, top_k 5) matches §5.1. Memory functions and query logic are unchanged at HEAD be814aa (2024-08-17), whose default TSLA config switches to gpt-3.5-turbo and top_k 3 and whose momentum window is 3 days instead of 2.\nDESIGN: §3.2, §4.1, §5.1, Table 1; code memorydb.py, memory_functions/*, agent.py, portfolio.py, config/config.toml.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2311.13743v2 (PDF read 2026-09-30); journal version IEEE TBD 2025 checked for venue only",
+      "code": "https://github.com/pipiku915/FinMem-LLM-StockTrading/tree/db9c67752fff2a5f5eb2e2000a2a0a6e8ada313e/",
+      "code_note": "Commit db9c677 (2023-12-28) is the first refactored code after arXiv v2 and its config/config.toml matches the paper's main setting (gpt-4-1106-preview, temperature 0.7, top_k 5). The data pipeline (summaries) is read at HEAD be814aa because older commits keep it elsewhere; memory logic is identical at both commits."
+    },
+    "sections": {
+      "Memory architecture": "§3.2",
+      "Results": "§5.2, Table 2",
+      "Ablation": "§6, Tables 3-5",
+      "Discussion": "§7",
+      "Details": "§3, §4.1, §5.1, Table 1"
+    },
+    "abstract": {
+      "text": "FinMem is an LLM agent that trades a single stock day by day. A profiling module gives it sector knowledge and a risk attitude (risk-seeking, risk-averse, or one that switches with recent returns). Its memory keeps summarized news, quarterly and annual reports in three layers that forget at different speeds, and each day it retrieves the top-ranked items of every layer to decide whether to buy, sell or hold. On five US stocks it reports higher cumulative return and Sharpe ratio than buy-and-hold, three deep-RL agents, a Generative-Agents port and FinGPT, with less than a year of training data.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2311.13743"
+    },
+    "headline": [
+      "Memory is scored like Generative Agents (recency + relevance + importance), but each source type has its own layer with its own decay speed.",
+      "In the code the retrieval query is the fixed character text of the ticker, not the day's question, so similarity ranks the same way every day.",
+      "The reported FinMem row per stock is the best of three risk settings, picked on the test period."
+    ],
+    "units": [
+      {
+        "name": "Memory event",
+        "role": "one summarized document (news item, 10-Q or 10-K) in its layer",
+        "made_by": "offline LLM summarizer; routed by source type",
+        "fields": [
+          {
+            "name": "text",
+            "what": "LLM summary of the document (news: prompt asks for 200 tokens)",
+            "kept_as": "summarized",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "code data-pipeline/03-model_wrapper.py L24-L34 (HEAD)",
+            "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/be814aa47970de9bf2fdd6a1d5a60ae5cf361b46/data-pipeline/03-model_wrapper.py#L24-L34"
+          },
+          {
+            "name": "id",
+            "what": "integer shown to the LLM so it can cite the memory",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code reflection.py (test prompt lists 'id. text')",
+            "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/db9c67752fff2a5f5eb2e2000a2a0a6e8ada313e/puppy/reflection.py#L319-L350"
+          },
+          {
+            "name": "recency",
+            "what": "exp(-delta/Q) with delta days since stored; Q = 3 / 90 / 365 in code (paper 14 / 90 / 365); reset to 1 when moved deeper",
+            "kept_as": "derived",
+            "used_for": [
+              "rerank"
+            ],
+            "src": "code decay.py L14-L21, config.toml",
+            "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/db9c67752fff2a5f5eb2e2000a2a0a6e8ada313e/puppy/memory_functions/decay.py#L14-L21"
+          },
+          {
+            "name": "importance",
+            "what": "sampled at write time (40/60/80 or 50/70/90), multiplied daily by 0.92 / 0.967 / 0.988, raised by 5 x access counter",
+            "kept_as": "derived",
+            "used_for": [
+              "rerank"
+            ],
+            "src": "code importance_score.py L31-L49, access_counter.py L1-L4",
+            "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/db9c67752fff2a5f5eb2e2000a2a0a6e8ada313e/puppy/memory_functions/importance_score.py#L31-L49"
+          },
+          {
+            "name": "embedding",
+            "what": "text-embedding-ada-002 vector in a per-layer FAISS index",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §3.2.2 Eq. 3; code memorydb.py L100-L125",
+            "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/db9c67752fff2a5f5eb2e2000a2a0a6e8ada313e/puppy/memorydb.py#L100-L125"
+          },
+          {
+            "name": "date",
+            "what": "trading day the item was stored",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "code memorydb.py L113-L150; not placed in the prompt",
+            "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/db9c67752fff2a5f5eb2e2000a2a0a6e8ada313e/puppy/memorydb.py#L113-L150"
+          }
+        ]
+      },
+      {
+        "name": "Reflection",
+        "role": "the backbone's daily explanation (training) or decision reason (testing)",
+        "made_by": "backbone LLM through a Guardrails JSON schema",
+        "fields": [
+          {
+            "name": "summary_reason",
+            "what": "the LLM's written reason, stored in the reflection layer every day; at this commit retrieved reflections are numbered 1..n in the prompt instead of by their IDs",
+            "kept_as": "rewritten",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "code agent.py L237-L243; reflection.py L342-L346",
+            "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/db9c67752fff2a5f5eb2e2000a2a0a6e8ada313e/puppy/agent.py#L237-L243"
+          },
+          {
+            "name": "cited memory ids",
+            "what": "IDs the LLM says supported the reason; used 7 days later to update importance",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "code agent.py L333-L380",
+            "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/db9c67752fff2a5f5eb2e2000a2a0a6e8ada313e/puppy/agent.py#L333-L380"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Summarize",
+        "how": "an LLM summarizes each news item and filing before the run",
+        "params": {
+          "news summary": "200 tokens (code); paper prompt says 1000"
+        },
+        "src": "paper Fig. 3; code 03-summary.py (HEAD)",
+        "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/be814aa47970de9bf2fdd6a1d5a60ae5cf361b46/data-pipeline/03-summary.py#L11-L14"
+      },
+      {
+        "step": "Route",
+        "how": "news to shallow, 10-Q to intermediate, 10-K to deep",
+        "src": "paper Table 1; code agent.py L87-L103",
+        "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/db9c67752fff2a5f5eb2e2000a2a0a6e8ada313e/puppy/agent.py#L87-L103"
+      },
+      {
+        "step": "Reflect",
+        "how": "each day the backbone writes a reason that is stored in the reflection layer",
+        "src": "code agent.py L237-L243",
+        "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/db9c67752fff2a5f5eb2e2000a2a0a6e8ada313e/puppy/agent.py#L237-L243"
+      },
+      {
+        "step": "Decay and purge",
+        "how": "recency and importance decay every day; items below the thresholds are deleted",
+        "params": {
+          "recency <": "0.05",
+          "importance <": "5"
+        },
+        "src": "paper §3.2.2; code memorydb.py L277-L328",
+        "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/db9c67752fff2a5f5eb2e2000a2a0a6e8ada313e/puppy/memorydb.py#L277-L328"
+      },
+      {
+        "step": "Move",
+        "how": "short to mid at importance >= 60, mid to long at >= 80; back down below those values; run twice per day",
+        "src": "code memorydb.py L330-L408, L714",
+        "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/db9c67752fff2a5f5eb2e2000a2a0a6e8ada313e/puppy/memorydb.py#L330-L408"
+      }
+    ],
+    "read": [
+      {
+        "step": "Similarity hits",
+        "round": 1,
+        "input": "character text",
+        "scores": "memory summary text",
+        "how": "FAISS inner product on normalized ada-002 vectors, per layer",
+        "params": {
+          "K": "5"
+        },
+        "src": "code memorydb.py L185-L204, agent.py L105-L135",
+        "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/db9c67752fff2a5f5eb2e2000a2a0a6e8ada313e/puppy/memorydb.py#L185-L204"
+      },
+      {
+        "step": "Score-list hits",
+        "round": 1,
+        "how": "the first K items of the list sorted by recency+importance; the list is ascending, so these are the lowest-scored",
+        "params": {
+          "K": "5"
+        },
+        "src": "code memorydb.py L205-L230",
+        "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/db9c67752fff2a5f5eb2e2000a2a0a6e8ada313e/puppy/memorydb.py#L205-L230"
+      },
+      {
+        "step": "Merge",
+        "round": 1,
+        "how": "score = cosine + recency + min(importance,100)/100; keep the top K, drop duplicate IDs",
+        "params": {
+          "K": "5"
+        },
+        "src": "code compound_score.py L1-L11, memorydb.py L231-L247",
+        "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/db9c67752fff2a5f5eb2e2000a2a0a6e8ada313e/puppy/memorydb.py#L231-L247"
+      }
+    ],
+    "answer_context": {
+      "sees": "up to 5 memories from each of 4 layers, as 'id. text' under short/mid/long/reflection headings",
+      "format": "ticker and date, the four memory lists, a sentiment note after the short-term list, the momentum explanation and a sentence saying whether the recent cumulative return is positive, zero or negative",
+      "excludes": [
+        "raw documents",
+        "dates of memories",
+        "scores",
+        "the numeric size of the momentum"
+      ],
+      "src": "code reflection.py L319-L350, prompts.py L41-L53 (HEAD)",
+      "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/db9c67752fff2a5f5eb2e2000a2a0a6e8ada313e/puppy/reflection.py#L319-L350"
+    },
+    "paper_vs_code": [
+      {
+        "topic": "Shallow-layer decay",
+        "paper": "stability Q = 14 days, importance base 0.9",
+        "code": "Q = 3, base 0.92",
+        "src": "config.toml [agent.agent_1.short]",
+        "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/db9c67752fff2a5f5eb2e2000a2a0a6e8ada313e/config/config.toml#L43-L49"
+      },
+      {
+        "topic": "Initial importance, shallow layer",
+        "paper": "40 / 60 / 80 with p = 0.8 / 0.15 / 0.05",
+        "code": "50 / 70 / 90 with p = 0.5 / 0.45 / 0.05",
+        "src": "importance_score.py L31-L35",
+        "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/db9c67752fff2a5f5eb2e2000a2a0a6e8ada313e/puppy/memory_functions/importance_score.py#L31-L35"
+      },
+      {
+        "topic": "Retrieval query",
+        "paper": "trading inquiry plus character setting",
+        "code": "only the character string, identical every day",
+        "src": "agent.py L105-L135",
+        "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/db9c67752fff2a5f5eb2e2000a2a0a6e8ada313e/puppy/agent.py#L105-L135"
+      },
+      {
+        "topic": "Second candidate set",
+        "paper": "ranking by recency + relevance + importance",
+        "code": "adds the K items with the lowest recency+importance (ascending SortedList) before the final sum",
+        "src": "memorydb.py L205-L206",
+        "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/db9c67752fff2a5f5eb2e2000a2a0a6e8ada313e/puppy/memorydb.py#L205-L206"
+      },
+      {
+        "topic": "Where reflections go",
+        "paper": "extended reflections stored in the deep layer",
+        "code": "every daily reflection goes to a separate fourth layer, also retrieved with K = 5",
+        "src": "agent.py L237-L243; memorydb.py L514-L598",
+        "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/db9c67752fff2a5f5eb2e2000a2a0a6e8ada313e/puppy/agent.py#L237-L243"
+      },
+      {
+        "topic": "Moving between layers",
+        "paper": "an access counter lifts pivotal events (+5 importance) to deeper layers",
+        "code": "7-day P&L sign sets counter ±1 on cited IDs, importance += 5 × counter, then fixed thresholds 60 / 80 move items up or down",
+        "src": "portfolio.py L53-L86; memorydb.py L330-L408",
+        "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/db9c67752fff2a5f5eb2e2000a2a0a6e8ada313e/puppy/portfolio.py#L53-L86"
+      },
+      {
+        "topic": "Momentum",
+        "paper": "cumulative log return over the last 3 days, given as a number",
+        "code": "only its sign; window 2 days at this commit (3 at HEAD) while the prompt says 3",
+        "src": "agent.py L140; reflection.py L228-L243",
+        "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/db9c67752fff2a5f5eb2e2000a2a0a6e8ada313e/puppy/agent.py#L140"
+      }
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 250",
+        "body": "<text class=\"fig-t\" x=\"52\" y=\"16\" text-anchor=\"middle\">Sources (daily)</text><rect class=\"gi-f\" x=\"6\" y=\"26\" width=\"92\" height=\"38\" rx=\"8\"/><text class=\"fig-t\" x=\"52.0\" y=\"43.0\" text-anchor=\"middle\">News</text><text class=\"fig-s\" x=\"52.0\" y=\"56.0\" text-anchor=\"middle\">per item</text><rect class=\"gi-f\" x=\"6\" y=\"74\" width=\"92\" height=\"38\" rx=\"8\"/><text class=\"fig-t\" x=\"52.0\" y=\"91.0\" text-anchor=\"middle\">10-Q</text><text class=\"fig-s\" x=\"52.0\" y=\"104.0\" text-anchor=\"middle\">quarterly filing</text><rect class=\"gi-f\" x=\"6\" y=\"122\" width=\"92\" height=\"38\" rx=\"8\"/><text class=\"fig-t\" x=\"52.0\" y=\"139.0\" text-anchor=\"middle\">10-K</text><text class=\"fig-s\" x=\"52.0\" y=\"152.0\" text-anchor=\"middle\">annual filing</text><rect class=\"gi-llm\" x=\"120\" y=\"62\" width=\"70\" height=\"58\" rx=\"8\"/><text class=\"fig-t\" x=\"155.0\" y=\"83.0\" text-anchor=\"middle\">Summarize</text><text class=\"fig-s\" x=\"155.0\" y=\"96.0\" text-anchor=\"middle\">offline LLM</text><text class=\"fig-s\" x=\"155.0\" y=\"108.0\" text-anchor=\"middle\">≤200 tokens</text><path class=\"gi-a\" d=\"M98.0 45.0 L116.1 84.6\"/><polygon class=\"gi-ah\" points=\"119.0,91.0 112.5,86.3 119.7,83.0\"/><path class=\"gi-a\" d=\"M98.0 93.0 L112.0 91.7\"/><polygon class=\"gi-ah\" points=\"119.0,91.0 112.4,95.6 111.7,87.7\"/><path class=\"gi-a\" d=\"M98.0 141.0 L116.3 97.5\"/><polygon class=\"gi-ah\" points=\"119.0,91.0 120.0,99.0 112.6,95.9\"/><text class=\"fig-s\" x=\"300\" y=\"14\" text-anchor=\"middle\">Layers: recency, importance/day</text><rect class=\"gi-l\" x=\"216\" y=\"22\" width=\"168\" height=\"40\" rx=\"6\"/><text class=\"fig-t\" x=\"224\" y=\"38\" text-anchor=\"start\">Shallow</text><text class=\"fig-s\" x=\"376\" y=\"38\" text-anchor=\"end\">news</text><text class=\"fig-s\" x=\"224\" y=\"53\" text-anchor=\"start\">e^(−δ/3), ×0.92</text><rect class=\"gi-l\" x=\"216\" y=\"70\" width=\"168\" height=\"40\" rx=\"6\"/><text class=\"fig-t\" x=\"224\" y=\"86\" text-anchor=\"start\">Intermediate</text><text class=\"fig-s\" x=\"376\" y=\"86\" text-anchor=\"end\">10-Q</text><text class=\"fig-s\" x=\"224\" y=\"101\" text-anchor=\"start\">e^(−δ/90), ×0.967</text><rect class=\"gi-l\" x=\"216\" y=\"118\" width=\"168\" height=\"40\" rx=\"6\"/><text class=\"fig-t\" x=\"224\" y=\"134\" text-anchor=\"start\">Deep</text><text class=\"fig-s\" x=\"376\" y=\"134\" text-anchor=\"end\">10-K</text><text class=\"fig-s\" x=\"224\" y=\"149\" text-anchor=\"start\">e^(−δ/365), ×0.988</text><rect class=\"gi-l\" x=\"216\" y=\"176\" width=\"168\" height=\"40\" rx=\"6\"/><text class=\"fig-t\" x=\"224\" y=\"192\" text-anchor=\"start\">Reflection</text><text class=\"fig-s\" x=\"376\" y=\"192\" text-anchor=\"end\">daily notes</text><text class=\"fig-s\" x=\"224\" y=\"207\" text-anchor=\"start\">e^(−δ/365), ×0.988</text><path class=\"gi-a\" d=\"M190.0 80.0 L200.0 80.0 L200.0 42.0 L208.0 42.0\"/><polygon class=\"gi-ah\" points=\"215.0,42.0 208.0,46.0 208.0,38.0\"/><path class=\"gi-a\" d=\"M190.0 90.0 L208.0 90.0\"/><polygon class=\"gi-ah\" points=\"215.0,90.0 208.0,94.0 208.0,86.0\"/><path class=\"gi-a\" d=\"M190.0 100.0 L200.0 100.0 L200.0 138.0 L208.0 138.0\"/><polygon class=\"gi-ah\" points=\"215.0,138.0 208.0,142.0 208.0,134.0\"/><rect class=\"gi-llm\" x=\"120\" y=\"172\" width=\"70\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"155.0\" y=\"188.0\" text-anchor=\"middle\">Reflect</text><text class=\"fig-s\" x=\"155.0\" y=\"201.0\" text-anchor=\"middle\">backbone LLM</text><text class=\"fig-s\" x=\"155.0\" y=\"213.0\" text-anchor=\"middle\">every day</text><path class=\"gi-a\" d=\"M190.0 196.0 L208.0 196.0\"/><polygon class=\"gi-ah\" points=\"215.0,196.0 208.0,200.0 208.0,192.0\"/><path class=\"gi-a\" d=\"M392.0 44.0 L392.0 79.0\"/><polygon class=\"gi-ah\" points=\"392.0,86.0 388.0,79.0 396.0,79.0\"/><path class=\"gi-a\" d=\"M392.0 92.0 L392.0 127.0\"/><polygon class=\"gi-ah\" points=\"392.0,134.0 388.0,127.0 396.0,127.0\"/><path class=\"gi-a d\" d=\"M402.0 132.0 L402.0 103.0\"/><polygon class=\"gi-ah\" points=\"402.0,96.0 406.0,103.0 398.0,103.0\"/><path class=\"gi-a d\" d=\"M402.0 84.0 L402.0 55.0\"/><polygon class=\"gi-ah\" points=\"402.0,48.0 406.0,55.0 398.0,55.0\"/><text class=\"fig-s\" x=\"414\" y=\"30\" text-anchor=\"start\">deeper if imp. ≥ 60 / ≥ 80</text><text class=\"fig-s\" x=\"414\" y=\"43\" text-anchor=\"start\">(recency reset to 1)</text><text class=\"fig-s\" x=\"414\" y=\"60\" text-anchor=\"start\">back if imp. &lt; 60 / &lt; 80</text><rect class=\"gi-hi\" x=\"412\" y=\"104\" width=\"144\" height=\"42\" rx=\"6\"/><text class=\"fig-t\" x=\"420\" y=\"120\" text-anchor=\"start\">Purge an item if</text><text class=\"fig-s\" x=\"420\" y=\"136\" text-anchor=\"start\">recency &lt; 0.05 or imp. &lt; 5</text><rect class=\"gi-f\" x=\"412\" y=\"162\" width=\"144\" height=\"54\" rx=\"6\"/><text class=\"fig-t\" x=\"420\" y=\"178\" text-anchor=\"start\">Trading feedback</text><text class=\"fig-s\" x=\"420\" y=\"193\" text-anchor=\"start\">7-day P&amp;L sign ±1 to cited</text><text class=\"fig-s\" x=\"420\" y=\"206\" text-anchor=\"start\">IDs: imp. += 5 × counter</text><text class=\"fig-s\" x=\"300\" y=\"242\" text-anchor=\"middle\">importance starts sampled: 50/70/90 shallow, 40/60/80 deeper</text>",
+        "text": [
+          "News, 10-Q and 10-K texts are summarized by an LLM and stored in shallow, intermediate and deep layers that decay at different speeds; each day's reflection is stored in its own layer.",
+          "Items are deleted when recency or importance runs low, and move between layers when importance crosses 60 or 80, which trading feedback raises for memories the LLM cited."
+        ],
+        "src": "paper §3.2, Table 1; code config.toml, memorydb.py L330-L408, L685-L773 (values follow the code)",
+        "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/db9c67752fff2a5f5eb2e2000a2a0a6e8ada313e/puppy/memorydb.py#L330-L408"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 250",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"44\" width=\"64\" height=\"50\" rx=\"8\"/><text class=\"fig-t\" x=\"36.0\" y=\"61.0\" text-anchor=\"middle\">Query</text><text class=\"fig-s\" x=\"36.0\" y=\"74.0\" text-anchor=\"middle\">character</text><text class=\"fig-s\" x=\"36.0\" y=\"86.0\" text-anchor=\"middle\">profile text</text><rect class=\"gi-ev d\" x=\"80\" y=\"18\" width=\"282\" height=\"104\" rx=\"10\"/><text class=\"fig-s\" x=\"221\" y=\"13\" text-anchor=\"middle\">in each of the 4 layers (FAISS)</text><path class=\"gi-a\" d=\"M68.0 69.0 L73.0 69.0\"/><polygon class=\"gi-ah\" points=\"80.0,69.0 73.0,73.0 73.0,65.0\"/><rect class=\"gi-v fig-soft\" x=\"90\" y=\"28\" width=\"96\" height=\"38\" rx=\"8\"/><text class=\"fig-t\" x=\"138.0\" y=\"51.0\" text-anchor=\"middle\">top 5 by cosine</text><rect class=\"gi-f\" x=\"90\" y=\"74\" width=\"96\" height=\"38\" rx=\"8\"/><text class=\"fig-t\" x=\"138.0\" y=\"97.0\" text-anchor=\"middle\">5 by rec.+imp.</text><text class=\"fig-s\" x=\"138\" y=\"132\" text-anchor=\"middle\">code takes the 5 lowest</text><path class=\"gi-a\" d=\"M186.0 47.0 L196.0 47.0 L196.0 64.0 L197.0 64.0\"/><polygon class=\"gi-ah\" points=\"204.0,64.0 197.0,68.0 197.0,60.0\"/><path class=\"gi-a\" d=\"M186.0 93.0 L196.0 93.0 L196.0 76.0 L197.0 76.0\"/><polygon class=\"gi-ah\" points=\"204.0,76.0 197.0,80.0 197.0,72.0\"/><rect class=\"gi-f\" x=\"204\" y=\"46\" width=\"82\" height=\"46\" rx=\"8\"/><text class=\"fig-t\" x=\"245.0\" y=\"61.0\" text-anchor=\"middle\">Score</text><text class=\"fig-s\" x=\"245.0\" y=\"74.0\" text-anchor=\"middle\">cos + rec.</text><text class=\"fig-s\" x=\"245.0\" y=\"86.0\" text-anchor=\"middle\">+ imp./100</text><path class=\"gi-a\" d=\"M286.0 69.0 L289.0 69.0\"/><polygon class=\"gi-ah\" points=\"296.0,69.0 289.0,73.0 289.0,65.0\"/><rect class=\"gi-f\" x=\"296\" y=\"46\" width=\"58\" height=\"46\" rx=\"8\"/><text class=\"fig-t\" x=\"325.0\" y=\"67.0\" text-anchor=\"middle\">Keep 5</text><text class=\"fig-s\" x=\"325.0\" y=\"80.0\" text-anchor=\"middle\">unique IDs</text><path class=\"gi-a\" d=\"M362.0 69.0 L371.0 69.0\"/><polygon class=\"gi-ah\" points=\"378.0,69.0 371.0,73.0 371.0,65.0\"/><rect class=\"gi-llm\" x=\"378\" y=\"34\" width=\"84\" height=\"70\" rx=\"8\"/><text class=\"fig-t\" x=\"420.0\" y=\"61.0\" text-anchor=\"middle\">Decide</text><text class=\"fig-s\" x=\"420.0\" y=\"74.0\" text-anchor=\"middle\">≤ 20 memories</text><text class=\"fig-s\" x=\"420.0\" y=\"86.0\" text-anchor=\"middle\">+ momentum</text><path class=\"gi-a\" d=\"M462.0 69.0 L467.0 69.0\"/><polygon class=\"gi-ah\" points=\"474.0,69.0 467.0,73.0 467.0,65.0\"/><rect class=\"gi-hi\" x=\"474\" y=\"38\" width=\"82\" height=\"62\" rx=\"8\"/><text class=\"fig-t\" x=\"515.0\" y=\"61.0\" text-anchor=\"middle\">Buy / Sell</text><text class=\"fig-s\" x=\"515.0\" y=\"74.0\" text-anchor=\"middle\">or Hold</text><text class=\"fig-s\" x=\"515.0\" y=\"86.0\" text-anchor=\"middle\">+ cited IDs</text><path class=\"gi-a\" d=\"M515.0 100.0 L515.0 176.0 L455.0 176.0\"/><polygon class=\"gi-ah\" points=\"448.0,176.0 455.0,172.0 455.0,180.0\"/><rect class=\"gi-f\" x=\"280\" y=\"156\" width=\"168\" height=\"42\" rx=\"8\"/><text class=\"fig-t\" x=\"364.0\" y=\"175.0\" text-anchor=\"middle\">7 trading days later</text><text class=\"fig-s\" x=\"364.0\" y=\"188.0\" text-anchor=\"middle\">P&amp;L sign → cited items</text><path class=\"gi-a d\" d=\"M280.0 177.0 L221.0 177.0 L221.0 131.0\"/><polygon class=\"gi-ah\" points=\"221.0,124.0 225.0,131.0 217.0,131.0\"/><text class=\"fig-s\" x=\"130\" y=\"172\" text-anchor=\"middle\">importance += 5 × counter</text><text class=\"fig-s\" x=\"130\" y=\"186\" text-anchor=\"middle\">(can move the item a layer)</text><text class=\"fig-s\" x=\"280\" y=\"226\" text-anchor=\"middle\">training: the prompt gets the next-day price move and the LLM explains it;</text><text class=\"fig-s\" x=\"280\" y=\"240\" text-anchor=\"middle\">momentum in testing is the sign of the last few days' return</text>",
+        "text": [
+          "In each layer the character text is matched by cosine; these hits and 5 items taken from the recency+importance list are scored by cosine + recency + importance/100 and the top 5 are kept.",
+          "The backbone reads up to 20 memories with a momentum hint and outputs a decision with cited IDs; seven days later the sign of the result changes the cited items' importance."
+        ],
+        "src": "code memorydb.py L167-L247, agent.py L105-L170, portfolio.py L53-L86; paper §3.2.1, §3.3",
+        "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/db9c67752fff2a5f5eb2e2000a2a0a6e8ada313e/puppy/memorydb.py#L167-L247"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Layer stability Q (recency)",
+        "value": "14 · 90 · 365 days (paper); 3 · 90 · 365 (code)",
+        "src": "paper §3.2.2; code config.toml",
+        "section": "construction"
+      },
+      {
+        "label": "Daily importance factor",
+        "value": "0.9 · 0.967 · 0.988 (paper); 0.92 · 0.967 · 0.988 (code)",
+        "src": "paper §3.2.2; code config.toml",
+        "section": "construction"
+      },
+      {
+        "label": "Delete when",
+        "value": "recency < 0.05 or importance < 5",
+        "src": "paper §3.2.2",
+        "section": "construction"
+      },
+      {
+        "label": "Move deeper at importance",
+        "value": "≥ 60 (to intermediate), ≥ 80 (to deep)",
+        "src": "code config.toml",
+        "section": "construction"
+      },
+      {
+        "label": "Memories per layer",
+        "value": "K = 5 (ablation: 1, 3, 5, 10)",
+        "src": "paper §5.1, Table 5",
+        "section": "method"
+      },
+      {
+        "label": "Embedding",
+        "value": "text-embedding-ada-002, FAISS",
+        "src": "paper §3.2.2, §4.1",
+        "section": "method"
+      },
+      {
+        "label": "Feedback window",
+        "value": "7 trading days",
+        "src": "code portfolio.py L53-L86",
+        "section": "method"
+      },
+      {
+        "label": "Train / test period (main)",
+        "value": "2021-08-17 to 2022-10-05 / 2022-10-06 to 2023-04-10",
+        "src": "paper §5.1",
+        "section": "results"
+      },
+      {
+        "label": "Runs averaged",
+        "value": "5 trials",
+        "src": "paper §4.3",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Summarize news and filings",
+        "model": "GPT-3.5-turbo-16k (released pipeline; not named in the paper)",
+        "kind": "llm",
+        "src": "code 03-summary.py L11-L14 (HEAD)",
+        "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/be814aa47970de9bf2fdd6a1d5a60ae5cf361b46/data-pipeline/03-summary.py#L11-L14"
+      },
+      {
+        "role": "Embed memories and query",
+        "model": "text-embedding-ada-002",
+        "kind": "retriever",
+        "src": "paper §3.2.2"
+      },
+      {
+        "role": "Score and keep top K",
+        "model": "cosine + recency + importance/100",
+        "kind": "rule",
+        "src": "code compound_score.py L1-L11",
+        "url": "https://github.com/pipiku915/FinMem-LLM-StockTrading/blob/db9c67752fff2a5f5eb2e2000a2a0a6e8ada313e/puppy/memory_functions/compound_score.py#L1-L11"
+      },
+      {
+        "role": "Reflect, decide, cite IDs",
+        "model": "GPT-4-Turbo, temperature 0.7 (ablation: GPT-3.5-Turbo, GPT-4, davinci-003, Llama2-70b-chat)",
+        "kind": "llm",
+        "src": "paper §5.1, §6.1"
+      },
+      {
+        "role": "Output validation",
+        "model": "Guardrails AI JSON schema",
+        "kind": "rule",
+        "src": "paper §3.3"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "Cumulative return %",
+        "Sharpe ratio",
+        "Max drawdown %"
+      ],
+      "rows": [
+        [
+          "Buy and hold",
+          "-66.95",
+          "-2.08",
+          "67.33"
+        ],
+        [
+          "Top 1 per layer",
+          "52.09",
+          "1.86",
+          "25.24"
+        ],
+        [
+          "Top 3 per layer",
+          "29.44",
+          "1.12",
+          "27.10"
+        ],
+        [
+          "Top 5 per layer (default)",
+          "54.70",
+          "2.50",
+          "12.57"
+        ],
+        [
+          "Top 10 per layer",
+          "79.44",
+          "2.75",
+          "17.14"
+        ]
+      ],
+      "src": "paper Table 5 (TSLA, test 2022-06-16 to 2022-12-28, GPT-4-Turbo, self-adaptive risk)"
+    },
+    "discussion": {
+      "takeaway": "Giving each kind of financial text its own memory layer with its own forgetting speed, and feeding the retrieved top items to a GPT-4-class model, produced the best return and Sharpe ratio among the compared agents on five stocks over one six-month test window.",
+      "claims": [
+        {
+          "claim": "FinMem beats every compared agent on cumulative return and Sharpe ratio on all five stocks.",
+          "evidence": "TSLA 61.78% vs 33.34% (DQN) and Sharpe 2.68 vs 0.97; COIN 34.98% vs 3.46% (Generative Agents); Wilcoxon test significant vs the second best. Table 2, §5.2"
+        },
+        {
+          "claim": "Less than a year of training data is enough.",
+          "evidence": "Trained on under six months of TSLA data it ranks near the top and leads after late December 2022; DRL agents got about 10 years. Fig. 7, §5.1-5.2"
+        },
+        {
+          "claim": "GPT-4-Turbo is the best backbone.",
+          "evidence": "Sharpe 2.50 (GPT-4-Turbo) vs 2.23 (GPT-4, which has the higher return 62.62%) vs -2.85 (Llama2-70b-chat). Table 3"
+        },
+        {
+          "claim": "The self-adaptive risk character is the best setting.",
+          "evidence": "54.70% vs -19.41% (risk-seeking) and -12.47% (risk-averse) on TSLA. Table 4"
+        },
+        {
+          "claim": "Retrieval width matters; K = 5 is the best trade-off.",
+          "evidence": "K = 10 gives 79.44% but loses in calm markets; K = 5 has the lowest volatility and drawdown. Table 5, Fig. 11"
+        }
+      ],
+      "limits": [
+        "Uses a limited range and quality of news and reports.",
+        "Uses general-purpose LLMs; finance-tuned models are left to future work.",
+        "Llama2-70b-chat needed shortened prompts and memories because of its context window.",
+        "Ablations use a shorter TSLA period for budget reasons."
+      ],
+      "limits_src": "paper §6 intro, §6.1, §7",
+      "reading": [
+        "The FinMem row for each stock is the best of three risk settings chosen by test-period cumulative return (§5.1); baselines were run with one setting, so part of the margin is selection on the test set.",
+        "No ablation replaces the layered memory with a single store while keeping everything else; the Generative Agents baseline also lacks the risk switch, so the effect of layering alone is not isolated.",
+        "In the code the retrieval query is the ticker's fixed character text, so cosine relevance does not depend on the day; day-to-day changes come from new items, decay and feedback.",
+        "The code's second candidate set takes the lowest recency+importance items (ascending sorted list), which the final top-K usually discards; the paper describes a plain combined ranking.",
+        "Daily reflections fill a fourth layer that is also retrieved, so the answer model sees up to 20 memories, not the 3 × K = 15 the paper describes.",
+        "The Top-K ablation is not monotone (Top 3: 29.44% below Top 1: 52.09%), from one ticker and one period averaged over 5 runs.",
+        "In Table 4 the 'Annualized Volatility' values of buy-and-hold and self-adaptive (3.8050, 2.5960) equal the daily volatility values in Table 3, so that row looks mislabeled.",
+        "One share is traded per day on 5 tickers in one test window; no transaction costs are mentioned."
+      ]
+    }
+  }
+}

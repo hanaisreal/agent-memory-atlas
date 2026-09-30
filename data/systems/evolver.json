@@ -1,0 +1,549 @@
+{
+  "id": "evolver",
+  "name": "EvolveR",
+  "paper": {
+    "title": "EvolveR: Self-Evolving LLM Agents through an Experience-Driven Lifecycle",
+    "arxiv": "2510.16079",
+    "url": "https://arxiv.org/abs/2510.16079",
+    "venue": "ICML 2026",
+    "venue_short": "ICML",
+    "track": "main",
+    "year": 2026,
+    "code": "https://github.com/KnowledgeXLab/EvolveR"
+  },
+  "design": {
+    "construction": {
+      "unit": "principle: one-sentence guiding or cautionary advice + (subject, predicate, object) triples, with usage/success counts and links to up to 3 successful and 2 failed source trajectories",
+      "kept_as": "LLM-distilled advice; source trajectories kept verbatim in a separate store",
+      "processing": "the agent's own policy model distils each stored RL trajectory (question, golden answer and dialogue, cut at 4,096 characters) into a principle, with separate prompts for successes and failures",
+      "trigger": "offline-batch",
+      "writer": "the policy model being trained (Qwen2.5-0.5B to 7B); GPT-4o-mini in the teacher-distill ablation"
+    },
+    "organization": {
+      "structure": "flat pool of principles",
+      "stores": "Milvus collections: principles (embedded) and trajectories (by id)",
+      "index": "BGE-M3 dense embedding of the principle description, cosine, FLAT index"
+    },
+    "management": {
+      "operations": "LLM pairwise dedup among new principles from the same question; match against top-3 existing (cosine >= 0.85, then LLM yes/no): link the trajectory to the match or add a new principle",
+      "conflicts": null,
+      "forgetting": "score = (successes+1)/(uses+2); principles below 0.3 deleted every 10 RL steps",
+      "timing": "offline"
+    },
+    "retrieval": {
+      "query": "a query the agent writes inside <search_experience>, not the question itself",
+      "candidates": "dense cosine over principle descriptions",
+      "selection": "top-3 by similarity; duplicates and malformed principles dropped",
+      "budget": "3 principles per call, character budget of 2,048 (max_obs_length)"
+    },
+    "use": {
+      "context": "type, metric score, description and triples of each principle, inside <experience> tags in the agent's own reasoning trace",
+      "reasoning": "multi-turn think / search_experience / search_knowledge / answer loop, up to 10 turns; policy trained with GRPO to use it"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "feedback-optimized",
+      "retrieval": "learned-rl"
+    }
+  },
+  "classify": {
+    "structure": "flat",
+    "index": "vector",
+    "management": "consolidate",
+    "candidates": "agent searches",
+    "decides": "top-k rule",
+    "note": "Consolidate (merge a new principle into a matching one) was chosen over evict; score-based pruning also runs. The agent decides when and with what text to search, but a fixed top-3 rule decides what comes back."
+  },
+  "tags": {
+    "fidelity": "extracted",
+    "structure": [
+      "flat"
+    ],
+    "write_time": [
+      "extract",
+      "consolidate",
+      "filter"
+    ],
+    "selection": [
+      "llm-tool-call",
+      "dense"
+    ],
+    "memory_type": [
+      "procedural"
+    ],
+    "learning": "rl",
+    "domain": [
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "During GRPO training (8 rollouts per question), 2 of the 8 trajectories per question (1 success and 1 failure when possible) are buffered after each step.",
+    "construction": "After each RL step the frozen policy model distils each buffered trajectory into a principle: a one-sentence description plus structured triples, typed guiding (success) or cautionary (failure).",
+    "organization": "Principles form a flat pool in Milvus, indexed by a BGE-M3 embedding of the description; each keeps counters and links to up to 3 successful and 2 failed trajectory ids.",
+    "update": "New principles from the same question are deduplicated by pairwise LLM judgement; each survivor is compared with its top-3 neighbours (cosine >= 0.85, then LLM yes/no) and either linked to the match or added with score 0.5. Scores (successes+1)/(uses+2) are refreshed from trajectory outcomes, and principles under 0.3 are pruned every 10 steps.",
+    "retrieval": "The agent may emit <search_experience> with its own query at any turn; the top-3 principles by cosine are returned.",
+    "answer": "The agent reads the returned principles (type, score, description, triples) in <experience> tags, may also search Wikipedia, and answers in <answer> tags.",
+    "learning": "The policy is trained with GRPO on outcome (exact match) plus a 0.1-weighted format reward, after a cold-start SFT; retrieved experience and document tokens are masked from the loss."
+  },
+  "summary": "The agent's own policy distils its RL trajectories into scored principles that it can search as a tool during rollouts, and GRPO trains it to use them; the principle pool is deduplicated, merged and pruned by success rate.",
+  "verified": false,
+  "notes": "VENUE: ICML 2026 poster (icml.cc/virtual/2026/poster/65641), listed there under the title 'From Interactions to Principles: Experience-Driven Self-Distillation for Evolving LLM Agents'; same authors, arXiv comment 'Accepted by ICML 2026'. Paper read: arXiv v3 (16 May 2026). CODE: the paper links github.com/Edaizi/EvolveR, which redirects to KnowledgeXLab/EvolveR; both give the same HEAD. RESULTS: all baseline numbers in Table 1 equal Search-R1 (2503.09516v5) Table 2; run_by left null because the paper does not say they were copied. DESIGN: 'offline' here means between RL steps; test-time evaluation in the code does not add trajectories, so the pool is frozen at test time.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2510.16079v3 (PDF read 2026-09-30)",
+      "code": "https://github.com/KnowledgeXLab/EvolveR/tree/63834b727ee6e7af3410657de36eb845814249ba/",
+      "code_note": "HEAD of the official repo (2026-05-08, 19 commits), a week after the ICML acceptance note in its README; the repo has no tags, so this is taken as the release behind the v3 paper. Training scripts are given for 3B only."
+    },
+    "headline": [
+      "Memory is written by the same small model that is being trained with RL, and the RL loop teaches it when to search that memory.",
+      "What reaches the agent is only the principle text, its type, its score and triples; the linked past trajectories are stored but switched off in the released scripts.",
+      "All baselines are the numbers printed in Search-R1; the 7B table leaves out Search-R1-base, which averages higher (0.431) than EvolveR (0.417)."
+    ],
+    "units": [
+      {
+        "name": "Principle",
+        "role": "one reusable piece of strategy advice, from one trajectory",
+        "made_by": "the policy model, prompted (success or failure prompt)",
+        "fields": [
+          {
+            "name": "description",
+            "what": "one-sentence advice; the embedded key",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper §3.2.1; code experience_manager.py L1018-L1063",
+            "url": "https://github.com/KnowledgeXLab/EvolveR/blob/63834b727ee6e7af3410657de36eb845814249ba/evolver/experience/experience_manager.py#L1018-L1063"
+          },
+          {
+            "name": "structure",
+            "what": "(subject, predicate, object) triples",
+            "kept_as": "extracted",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code generation.py L97-L104",
+            "url": "https://github.com/KnowledgeXLab/EvolveR/blob/63834b727ee6e7af3410657de36eb845814249ba/evolver/llm_agent/generation.py#L97-L104"
+          },
+          {
+            "name": "type",
+            "what": "guiding (from a success) or cautionary (from a failure)",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code experience_manager.py L962",
+            "url": "https://github.com/KnowledgeXLab/EvolveR/blob/63834b727ee6e7af3410657de36eb845814249ba/evolver/experience/experience_manager.py#L962"
+          },
+          {
+            "name": "metric score",
+            "what": "(successes+1)/(uses+2); 0.5 at creation; shown to the agent",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper Eq. 2; code L707, L1114",
+            "url": "https://github.com/KnowledgeXLab/EvolveR/blob/63834b727ee6e7af3410657de36eb845814249ba/evolver/experience/experience_manager.py#L705-L714"
+          },
+          {
+            "name": "trajectory links",
+            "what": "ids of up to 3 successful and 2 failed source trajectories",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "code config.py L6-L7; train_grpo-3b.sh L158-L159 switch them off in the context",
+            "url": "https://github.com/KnowledgeXLab/EvolveR/blob/63834b727ee6e7af3410657de36eb845814249ba/scripts/train_grpo-3b.sh#L156-L159"
+          }
+        ]
+      },
+      {
+        "name": "Trajectory",
+        "role": "one stored rollout",
+        "made_by": "RL rollouts",
+        "fields": [
+          {
+            "name": "dialogue",
+            "what": "decoded full rollout with question, golden answer and outcome",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "code ray_trainer.py L741-L838",
+            "url": "https://github.com/KnowledgeXLab/EvolveR/blob/63834b727ee6e7af3410657de36eb845814249ba/verl/trainer/ppo/ray_trainer.py#L741-L838"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Collect",
+        "how": "after each GRPO step, keep 2 of the 8 rollouts per question, balanced between success and failure",
+        "params": {
+          "rollouts": "8",
+          "kept": "25% = 2"
+        },
+        "src": "code ray_trainer.py L761-L777; train_grpo-3b.sh L123, L155",
+        "url": "https://github.com/KnowledgeXLab/EvolveR/blob/63834b727ee6e7af3410657de36eb845814249ba/verl/trainer/ppo/ray_trainer.py#L761-L777"
+      },
+      {
+        "step": "Distil",
+        "how": "the policy model reads question, golden answer and the trajectory (cut at 4,096 characters) and writes a description plus triples",
+        "params": {
+          "temperature": "1.0",
+          "max tokens": "512"
+        },
+        "src": "paper §3.2.1, App. A.4.3; code L1027-L1045",
+        "url": "https://github.com/KnowledgeXLab/EvolveR/blob/63834b727ee6e7af3410657de36eb845814249ba/evolver/experience/experience_manager.py#L1027-L1045"
+      },
+      {
+        "step": "Dedup new",
+        "how": "pairwise yes/no by the policy model among new principles from the same question and of the same type; one per cluster kept",
+        "src": "paper §3.2.1; code L557-L635",
+        "url": "https://github.com/KnowledgeXLab/EvolveR/blob/63834b727ee6e7af3410657de36eb845814249ba/evolver/experience/experience_manager.py#L557-L635"
+      },
+      {
+        "step": "Match",
+        "how": "top-3 existing principles by cosine; those at 0.85 or above go to an LLM yes/no check; a yes links the trajectory to every matching principle, otherwise a new principle is added",
+        "params": {
+          "θsim": "0.85",
+          "candidates": "3"
+        },
+        "src": "paper Eq. 1, App. A.1; code L970-L1094",
+        "url": "https://github.com/KnowledgeXLab/EvolveR/blob/63834b727ee6e7af3410657de36eb845814249ba/evolver/experience/experience_manager.py#L970-L1094"
+      },
+      {
+        "step": "Score",
+        "how": "each retrieved principle gets uses +1 and successes +1 when the trajectory's answer was right; score recomputed",
+        "src": "paper Eq. 2; code L669-L722",
+        "url": "https://github.com/KnowledgeXLab/EvolveR/blob/63834b727ee6e7af3410657de36eb845814249ba/evolver/experience/experience_manager.py#L669-L722"
+      },
+      {
+        "step": "Prune",
+        "how": "delete principles with score below 0.3",
+        "params": {
+          "θprune": "0.3",
+          "every": "10 RL steps"
+        },
+        "src": "paper App. A.1; code ray_trainer.py L1105-L1110",
+        "url": "https://github.com/KnowledgeXLab/EvolveR/blob/63834b727ee6e7af3410657de36eb845814249ba/verl/trainer/ppo/ray_trainer.py#L1105-L1110"
+      }
+    ],
+    "read": [
+      {
+        "step": "Decide to search",
+        "round": 0,
+        "how": "the policy emits <search_experience> with a query it writes itself (in the paper's rollout example, guessed triples)",
+        "src": "paper Table 13, Table 18; code generation.py L530-L541",
+        "url": "https://github.com/KnowledgeXLab/EvolveR/blob/63834b727ee6e7af3410657de36eb845814249ba/evolver/llm_agent/generation.py#L530-L541"
+      },
+      {
+        "step": "Match",
+        "round": 0,
+        "input": "agent-written query",
+        "scores": "principle description only",
+        "how": "BGE-M3 embedding, cosine, FLAT Milvus index",
+        "params": {
+          "k": "3"
+        },
+        "src": "code config.py L12; principle_client.py L58, L230-L237",
+        "url": "https://github.com/KnowledgeXLab/EvolveR/blob/63834b727ee6e7af3410657de36eb845814249ba/evolver/experience/milvusdb/principle_client.py#L230-L237"
+      },
+      {
+        "step": "Filter",
+        "round": 0,
+        "how": "drop principles containing special tags or duplicate descriptions (and delete them from the pool)",
+        "src": "code experience_manager.py L454-L510",
+        "url": "https://github.com/KnowledgeXLab/EvolveR/blob/63834b727ee6e7af3410657de36eb845814249ba/evolver/experience/experience_manager.py#L454-L510"
+      },
+      {
+        "step": "Format",
+        "round": 0,
+        "how": "'[Principle i], type, metric score, description' plus a triples line, cut to 2,048 characters; returned in <experience> tags",
+        "src": "code generation.py L91-L138, L600-L605",
+        "url": "https://github.com/KnowledgeXLab/EvolveR/blob/63834b727ee6e7af3410657de36eb845814249ba/evolver/llm_agent/generation.py#L91-L138"
+      }
+    ],
+    "answer_context": {
+      "sees": "the agent's own trace: its thoughts, up to 3 principles per experience search and 3 Wikipedia passages per knowledge search",
+      "format": "\"[Principle i], type: {guiding|cautionary}, metric score: {s}, description: {text}\" then \"[Principle i structure subgraph]: [(s, p, o) ...]\", inside <experience>...</experience>",
+      "excludes": [
+        "linked successful and failed trajectories (switched off in the released scripts)",
+        "usage and success counts"
+      ],
+      "includes": [
+        "principle description",
+        "type",
+        "metric score",
+        "triples"
+      ],
+      "note": "Paper Fig. 2 draws principles returned together with their trajectories; the training and test scripts set success_trajectory and failure_trajectory to false.",
+      "src": "code generation.py L91-L104; train_grpo-3b.sh L156-L159",
+      "url": "https://github.com/KnowledgeXLab/EvolveR/blob/63834b727ee6e7af3410657de36eb845814249ba/evolver/llm_agent/generation.py#L91-L104"
+    },
+    "compression": [
+      {
+        "what": "principle vs its source trajectory",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported. The prompt asks for one sentence plus triples; the trajectory given to the distiller is cut at 4,096 characters.",
+        "src": "code experience_manager.py L1038-L1041",
+        "url": "https://github.com/KnowledgeXLab/EvolveR/blob/63834b727ee6e7af3410657de36eb845814249ba/evolver/experience/experience_manager.py#L1038-L1041"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "What a search returns",
+        "paper": "principles with their associated trajectories (Fig. 2)",
+        "code": "principle text, type, score and triples only; trajectory display is off in both scripts",
+        "src": "train_grpo-3b.sh L156-L159",
+        "url": "https://github.com/KnowledgeXLab/EvolveR/blob/63834b727ee6e7af3410657de36eb845814249ba/scripts/train_grpo-3b.sh#L156-L159"
+      },
+      {
+        "topic": "Merge target",
+        "paper": "link the trajectory to the single most similar principle p*",
+        "code": "link it to every top-3 principle with cosine >= 0.85 that the LLM calls equivalent",
+        "src": "experience_manager.py L1079-L1085",
+        "url": "https://github.com/KnowledgeXLab/EvolveR/blob/63834b727ee6e7af3410657de36eb845814249ba/evolver/experience/experience_manager.py#L1079-L1085"
+      },
+      {
+        "topic": "What counts as a use",
+        "paper": "usage counted when a principle is used",
+        "code": "a merge also adds a use (and a success if the source trajectory succeeded), without recomputing the score until the next cycle",
+        "src": "experience_manager.py L1142-L1158",
+        "url": "https://github.com/KnowledgeXLab/EvolveR/blob/63834b727ee6e7af3410657de36eb845814249ba/evolver/experience/experience_manager.py#L1142-L1158"
+      },
+      {
+        "topic": "Distiller input",
+        "paper": "the trajectory and its outcome",
+        "code": "also the golden answer, prefixed to the trajectory log",
+        "src": "experience_manager.py L1038-L1039",
+        "url": "https://github.com/KnowledgeXLab/EvolveR/blob/63834b727ee6e7af3410657de36eb845814249ba/evolver/experience/experience_manager.py#L1038-L1039"
+      }
+    ],
+    "open_questions": [
+      "How much of the gain is RL versus memory? RL alone gives 0.325 and the full system 0.382 on 3B, but the memory-only (no RL) run is still 0.357 (Table 4); the baselines are not retrained with the same cold start.",
+      "The experience base is built from the NQ and HotpotQA training questions that are also in-domain test sets; the paper does not measure overlap between principles and test questions.",
+      "Scores rise with pool size up to 45k principles and then drop (Table 7), measured on a 10% validation subset while training continues, so pool size and training step are confounded."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 244",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"30\" width=\"80\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"44.0\" y=\"49.0\" text-anchor=\"middle\">Rollouts</text><text class=\"fig-s\" x=\"44.0\" y=\"62.0\" text-anchor=\"middle\">8 per question</text><path class=\"gi-a\" d=\"M84 52 L89 52\"/><polygon class=\"gi-ah\" points=\"96,52 89,48 89,56\"/><rect class=\"gi-f\" x=\"96\" y=\"30\" width=\"80\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"136.0\" y=\"49.0\" text-anchor=\"middle\">Keep 2</text><text class=\"fig-s\" x=\"136.0\" y=\"62.0\" text-anchor=\"middle\">per question</text><text class=\"fig-s\" x=\"136\" y=\"88\" text-anchor=\"middle\">1 success, 1 failure</text><path class=\"gi-a\" d=\"M176 52 L181 52\"/><polygon class=\"gi-ah\" points=\"188,52 181,48 181,56\"/><rect class=\"gi-llm\" x=\"188\" y=\"30\" width=\"80\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"228.0\" y=\"49.0\" text-anchor=\"middle\">Distill</text><text class=\"fig-s\" x=\"228.0\" y=\"62.0\" text-anchor=\"middle\">same policy</text><path class=\"gi-a\" d=\"M268 52 L271 52\"/><polygon class=\"gi-ah\" points=\"278,52 271,48 271,56\"/><rect class=\"gi-ev\" x=\"278\" y=\"22\" width=\"126\" height=\"66\" rx=\"8\"/><text class=\"fig-t\" x=\"288\" y=\"38\" text-anchor=\"start\">Principle</text><text class=\"fig-s\" x=\"288\" y=\"52\" text-anchor=\"start\">one-sentence advice</text><text class=\"fig-s\" x=\"288\" y=\"65\" text-anchor=\"start\">+ (s, p, o) triples</text><text class=\"fig-s\" x=\"288\" y=\"78\" text-anchor=\"start\">guiding / cautionary</text><path class=\"gi-a\" d=\"M404 52 L417 52\"/><polygon class=\"gi-ah\" points=\"424,52 417,48 417,56\"/><polygon class=\"gi-llm\" points=\"478,22 532,52 478,82 424,52\"/><text class=\"fig-t\" x=\"478\" y=\"50\" text-anchor=\"middle\">Known?</text><text class=\"fig-s\" x=\"478\" y=\"62\" text-anchor=\"middle\">embed + LLM</text><text class=\"fig-s\" x=\"466\" y=\"100\" text-anchor=\"end\">top-3 by cosine ≥ 0.85,</text><text class=\"fig-s\" x=\"466\" y=\"112\" text-anchor=\"end\">then the LLM says yes/no</text><path class=\"gi-a\" d=\"M532 52 L546 52 L546 143\"/><polygon class=\"gi-ah\" points=\"546,150 542,143 550,143\"/><text class=\"fig-yes\" x=\"540\" y=\"112\" text-anchor=\"end\">Yes</text><rect class=\"gi-f\" x=\"446\" y=\"150\" width=\"110\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"501.0\" y=\"169.0\" text-anchor=\"middle\">Link trajectory</text><text class=\"fig-s\" x=\"501.0\" y=\"182.0\" text-anchor=\"middle\">no new entry</text><path class=\"gi-a\" d=\"M478 82 L478 124 L375 124 L375 143\"/><polygon class=\"gi-ah\" points=\"375,150 371,143 379,143\"/><text class=\"fig-no\" x=\"486\" y=\"100\" text-anchor=\"start\">No</text><rect class=\"gi-f\" x=\"322\" y=\"150\" width=\"106\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"375.0\" y=\"169.0\" text-anchor=\"middle\">New principle</text><text class=\"fig-s\" x=\"375.0\" y=\"182.0\" text-anchor=\"middle\">score starts 0.5</text><path class=\"gi-a\" d=\"M322 172 L307 172\"/><polygon class=\"gi-ah\" points=\"300,172 307,168 307,176\"/><path class=\"gi-a\" d=\"M501 194 L501 216 L307 216\"/><polygon class=\"gi-ah\" points=\"300,216 307,212 307,220\"/><rect class=\"gi-l\" x=\"4\" y=\"134\" width=\"296\" height=\"98\" rx=\"10\"/><text class=\"fig-t\" x=\"14\" y=\"152\" text-anchor=\"start\">Experience base</text><rect class=\"gi-ev\" x=\"14\" y=\"160\" width=\"136\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"22\" y1=\"169\" x2=\"110\" y2=\"169\"/><text class=\"fig-s\" x=\"144\" y=\"173\" text-anchor=\"end\">0.71</text><rect class=\"gi-ev\" x=\"14\" y=\"182\" width=\"136\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"22\" y1=\"191\" x2=\"110\" y2=\"191\"/><text class=\"fig-s\" x=\"144\" y=\"195\" text-anchor=\"end\">0.52</text><rect class=\"gi-ev\" x=\"14\" y=\"204\" width=\"136\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"22\" y1=\"213\" x2=\"110\" y2=\"213\"/><text class=\"fig-s\" x=\"144\" y=\"217\" text-anchor=\"end\">0.33</text><text class=\"fig-s\" x=\"160\" y=\"172\" text-anchor=\"start\">score =</text><text class=\"fig-s\" x=\"160\" y=\"185\" text-anchor=\"start\">(succ+1)/(uses+2)</text><text class=\"fig-s\" x=\"160\" y=\"206\" text-anchor=\"start\">dropped if &lt; 0.3,</text><text class=\"fig-s\" x=\"160\" y=\"219\" text-anchor=\"start\">every 10 steps</text><text class=\"fig-s\" x=\"12\" y=\"16\" text-anchor=\"start\">offline phase, after every RL step (policy frozen)</text>",
+        "text": [
+          "After each RL step, 2 of every 8 rollouts are distilled by the policy itself into a one-line principle with triples.",
+          "A principle that matches an existing one only links its trajectory; otherwise it is added, and success-based scores prune weak principles."
+        ],
+        "src": "paper §3.2.1, Eq. 1-2, App. A.1; code experience_manager.py L521-L722, L970-L1162",
+        "url": "https://github.com/KnowledgeXLab/EvolveR/blob/63834b727ee6e7af3410657de36eb845814249ba/evolver/experience/experience_manager.py#L970-L1162"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 216",
+        "body": "<text class=\"fig-s\" x=\"280\" y=\"14\" text-anchor=\"middle\">up to 10 turns; the agent decides when to call each search</text><rect class=\"gi-f\" x=\"4\" y=\"34\" width=\"60\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"34.0\" y=\"60.0\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M64 56 L73 56\"/><polygon class=\"gi-ah\" points=\"80,56 73,52 73,60\"/><rect class=\"gi-llm\" x=\"80\" y=\"30\" width=\"92\" height=\"52\" rx=\"8\"/><text class=\"fig-t\" x=\"126.0\" y=\"53.0\" text-anchor=\"middle\">Agent</text><text class=\"fig-s\" x=\"126.0\" y=\"66.0\" text-anchor=\"middle\">think, then act</text><path class=\"gi-a\" d=\"M172 48 L189 48\"/><polygon class=\"gi-ah\" points=\"196,48 189,44 189,52\"/><rect class=\"gi-f\" x=\"196\" y=\"30\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"244.0\" y=\"49.0\" text-anchor=\"middle\">Own query</text><text class=\"fig-s\" x=\"244.0\" y=\"62.0\" text-anchor=\"middle\">search_experience</text><path class=\"gi-a\" d=\"M292 52 L297 52\"/><polygon class=\"gi-ah\" points=\"304,52 297,48 297,56\"/><rect class=\"gi-v fig-soft\" x=\"304\" y=\"30\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"348.0\" y=\"49.0\" text-anchor=\"middle\">Cosine</text><text class=\"fig-s\" x=\"348.0\" y=\"62.0\" text-anchor=\"middle\">BGE-M3</text><text class=\"fig-s\" x=\"348\" y=\"88\" text-anchor=\"middle\">vs descriptions</text><path class=\"gi-a\" d=\"M392 52 L397 52\"/><polygon class=\"gi-ah\" points=\"404,52 397,48 397,56\"/><rect class=\"gi-f\" x=\"404\" y=\"30\" width=\"62\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"435.0\" y=\"49.0\" text-anchor=\"middle\">Top 3</text><text class=\"fig-s\" x=\"435.0\" y=\"62.0\" text-anchor=\"middle\">principles</text><path class=\"gi-a\" d=\"M466 52 L469 52\"/><polygon class=\"gi-ah\" points=\"476,52 469,48 469,56\"/><rect class=\"gi-ev\" x=\"476\" y=\"26\" width=\"80\" height=\"66\" rx=\"8\"/><text class=\"fig-t\" x=\"484\" y=\"42\" text-anchor=\"start\">Shown</text><text class=\"fig-s\" x=\"484\" y=\"56\" text-anchor=\"start\">type, score</text><text class=\"fig-s\" x=\"484\" y=\"69\" text-anchor=\"start\">description</text><text class=\"fig-s\" x=\"484\" y=\"82\" text-anchor=\"start\">triples</text><path class=\"gi-a d\" d=\"M516 92 L516 108 L186 108 L186 74 L179 74\"/><polygon class=\"gi-ah\" points=\"172,74 179,70 179,78\"/><text class=\"fig-s\" x=\"350\" y=\"122\" text-anchor=\"middle\">as &lt;experience&gt; (no past trajectories); loss masked</text><path class=\"gi-a\" d=\"M100 82 L100 126 L40 126 L40 139\"/><polygon class=\"gi-ah\" points=\"40,146 36,139 44,139\"/><rect class=\"gi-hi\" x=\"4\" y=\"146\" width=\"72\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"40.0\" y=\"165.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"40.0\" y=\"178.0\" text-anchor=\"middle\">EM reward</text><path class=\"gi-a\" d=\"M150 82 L150 139\"/><polygon class=\"gi-ah\" points=\"150,146 146,139 154,139\"/><rect class=\"gi-f\" x=\"112\" y=\"146\" width=\"110\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"167.0\" y=\"165.0\" text-anchor=\"middle\">Own query</text><text class=\"fig-s\" x=\"167.0\" y=\"178.0\" text-anchor=\"middle\">search_knowledge</text><path class=\"gi-a\" d=\"M222 168 L229 168\"/><polygon class=\"gi-ah\" points=\"236,168 229,164 229,172\"/><rect class=\"gi-v fig-soft\" x=\"236\" y=\"146\" width=\"90\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"281.0\" y=\"165.0\" text-anchor=\"middle\">E5 search</text><text class=\"fig-s\" x=\"281.0\" y=\"178.0\" text-anchor=\"middle\">Wikipedia 2018</text><path class=\"gi-a\" d=\"M326 168 L333 168\"/><polygon class=\"gi-ah\" points=\"340,168 333,164 333,172\"/><rect class=\"gi-f\" x=\"340\" y=\"146\" width=\"70\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"375.0\" y=\"165.0\" text-anchor=\"middle\">Top 3</text><text class=\"fig-s\" x=\"375.0\" y=\"178.0\" text-anchor=\"middle\">documents</text><text class=\"fig-s\" x=\"276\" y=\"206\" text-anchor=\"middle\">back to the agent as &lt;information&gt;, loss masked</text><text class=\"fig-s\" x=\"428\" y=\"156\" text-anchor=\"start\">After the episode, each</text><text class=\"fig-s\" x=\"428\" y=\"169\" text-anchor=\"start\">retrieved principle:</text><text class=\"fig-s\" x=\"428\" y=\"182\" text-anchor=\"start\">uses +1, successes +1</text><text class=\"fig-s\" x=\"428\" y=\"195\" text-anchor=\"start\">if the answer was right</text>",
+        "text": [
+          "The agent calls experience search with a query it writes; the 3 closest principles by BGE-M3 cosine come back as text with type and score.",
+          "It can also search Wikipedia, then answers; the retrieved principles' counters are updated from the outcome during training."
+        ],
+        "src": "paper §3.1, §3.2.2, App. A.1; code generation.py L91-L138, L530-L605",
+        "url": "https://github.com/KnowledgeXLab/EvolveR/blob/63834b727ee6e7af3410657de36eb845814249ba/evolver/llm_agent/generation.py#L530-L605"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Rollouts kept for distillation",
+        "value": "2 of 8 per question",
+        "src": "code ray_trainer.py L761-L777; train_grpo-3b.sh L123, L155",
+        "section": "construction"
+      },
+      {
+        "label": "Merge if",
+        "value": "cosine ≥ 0.85 and the LLM says same",
+        "src": "paper App. A.1",
+        "section": "construction"
+      },
+      {
+        "label": "Pruned when",
+        "value": "score < 0.3, every 10 steps",
+        "src": "paper App. A.1; train_grpo-3b.sh L151-L152",
+        "section": "construction"
+      },
+      {
+        "label": "Principles per search",
+        "value": "3 (documents per search: 3)",
+        "src": "paper App. A.1",
+        "section": "method"
+      },
+      {
+        "label": "Turns per question",
+        "value": "up to 10",
+        "src": "code train_grpo-3b.sh L160",
+        "section": "method"
+      },
+      {
+        "label": "Pool size reached",
+        "value": "~50k principles (49,934)",
+        "src": "paper Table 7",
+        "section": "results"
+      },
+      {
+        "label": "Top-3 search latency",
+        "value": "0.06 s at ~14k, 0.20 s at ~50k principles",
+        "src": "paper App. A.1, Table 7",
+        "section": "results"
+      },
+      {
+        "label": "Training cost (3B)",
+        "value": "~39.4 h on 8 A100-80GB",
+        "src": "paper App. A.1",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "0.5B",
+        "1.5B",
+        "3B"
+      ],
+      "rows": [
+        [
+          "EvolveR (full)",
+          "0.150",
+          "0.270",
+          "0.382"
+        ],
+        [
+          "without experience search at test time",
+          "0.078",
+          "0.123",
+          "0.340"
+        ],
+        [
+          "principles distilled by GPT-4o-mini",
+          "0.220",
+          "0.290",
+          "0.370"
+        ],
+        [
+          "SFT on successful trajectories instead of GRPO",
+          "—",
+          "—",
+          "0.357"
+        ],
+        [
+          "loss on retrieved principle tokens",
+          "—",
+          "—",
+          "0.371"
+        ],
+        [
+          "RL only, no principles",
+          "—",
+          "—",
+          "0.325"
+        ],
+        [
+          "principles, no RL",
+          "—",
+          "—",
+          "0.357"
+        ],
+        [
+          "no RL, no principles",
+          "—",
+          "—",
+          "0.134"
+        ]
+      ],
+      "src": "paper Tables 2, 3, 4, 8, 11 (average EM over the 7 datasets)"
+    },
+    "components": [
+      {
+        "role": "Distils, dedups and matches principles",
+        "model": "the policy model itself (Qwen2.5, 0.5B-7B)",
+        "kind": "llm",
+        "src": "paper §3.2.1"
+      },
+      {
+        "role": "Principle search",
+        "model": "BGE-M3, cosine (Milvus FLAT index)",
+        "kind": "retriever",
+        "src": "paper App. A.1; code principle_client.py L58",
+        "url": "https://github.com/KnowledgeXLab/EvolveR/blob/63834b727ee6e7af3410657de36eb845814249ba/evolver/experience/milvusdb/principle_client.py#L58"
+      },
+      {
+        "role": "Wikipedia search",
+        "model": "E5 (e5-base-v2) over the 2018 Wikipedia dump, top-3",
+        "kind": "retriever",
+        "src": "code scripts/retrieval_launch.sh",
+        "url": "https://github.com/KnowledgeXLab/EvolveR/blob/63834b727ee6e7af3410657de36eb845814249ba/scripts/retrieval_launch.sh"
+      },
+      {
+        "role": "Pruning and scoring",
+        "model": "rule: (succ+1)/(uses+2) < 0.3",
+        "kind": "rule",
+        "src": "paper Eq. 2, App. A.1"
+      },
+      {
+        "role": "Agent / answer",
+        "model": "Qwen2.5-3B/7B trained with GRPO",
+        "kind": "llm",
+        "src": "paper §3.3, §4.1.4"
+      }
+    ],
+    "discussion": {
+      "takeaway": "An agent can distil its own RL trajectories into short scored principles and learn, through RL, to search them; on seven QA benchmarks this beats the Search-R1 numbers it compares against at 3B and 7B.",
+      "claims": [
+        {
+          "claim": "EvolveR outperforms prompting, SFT and RL search-agent baselines.",
+          "evidence": "Average EM 0.382 (3B) vs 0.325 for Search-R1-instruct and 0.303 for Search-R1-base; 0.417 (7B) vs 0.385 for Search-R1-instruct. Table 1, §4.2"
+        },
+        {
+          "claim": "Access to the experience base at test time matters.",
+          "evidence": "3B drops from 0.382 to 0.340 without experience search; 1.5B from 0.270 to 0.123. Table 3, §5.2.2"
+        },
+        {
+          "claim": "Self-distillation beats a stronger external distiller at 3B.",
+          "evidence": "0.382 self vs 0.370 with GPT-4o-mini at 3B, but GPT-4o-mini wins at 0.5B (0.220 vs 0.150) and 1.5B (0.290 vs 0.270). Table 2, §5.2.1"
+        },
+        {
+          "claim": "Scoring and pruning keep useful principles.",
+          "evidence": "In 100 hand-labelled principles, 82% of high-score ones are ideal vs 26% of low-score ones. Table 6, §5.3"
+        },
+        {
+          "claim": "The pool scales without collapse.",
+          "evidence": "Latency 0.20 s and EM 0.387 at 49,934 principles. Table 7"
+        }
+      ],
+      "limits": [
+        "Principle quality is bounded by the base model's ability to distil.",
+        "Only QA tasks were tested; embodied or creative tasks remain open.",
+        "Keeping a growing experience base efficient for lifelong agents is unsolved.",
+        "A self-evolving agent could learn undesirable strategies without a value-aligned reward."
+      ],
+      "limits_src": "paper App. A.6, §6",
+      "reading": [
+        "Every baseline number equals Search-R1's Table 2; the 7B block drops Search-R1-base (0.431 average), which is higher than EvolveR 7B (0.417) and higher on 5 of the 7 datasets.",
+        "The retrieval query is text the agent writes, not the question; in the paper's example it is a list of guessed triples.",
+        "Past trajectories are linked to principles but never shown to the agent in the released scripts; only the one-line principle, its triples, type and score are.",
+        "The agent sees each principle's success score, so the score acts both as a pruning rule and as a signal inside the prompt.",
+        "Only 2 of 8 rollouts per question are distilled, usually one success and one failure; since in-batch dedup compares principles from the same question and same type, it has few pairs to check.",
+        "The pruning threshold barely matters (0.265 to 0.276 average over 0.1 to 0.9 on 1.5B, Table 9), so the reported score-tier quality difference (Table 6) does not translate into accuracy there.",
+        "The code gives the distiller the golden answer along with the trajectory, which the paper does not mention."
+      ]
+    },
+    "abstract": {
+      "text": "EvolveR lets an LLM agent improve from its own experience in a closed loop. Between RL steps, the agent's own model turns its recent trajectories into short guiding or cautionary principles, which are deduplicated, merged with near-identical ones and scored by how often they led to correct answers. During rollouts the agent can search this pool as a tool alongside a Wikipedia search, and GRPO trains it to make use of what it retrieves. On seven question-answering benchmarks with Qwen2.5 models, the authors report higher exact match than prompting, SFT and RL search-agent baselines.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2510.16079"
+    },
+    "sections": {
+      "Memory architecture": "§3.2",
+      "Results": "§4.2, §5.1",
+      "Ablation": "§5.2, App. A.2-A.3",
+      "Discussion": "§5.3, §6, App. A.6",
+      "Details": "§3, §4.1, App. A.1, A.4"
+    }
+  }
+}

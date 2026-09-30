@@ -1,0 +1,440 @@
+{
+  "id": "ewe",
+  "name": "EWE",
+  "paper": {
+    "title": "Improving Factuality with Explicit Working Memory",
+    "arxiv": "2412.18069",
+    "url": "https://arxiv.org/abs/2412.18069",
+    "venue": "ACL 2025",
+    "venue_short": "ACL",
+    "track": "main",
+    "year": 2025,
+    "code": null
+  },
+  "design": {
+    "construction": {
+      "unit": "memory unit: the KV cache of one M-token text chunk (a retrieved passage or fact-check evidence)",
+      "kept_as": "verbatim passages, stored as KV caches rather than text",
+      "processing": "at pauses, retrieved passages above a score threshold and evidence for unsupported claims are each encoded separately by the generator into KV caches with shared position ids",
+      "trigger": "other",
+      "writer": "the generator LLM (Llama-3.1 70B/8B) encodes; Contriever retrieves; VeriScore's claim extractor and verifier supply evidence"
+    },
+    "organization": {
+      "structure": "k parallel memory units, kept separately for retrieval feedback and fact-check feedback",
+      "stores": "working memory of KV caches outside the prompt, prepended per layer",
+      "index": "none inside memory; external datastore searched with Contriever (C4 + Wikipedia, MassiveDS)"
+    },
+    "management": {
+      "operations": "new units replace old ones first in, first out; a sentence with unsupported claims is deleted and regenerated",
+      "conflicts": "fact-check evidence for refuted claims enters memory before the sentence is rewritten",
+      "forgetting": "FIFO eviction when a pool is full",
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "input question + the sentence being checked",
+      "candidates": "Contriever dense search over C4 + Wikipedia; Google snippets inside the fact-checker",
+      "selection": "passages whose retrieval score passes a threshold",
+      "budget": "k units × M tokens; the values used for the main table are not stated (sweeps: 1-50 units, 128-6,400 tokens)"
+    },
+    "use": {
+      "context": "each memory unit is concatenated with the context in a separate attention pass per layer, plus one context-only pass; outputs are averaged with weights from the attention normalisers",
+      "reasoning": "sentence-by-sentence decoding with pauses, checks and backtracking"
+    },
+    "control": {
+      "construction": "fixed-rule",
+      "management": "fixed-rule",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "typed stores",
+    "index": "vector",
+    "management": "evict",
+    "candidates": "dense",
+    "decides": "top-k rule",
+    "note": "Two FIFO pools (retrieval feedback, fact-check feedback) of KV-cache units; admission is a retrieval-score threshold rather than a fixed k."
+  },
+  "tags": {
+    "fidelity": "verbatim",
+    "structure": [
+      "typed-stores"
+    ],
+    "write_time": [
+      "filter"
+    ],
+    "selection": [
+      "dense"
+    ],
+    "memory_type": [
+      "working"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "Decoding pauses periodically (retrieval every Tr=1 and verification every Tv=8 timesteps in the main runs); a pause does nothing unless a new sentence is complete.",
+    "construction": "Passages retrieved with the question and the new sentence as query (score above a threshold) and, when VeriScore finds unsupported claims, the evidence passages are each encoded by the generator into a separate KV-cache unit of M tokens.",
+    "organization": "Units sit in a working memory outside the prompt, with retrieval feedback and fact-check feedback kept apart; all units share the same position ids.",
+    "update": "Pools are refreshed first in, first out; a sentence with false claims is removed and generation backs up to regenerate it with the new units.",
+    "retrieval": "Contriever over C4 + Wikipedia (MassiveDS), query = question + current sentence, filtered by a score threshold.",
+    "answer": "At every layer each unit is attended together with the context in parallel, plus a context-only pass, and the hidden vectors are averaged using the attention normalisers (Eq. 1).",
+    "learning": ""
+  },
+  "summary": "Long-form generation with a working memory of KV-cached passages that is refreshed during decoding from retrieval and online fact-checking, with backtracking when a sentence is found false.",
+  "verified": false,
+  "notes": "Venue: ACL 2025 long paper (aclanthology 2025.acl-long.548); arXiv comment 'ACL 2025 Camera Ready'. PDF read: arXiv v3 (2 Jun 2025). No code link in the paper, the ACL page or a GitHub search. Abstract v3 says +2 to 6 VeriScore points.\nDESIGN: §1, §3.1-3.2, §4, App. B-D. Memory here is per-generation working memory for factual long-form answers, not memory across sessions.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2412.18069v3 (PDF read 2026-09-30)",
+      "code": null,
+      "code_note": "No official code found (not linked in the paper or the ACL Anthology page; GitHub search found nothing). Everything below is from the paper; the number and length of memory units and the retrieval threshold used for Table 1 are not given."
+    },
+    "headline": [
+      "Memory is a set of KV caches of passages, read by the model's attention in parallel passes, not text pasted into the prompt.",
+      "The same VeriScore claim extractor and verifier that feed the memory at inference are used to score the outputs."
+    ],
+    "units": [
+      {
+        "name": "Memory unit",
+        "role": "one chunk of feedback text, cached",
+        "made_by": "the generator LLM encoding the chunk separately",
+        "fields": [
+          {
+            "name": "retrieved passage",
+            "what": "Contriever passage from C4 or Wikipedia, kept if its score passes a threshold",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.1",
+            "url": "https://arxiv.org/pdf/2412.18069"
+          },
+          {
+            "name": "fact-check evidence",
+            "what": "passages VeriScore used to judge a claim (supporting passages performed best; Table 4)",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.1, App. D",
+            "url": "https://arxiv.org/pdf/2412.18069"
+          },
+          {
+            "name": "KV cache",
+            "what": "the unit's keys and values at every layer, all units sharing the same position ids",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.2",
+            "url": "https://arxiv.org/pdf/2412.18069"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Pause",
+        "how": "stop decoding at fixed intervals; skip if no new complete sentence",
+        "params": {
+          "Tr": "1",
+          "Tv": "8"
+        },
+        "src": "paper §3.1, §4",
+        "url": "https://arxiv.org/pdf/2412.18069"
+      },
+      {
+        "step": "Retrieve",
+        "how": "Contriever search of C4 + Wikipedia with question + current sentence; keep passages above a score threshold",
+        "params": {
+          "threshold": "not stated for Table 1 (1.5-2.2 swept, Fig. 5)"
+        },
+        "src": "paper §3.1, Fig. 5",
+        "url": "https://arxiv.org/pdf/2412.18069"
+      },
+      {
+        "step": "Fact-check",
+        "how": "VeriScore extracts claims from the sentence and verifies them against Google snippets; evidence for unsupported claims becomes feedback",
+        "src": "paper §3.1",
+        "url": "https://arxiv.org/pdf/2412.18069"
+      },
+      {
+        "step": "Encode",
+        "how": "each feedback chunk is run through the generator separately to produce its KV cache",
+        "params": {
+          "unit length M": "not stated (128-6,400 swept, Fig. 4)",
+          "units k": "not stated (1-50 swept, Fig. 3)"
+        },
+        "src": "paper §3.2",
+        "url": "https://arxiv.org/pdf/2412.18069"
+      },
+      {
+        "step": "Refresh",
+        "how": "insert new units, evicting the oldest first (FIFO); other rules tried did no better",
+        "src": "paper §3.2, footnote 2",
+        "url": "https://arxiv.org/pdf/2412.18069"
+      }
+    ],
+    "read": [
+      {
+        "step": "Parallel attention",
+        "round": 1,
+        "input": "current context",
+        "scores": "each memory unit concatenated with the context",
+        "how": "standard self-attention per unit plus a context-only pass; hidden vectors averaged with weights from the attention normalisers (Eq. 1)",
+        "src": "paper §3.2, Fig. 2, Eq. 1",
+        "url": "https://arxiv.org/pdf/2412.18069"
+      },
+      {
+        "step": "Backtrack",
+        "round": 1,
+        "input": "the checked sentence",
+        "how": "if any claim is unsupported, delete the sentence and regenerate from the previous step with the refreshed memory",
+        "src": "paper §1, §3",
+        "url": "https://arxiv.org/pdf/2412.18069"
+      }
+    ],
+    "answer_context": {
+      "sees": "prompt and generated text as context, plus every memory unit through the parallel attention passes",
+      "format": "memory units are not text in the prompt; they act as per-layer KV prefixes",
+      "excludes": [
+        "retrieved passages under the score threshold",
+        "units evicted by FIFO"
+      ],
+      "src": "paper §3.2, Fig. 2",
+      "url": "https://arxiv.org/pdf/2412.18069"
+    },
+    "compression": [
+      {
+        "what": "memory size vs retrieved text",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported: the unit count and length used in the main runs are not stated.",
+        "src": "paper §3.2, §5.1",
+        "url": "https://arxiv.org/pdf/2412.18069"
+      }
+    ],
+    "open_questions": [
+      "The number and length of memory units and the retrieval threshold for Table 1 are not given, and the sweeps in Fig. 3-5 are on 50 LongFact prompts.",
+      "Fact-checking at inference and scoring use the same VeriScore models; the human check (Table 2) covers 100 samples per system."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 240",
+        "body": "<rect class=\"gi-ev\" x=\"8\" y=\"96\" width=\"92\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"54.0\" y=\"118.0\" text-anchor=\"middle\">New sentence</text><text class=\"fig-s\" x=\"54.0\" y=\"131.0\" text-anchor=\"middle\">just generated</text><path class=\"gi-a\" d=\"M54 96 L54 60\"/><path class=\"gi-a\" d=\"M54.0 60.0 L109.0 60.0\"/><polygon class=\"gi-ah\" points=\"116.0,60.0 109.0,64.0 109.0,56.0\"/><text class=\"fig-s\" x=\"58\" y=\"88\" text-anchor=\"start\">+ question</text><rect class=\"gi-v fig-soft\" x=\"116\" y=\"38\" width=\"112\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"172.0\" y=\"58.0\" text-anchor=\"middle\">Retrieve</text><text class=\"fig-s\" x=\"172.0\" y=\"71.0\" text-anchor=\"middle\">Contriever, C4 + Wiki</text><path class=\"gi-a\" d=\"M228.0 60.0 L243.0 60.0\"/><polygon class=\"gi-ah\" points=\"250.0,60.0 243.0,64.0 243.0,56.0\"/><rect class=\"gi-f\" x=\"250\" y=\"38\" width=\"86\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"293.0\" y=\"58.0\" text-anchor=\"middle\">score > θ</text><text class=\"fig-s\" x=\"293.0\" y=\"71.0\" text-anchor=\"middle\">keep passages</text><path class=\"gi-a\" d=\"M54 144 L54 180\"/><path class=\"gi-a\" d=\"M54.0 180.0 L109.0 180.0\"/><polygon class=\"gi-ah\" points=\"116.0,180.0 109.0,184.0 109.0,176.0\"/><rect class=\"gi-llm\" x=\"116\" y=\"158\" width=\"112\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"172.0\" y=\"178.0\" text-anchor=\"middle\">Fact-check</text><text class=\"fig-s\" x=\"172.0\" y=\"191.0\" text-anchor=\"middle\">VeriScore claims</text><path class=\"gi-a\" d=\"M228.0 180.0 L243.0 180.0\"/><polygon class=\"gi-ah\" points=\"250.0,180.0 243.0,184.0 243.0,176.0\"/><rect class=\"gi-f\" x=\"250\" y=\"158\" width=\"86\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"293.0\" y=\"178.0\" text-anchor=\"middle\">unsupported?</text><text class=\"fig-s\" x=\"293.0\" y=\"191.0\" text-anchor=\"middle\">evidence text</text><text class=\"fig-s\" x=\"172\" y=\"98\" text-anchor=\"middle\">every Tr = 1 step</text><text class=\"fig-s\" x=\"172\" y=\"150\" text-anchor=\"middle\">every Tv = 8 steps</text><path class=\"gi-a\" d=\"M336 60 L350 60 L350 104\"/><path class=\"gi-a\" d=\"M350.0 104.0 L353.0 104.0\"/><polygon class=\"gi-ah\" points=\"360.0,104.0 353.0,108.0 353.0,100.0\"/><path class=\"gi-a\" d=\"M336 180 L350 180 L350 136\"/><path class=\"gi-a\" d=\"M350.0 136.0 L353.0 136.0\"/><polygon class=\"gi-ah\" points=\"360.0,136.0 353.0,140.0 353.0,132.0\"/><rect class=\"gi-llm\" x=\"360\" y=\"94\" width=\"80\" height=\"52\" rx=\"8\"/><text class=\"fig-t\" x=\"400.0\" y=\"118.0\" text-anchor=\"middle\">Encode</text><text class=\"fig-s\" x=\"400.0\" y=\"131.0\" text-anchor=\"middle\">same LLM → KV</text><path class=\"gi-a\" d=\"M440 110 L452 110 L452 58\"/><path class=\"gi-a\" d=\"M452.0 58.0 L455.0 58.0\"/><polygon class=\"gi-ah\" points=\"462.0,58.0 455.0,62.0 455.0,54.0\"/><path class=\"gi-a\" d=\"M440 130 L452 130 L452 176\"/><path class=\"gi-a\" d=\"M452.0 176.0 L455.0 176.0\"/><polygon class=\"gi-ah\" points=\"462.0,176.0 455.0,180.0 455.0,172.0\"/><text class=\"fig-t\" x=\"506\" y=\"22\" text-anchor=\"middle\">retrieval units</text><rect class=\"gi-w\" x=\"466\" y=\"34\" width=\"17\" height=\"48\" rx=\"3\"/><rect class=\"gi-w\" x=\"487\" y=\"34\" width=\"17\" height=\"48\" rx=\"3\"/><rect class=\"gi-w\" x=\"508\" y=\"34\" width=\"17\" height=\"48\" rx=\"3\"/><rect class=\"gi-w\" x=\"529\" y=\"34\" width=\"17\" height=\"48\" rx=\"3\"/><text class=\"fig-s\" x=\"506\" y=\"98\" text-anchor=\"middle\">FIFO: oldest out first</text><text class=\"fig-t\" x=\"506\" y=\"140\" text-anchor=\"middle\">fact-check units</text><rect class=\"gi-w\" x=\"466\" y=\"152\" width=\"17\" height=\"48\" rx=\"3\"/><rect class=\"gi-w\" x=\"487\" y=\"152\" width=\"17\" height=\"48\" rx=\"3\"/><rect class=\"gi-w\" x=\"508\" y=\"152\" width=\"17\" height=\"48\" rx=\"3\"/><rect class=\"gi-w\" x=\"529\" y=\"152\" width=\"17\" height=\"48\" rx=\"3\"/><text class=\"fig-s\" x=\"506\" y=\"216\" text-anchor=\"middle\">FIFO as well</text><text class=\"fig-s\" x=\"230\" y=\"232\" text-anchor=\"middle\">one unit = the KV cache of one M-token text chunk; k units per pool</text>",
+        "text": [
+          "After each new sentence, passages retrieved with the question and the sentence, and evidence for any claim the fact-checker rejects, become memory units.",
+          "Each unit is the model's own KV cache of one text chunk; separate pools for retrieval and fact-check feedback are refreshed first in, first out."
+        ],
+        "src": "paper §3.1-3.2, §4, Fig. 1",
+        "url": "https://arxiv.org/pdf/2412.18069"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 228",
+        "body": "<text class=\"fig-t\" x=\"95\" y=\"16\" text-anchor=\"middle\">at every layer</text><rect class=\"gi-w\" x=\"8\" y=\"26\" width=\"72\" height=\"26\" rx=\"6\"/><text class=\"fig-t\" x=\"44.0\" y=\"43.0\" text-anchor=\"middle\">memory 1</text><rect class=\"gi-f\" x=\"84\" y=\"26\" width=\"72\" height=\"26\" rx=\"6\"/><text class=\"fig-t\" x=\"120.0\" y=\"43.0\" text-anchor=\"middle\">context</text><path class=\"gi-a\" d=\"M156.0 39.0 L169.0 39.0\"/><polygon class=\"gi-ah\" points=\"176.0,39.0 169.0,43.0 169.0,35.0\"/><rect class=\"gi-ev\" x=\"176\" y=\"26\" width=\"58\" height=\"26\" rx=\"6\"/><text class=\"fig-t\" x=\"205.0\" y=\"43.0\" text-anchor=\"middle\">attend</text><rect class=\"gi-w\" x=\"8\" y=\"58\" width=\"72\" height=\"26\" rx=\"6\"/><text class=\"fig-t\" x=\"44.0\" y=\"75.0\" text-anchor=\"middle\">memory 2</text><rect class=\"gi-f\" x=\"84\" y=\"58\" width=\"72\" height=\"26\" rx=\"6\"/><text class=\"fig-t\" x=\"120.0\" y=\"75.0\" text-anchor=\"middle\">context</text><path class=\"gi-a\" d=\"M156.0 71.0 L169.0 71.0\"/><polygon class=\"gi-ah\" points=\"176.0,71.0 169.0,75.0 169.0,67.0\"/><rect class=\"gi-ev\" x=\"176\" y=\"58\" width=\"58\" height=\"26\" rx=\"6\"/><text class=\"fig-t\" x=\"205.0\" y=\"75.0\" text-anchor=\"middle\">attend</text><rect class=\"gi-w\" x=\"8\" y=\"108\" width=\"72\" height=\"26\" rx=\"6\"/><text class=\"fig-t\" x=\"44.0\" y=\"125.0\" text-anchor=\"middle\">memory k</text><rect class=\"gi-f\" x=\"84\" y=\"108\" width=\"72\" height=\"26\" rx=\"6\"/><text class=\"fig-t\" x=\"120.0\" y=\"125.0\" text-anchor=\"middle\">context</text><path class=\"gi-a\" d=\"M156.0 121.0 L169.0 121.0\"/><polygon class=\"gi-ah\" points=\"176.0,121.0 169.0,125.0 169.0,117.0\"/><rect class=\"gi-ev\" x=\"176\" y=\"108\" width=\"58\" height=\"26\" rx=\"6\"/><text class=\"fig-t\" x=\"205.0\" y=\"125.0\" text-anchor=\"middle\">attend</text><text class=\"fig-t\" x=\"82\" y=\"98\" text-anchor=\"middle\">⋮</text><rect class=\"gi-f\" x=\"84\" y=\"140\" width=\"72\" height=\"26\" rx=\"6\"/><text class=\"fig-t\" x=\"120.0\" y=\"157.0\" text-anchor=\"middle\">context</text><text class=\"fig-s\" x=\"44\" y=\"157\" text-anchor=\"middle\">(no memory)</text><path class=\"gi-a\" d=\"M156.0 153.0 L169.0 153.0\"/><polygon class=\"gi-ah\" points=\"176.0,153.0 169.0,157.0 169.0,149.0\"/><rect class=\"gi-ev\" x=\"176\" y=\"140\" width=\"58\" height=\"26\" rx=\"6\"/><text class=\"fig-t\" x=\"205.0\" y=\"157.0\" text-anchor=\"middle\">attend</text><path class=\"gi-a\" d=\"M234 39 L252 39 L252 96\"/><path class=\"gi-a\" d=\"M252.0 96.0 L257.0 96.0\"/><polygon class=\"gi-ah\" points=\"264.0,96.0 257.0,100.0 257.0,92.0\"/><path class=\"gi-a\" d=\"M234 71 L252 71 L252 96\"/><path class=\"gi-a\" d=\"M252.0 96.0 L257.0 96.0\"/><polygon class=\"gi-ah\" points=\"264.0,96.0 257.0,100.0 257.0,92.0\"/><path class=\"gi-a\" d=\"M234 121 L252 121 L252 96\"/><path class=\"gi-a\" d=\"M252.0 96.0 L257.0 96.0\"/><polygon class=\"gi-ah\" points=\"264.0,96.0 257.0,100.0 257.0,92.0\"/><path class=\"gi-a\" d=\"M234 153 L252 153 L252 96\"/><path class=\"gi-a\" d=\"M252.0 96.0 L257.0 96.0\"/><polygon class=\"gi-ah\" points=\"264.0,96.0 257.0,100.0 257.0,92.0\"/><rect class=\"gi-v fig-soft\" x=\"264\" y=\"72\" width=\"78\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"303.0\" y=\"94.0\" text-anchor=\"middle\">weighted sum</text><text class=\"fig-s\" x=\"303.0\" y=\"107.0\" text-anchor=\"middle\">by softmax mass</text><path class=\"gi-a\" d=\"M342.0 96.0 L355.0 96.0\"/><polygon class=\"gi-ah\" points=\"362.0,96.0 355.0,100.0 355.0,92.0\"/><rect class=\"gi-f\" x=\"362\" y=\"76\" width=\"66\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"395.0\" y=\"100.0\" text-anchor=\"middle\">next token</text><path class=\"gi-a\" d=\"M428.0 96.0 L439.0 96.0\"/><polygon class=\"gi-ah\" points=\"446.0,96.0 439.0,100.0 439.0,92.0\"/><polygon class=\"gi-llm\" points=\"498,62 552,96 498,130 444,96\"/><text class=\"fig-t\" x=\"498\" y=\"94\" text-anchor=\"middle\">supported?</text><text class=\"fig-s\" x=\"498\" y=\"107\" text-anchor=\"middle\">at a check</text><path class=\"gi-a\" d=\"M498.0 130.0 L498.0 161.0\"/><polygon class=\"gi-ah\" points=\"498.0,168.0 494.0,161.0 502.0,161.0\"/><text class=\"fig-yes\" x=\"504\" y=\"152\" text-anchor=\"start\">Yes</text><rect class=\"gi-hi\" x=\"454\" y=\"168\" width=\"96\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"502.0\" y=\"186.0\" text-anchor=\"middle\">Continue</text><text class=\"fig-s\" x=\"502.0\" y=\"199.0\" text-anchor=\"middle\">memory refreshed</text><path class=\"gi-a\" d=\"M498 62 L498 44\"/><path class=\"gi-a\" d=\"M498.0 44.0 L427.0 44.0\"/><polygon class=\"gi-ah\" points=\"420.0,44.0 427.0,40.0 427.0,48.0\"/><text class=\"fig-no\" x=\"446\" y=\"38\" text-anchor=\"start\">No</text><rect class=\"gi-ev\" x=\"268\" y=\"24\" width=\"152\" height=\"36\" rx=\"8\"/><text class=\"fig-t\" x=\"344.0\" y=\"40.0\" text-anchor=\"middle\">Drop sentence, regenerate</text><text class=\"fig-s\" x=\"344.0\" y=\"53.0\" text-anchor=\"middle\">with the new evidence</text><text class=\"fig-s\" x=\"222\" y=\"206\" text-anchor=\"middle\">units are not pasted into the prompt text: each is attended with the context in its own pass</text><text class=\"fig-s\" x=\"222\" y=\"220\" text-anchor=\"middle\">and the per-unit outputs are averaged by their attention normalisers (Eq. 1)</text>",
+        "text": [
+          "At every layer the context is attended together with each memory unit in parallel passes, and the results are averaged by their attention mass.",
+          "When a checked sentence has unsupported claims it is deleted and regenerated with the new evidence in memory."
+        ],
+        "src": "paper §3.2, Fig. 2, Eq. 1",
+        "url": "https://arxiv.org/pdf/2412.18069"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Pause intervals",
+        "value": "retrieval every 1, verification every 8 timesteps",
+        "src": "paper §4",
+        "section": "construction"
+      },
+      {
+        "label": "Update rule",
+        "value": "FIFO per pool",
+        "src": "paper §3.2",
+        "section": "construction"
+      },
+      {
+        "label": "Retriever",
+        "value": "Contriever over C4 + Wikipedia (MassiveDS)",
+        "src": "paper §3.1, §4.3",
+        "section": "method"
+      },
+      {
+        "label": "Units swept",
+        "value": "1-50; F1 peaks near 10 (Fig. 3)",
+        "src": "paper Fig. 3",
+        "section": "method"
+      },
+      {
+        "label": "Unit length swept",
+        "value": "128-6,400 tokens; F1 peaks near 1,280 (Fig. 4)",
+        "src": "paper Fig. 4",
+        "section": "method"
+      },
+      {
+        "label": "Max generation",
+        "value": "1,024 steps",
+        "src": "paper §4.3",
+        "section": "method"
+      },
+      {
+        "label": "Human agreement with VeriScore",
+        "value": "Cohen's κ 0.65 (EWE) vs 0.61 (RA)",
+        "src": "paper Table 2",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "Precision",
+        "Recall",
+        "F1"
+      ],
+      "rows": [
+        [
+          "all three feedback forms",
+          "78.1",
+          "72.5",
+          "73.2"
+        ],
+        [
+          "passages refuting claims only",
+          "77.1",
+          "73.5",
+          "72.2"
+        ],
+        [
+          "passages supporting claims only",
+          "77.5",
+          "72.7",
+          "73.9"
+        ],
+        [
+          "instructions naming false claims only",
+          "71.1",
+          "76.1",
+          "72.5"
+        ],
+        [
+          "both passage types",
+          "72.1",
+          "79.4",
+          "74.8"
+        ],
+        [
+          "no feedback text, pause and regenerate only",
+          "70.8",
+          "76.0",
+          "73.0"
+        ],
+        [
+          "Llama-3.1-70B base",
+          "65.8",
+          "67.1",
+          "65.5"
+        ],
+        [
+          "Llama-3.1-70B + RA",
+          "70.7",
+          "75.6",
+          "72.5"
+        ]
+      ],
+      "src": "paper Table 4 (VeriScore on 50 LongFact prompts, Llama-3.1-70B)"
+    },
+    "components": [
+      {
+        "role": "Generates and encodes memory",
+        "model": "Llama-3.1-70B / 8B Instruct",
+        "kind": "llm",
+        "src": "paper §4.3"
+      },
+      {
+        "role": "Retrieves passages",
+        "model": "Contriever over C4 + Wikipedia (MassiveDS)",
+        "kind": "retriever",
+        "src": "paper §3.1"
+      },
+      {
+        "role": "Extracts and verifies claims",
+        "model": "VeriScore fine-tuned claim extractor and verifier, Google snippets",
+        "kind": "llm",
+        "src": "paper §3.1, §4.2"
+      },
+      {
+        "role": "Admits passages",
+        "model": "retrieval-score threshold",
+        "kind": "rule",
+        "src": "paper §3.1, Fig. 5"
+      },
+      {
+        "role": "Evicts units",
+        "model": "FIFO",
+        "kind": "rule",
+        "src": "paper §3.2"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Giving the generator a refreshable working memory of cached passages, fed by retrieval and an online fact-checker, raises factuality of long answers over RAG and iterative-retrieval baselines without making them less helpful.",
+      "claims": [
+        {
+          "claim": "Best factuality on all four datasets.",
+          "evidence": "VeriScore F1 with Llama-3.1-70B: 75.9 / 61.0 / 66.9 / 49.7 on LongFact / Fava / AlpacaFact / Biography vs best baseline 72.7 / 57.2 / 66.0 / 43.8. Table 1"
+        },
+        {
+          "claim": "Helpfulness is kept.",
+          "evidence": "AlpacaEval win rate vs the 70B base: 49.9-50.2 for EWE-70B, all other 70B methods 9.1-49.4. Table 1"
+        },
+        {
+          "claim": "Gains are smaller with the 8B model.",
+          "evidence": "8B EWE F1 67.3 / 53.1 / 65.5 / 42.2 vs RA 65.9 / 51.8 / 63.9 / 41.4. Table 1, §4.4"
+        },
+        {
+          "claim": "Too many or too short units hurt; unit length trades precision for recall.",
+          "evidence": "Fig. 3-4 on 50 LongFact prompts, §5.1"
+        },
+        {
+          "claim": "Passage feedback beats instruction-style feedback.",
+          "evidence": "F1 74.8 with both passage types vs 72.5 with instructions only. Table 4"
+        },
+        {
+          "claim": "The datastore matters and preferences differ by dataset.",
+          "evidence": "LongFact 67.9 Wiki / 70.8 C4 / 74.8 both; Biography 46.1 / 44.6 / 48.4. Table 3"
+        }
+      ],
+      "limits": [
+        "Only English fact-seeking prompts were tested.",
+        "Only textual feedback; multimodal feedback not explored.",
+        "Human evaluation is small."
+      ],
+      "limits_src": "paper §7 Limitations",
+      "reading": [
+        "The fact-checker used during generation is VeriScore's own claim extractor and verifier, and the metric is VeriScore F1, so part of the gain may come from optimising against the evaluator; the human study (κ 0.65 vs 0.61 on 100 samples each) only checks that VeriScore still agrees with people.",
+        "Over plain RA the 70B gains are 3.2 / 4.2 / 0.9 / 5.9 F1; on AlpacaFact the gain is under one point.",
+        "Memory size (units, unit length) and the retrieval threshold for the main table are not reported; all sweeps use 50 LongFact prompts with the 70B model.",
+        "Even with no feedback text, pausing and regenerating flagged sentences reaches 73.0 F1 vs 72.5 for RA (Table 4), so the checker's trigger alone accounts for part of the effect.",
+        "Baselines use the same retriever and datastore, but Nest uses 100 candidate passages and RA 10; CoVe was adapted from a third-party implementation.",
+        "Biography has 181 prompts in §4.1 but 183 names in App. A."
+      ]
+    },
+    "abstract": {
+      "text": "EWE adds an explicit working memory to an LLM that writes long factual answers. The memory holds KV caches of passages; while generating, the model pauses, retrieves passages for the latest sentence, and runs a fact-checker whose evidence also enters memory. Sentences found false are deleted and rewritten with the refreshed memory. On four fact-seeking long-form datasets the method raises VeriScore by 2-6 points with Llama-3.1 without lowering AlpacaEval helpfulness, and the analysis points to memory update rules, unit configuration and datastore quality as the key factors.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2412.18069"
+    },
+    "sections": {
+      "Memory architecture": "§3",
+      "Results": "§4.4",
+      "Ablation": "§5.1, App. B-D",
+      "Discussion": "§6, §7 Limitations",
+      "Details": "§3.1, §4.1-4.3, App. A"
+    }
+  }
+}

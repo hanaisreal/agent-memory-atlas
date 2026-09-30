@@ -1,0 +1,600 @@
+{
+  "id": "think-on-graph",
+  "name": "Think-on-Graph",
+  "paper": {
+    "title": "Think-on-Graph: Deep and Responsible Reasoning of Large Language Model on Knowledge Graph",
+    "arxiv": "2307.07697",
+    "url": "https://openreview.net/forum?id=nnVO1PvbTv",
+    "venue": "ICLR 2024",
+    "venue_short": "ICLR",
+    "track": "main",
+    "year": 2024,
+    "code": "https://github.com/IDEA-FinAI/ToG"
+  },
+  "design": {
+    "construction": {
+      "unit": "knowledge-graph triple (head entity, relation, tail entity) reached during the search",
+      "kept_as": "verbatim KG triples: entity names and raw relation ids",
+      "processing": "nothing is written ahead of time; per question, the top 3 triples of each search depth are appended to a working list",
+      "trigger": "other",
+      "writer": "none: the KG (Freebase or Wikidata) is pre-built and read-only"
+    },
+    "organization": {
+      "structure": "external knowledge graph, plus a flat per-question list of kept triples",
+      "stores": "Freebase behind a SPARQL endpoint, or Wikidata behind nine API calls; the triple list lives only in the prompt",
+      "index": "entity ids (Freebase mid, Wikidata qid) looked up by fixed SPARQL/API queries"
+    },
+    "management": {
+      "operations": "append up to 3 triples per depth; their tail entities become the next frontier; the KG itself is never changed by the system",
+      "conflicts": null,
+      "forgetting": null,
+      "timing": "none"
+    },
+    "retrieval": {
+      "query": "the question, starting from topic entities supplied with the dataset (paper: extracted by the LLM)",
+      "candidates": "all relations of each frontier entity (minus type/common/freebase/sameAs), then the tail entities of the chosen relations (5 sampled at random if 20 or more)",
+      "selection": "LLM picks and scores 3 relations per entity, LLM scores the tail entities; a triple scores relation × entity and the top 3 overall are kept; an LLM check after each depth decides whether to stop",
+      "budget": "width N=3, depth D=3: at most 9 triples; at most 2ND+D+1 = 22 LLM calls per question (paper)"
+    },
+    "use": {
+      "context": "the question and all kept triples as \"head, relation, tail\" lines, with 5 in-context examples",
+      "reasoning": "the sufficiency reply also states the answer when it says Yes; if depth 3 ends without Yes, a CoT prompt answers without any triples"
+    },
+    "control": {
+      "construction": "none",
+      "management": "fixed-rule",
+      "retrieval": "prompted-llm"
+    }
+  },
+  "classify": {
+    "structure": "graph",
+    "index": "exact match",
+    "management": "append-only",
+    "candidates": "graph walk",
+    "decides": "LLM decides",
+    "note": "Memory here is an existing knowledge graph that the system only reads. The per-question triple list only grows; the LLM scores decide which neighbours are kept, and a fixed rule keeps the top 3."
+  },
+  "tags": {
+    "fidelity": "verbatim",
+    "structure": [
+      "graph"
+    ],
+    "write_time": [
+      "none"
+    ],
+    "selection": [
+      "graph-expansion",
+      "planner"
+    ],
+    "memory_type": [
+      "semantic",
+      "working"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "",
+    "construction": "",
+    "organization": "Knowledge lives in an existing KG (Freebase for CWQ, WebQSP, GrailQA, SimpleQuestions and WebQuestions; Wikidata for the other four sets); ToG only reads it.",
+    "update": "During one question, each search depth appends its top 3 triples to a working list whose tail entities seed the next depth.",
+    "retrieval": "From the topic entities, fixed SPARQL queries list neighbouring relations; the LLM keeps 3 per entity with scores, the tails of those relations are fetched and scored by the LLM, and the 3 triples with the highest relation × entity score are kept. An LLM check after each depth (at most 3) decides whether the triples suffice.",
+    "answer": "When the check says Yes, its reply (with the answer in braces) is the output; if 3 depths pass without Yes the LLM answers by chain-of-thought with no triples.",
+    "learning": ""
+  },
+  "summary": "An LLM walks a knowledge graph by beam search, choosing relations and entities at each hop and stopping when it judges the collected triples sufficient; it needs no training and works with Freebase or Wikidata.",
+  "verified": false,
+  "notes": "VENUE: ICLR 2024 poster (listed at iclr.cc/virtual/2024/poster/17844; arXiv v6 carries the header 'Published as a conference paper at ICLR 2024' and the comment 'Accepted by ICLR 2024'). OpenReview PDF could not be downloaded (challenge page), so the paper was read from arXiv 2307.07697v6 (24 Mar 2024), the camera-ready version. The paper has an arXiv id although the task listed none; the results file keeps the requested name think-on-graph-noarxiv. data/extra_systems.json already has an entry 'tog' for the same paper (used by rrp-2506.10508); the two ids should be merged. CODE: IDEA-FinAI/ToG at 7ccbb92 (24 Mar 2024, same day as arXiv v6). Only ToG (not ToG-R) is in the code. DESIGN: §2, §3.1.3, App. A, B.2.1, E; code main_freebase.py, freebase_func.py. Memory framing: the KG is external semantic memory that ToG never writes; the kept-triple list is a per-question working memory.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2307.07697v6, the ICLR 2024 camera-ready (PDF read 2026-09-30); OpenReview forum nnVO1PvbTv",
+      "code": "https://github.com/IDEA-FinAI/ToG/tree/7ccbb92e17579f934bb778386230de47eca0ab67/",
+      "code_note": "Latest commit (24 Mar 2024, README update, same day as arXiv v6); the ToG/ search code last changed on 12 Dec 2023 ('fix pop bugs'). The repo holds ToG with Freebase and Wikidata back ends, the CoT/IO baselines and an eval script; ToG-R is not released."
+    },
+    "sections": {
+      "Memory architecture": "§2",
+      "Results": "§3.2.1-3.2.2, App. C",
+      "Ablation": "§3.2.3, App. B.1",
+      "Discussion": "§3.3, App. B.2",
+      "Details": "§3.1.3, App. A, B.2.1, E"
+    },
+    "abstract": {
+      "text": "Think-on-Graph (ToG) lets an LLM take part in reasoning over a knowledge graph instead of only translating a question into a query. Starting from the question's topic entities, the LLM repeatedly picks promising relations and neighbouring entities, keeping the best few paths in a beam, until it judges the gathered triples enough to answer. The method needs no training and can be paired with different LLMs and graphs. Across nine knowledge-intensive datasets it sets a new best result on six with GPT-4, and the explicit paths let people trace and correct faulty facts.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2307.07697"
+    },
+    "headline": [
+      "Nothing is written: memory is an existing KG, and the LLM only decides which neighbouring relations and entities to follow.",
+      "The answer model sees at most 9 triples (3 per depth, 3 depths) as a flat list; if it never says the list is enough, it answers from its own knowledge with no triples.",
+      "In the released code the start entities come from the dataset (gold-linked ids), not from LLM extraction as the paper says."
+    ],
+    "units": [
+      {
+        "name": "Knowledge graph",
+        "role": "the external store ToG reads; built by others",
+        "made_by": "Freebase or Wikidata as released",
+        "fields": [
+          {
+            "name": "entity id",
+            "what": "Freebase mid (m.*) or Wikidata qid; turned into a name by a SPARQL lookup",
+            "kept_as": "verbatim",
+            "used_for": [
+              "index"
+            ],
+            "src": "code freebase_func.py L7-L11, L37-L46",
+            "url": "https://github.com/IDEA-FinAI/ToG/blob/7ccbb92e17579f934bb778386230de47eca0ab67/ToG/freebase_func.py#L7-L46"
+          },
+          {
+            "name": "relation",
+            "what": "raw relation id such as people.person.places_lived; type, common., freebase. and sameAs relations are dropped",
+            "kept_as": "verbatim",
+            "used_for": [
+              "rerank",
+              "answer"
+            ],
+            "src": "code freebase_func.py L17-L19, L118-L120",
+            "url": "https://github.com/IDEA-FinAI/ToG/blob/7ccbb92e17579f934bb778386230de47eca0ab67/ToG/freebase_func.py#L17-L19"
+          }
+        ]
+      },
+      {
+        "name": "Kept triple",
+        "role": "one search result carried to the next depth and to the answer prompt",
+        "made_by": "rule: top 3 per depth by relation score × entity score",
+        "fields": [
+          {
+            "name": "head, relation, tail",
+            "what": "entity names and relation id, printed comma-separated on one line",
+            "kept_as": "verbatim",
+            "used_for": [
+              "verifier",
+              "answer"
+            ],
+            "src": "code freebase_func.py L227-L241, L244-L247",
+            "url": "https://github.com/IDEA-FinAI/ToG/blob/7ccbb92e17579f934bb778386230de47eca0ab67/ToG/freebase_func.py#L227-L247"
+          },
+          {
+            "name": "score",
+            "what": "LLM relation score times LLM entity score; used only to rank, never shown to the LLM",
+            "kept_as": "derived",
+            "used_for": [
+              "rerank"
+            ],
+            "src": "code freebase_func.py L185, L229",
+            "url": "https://github.com/IDEA-FinAI/ToG/blob/7ccbb92e17579f934bb778386230de47eca0ab67/ToG/freebase_func.py#L185"
+          },
+          {
+            "name": "tail entity id",
+            "what": "becomes a start entity for the next depth",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code main_freebase.py L100",
+            "url": "https://github.com/IDEA-FinAI/ToG/blob/7ccbb92e17579f934bb778386230de47eca0ab67/ToG/main_freebase.py#L100"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "No construction",
+        "how": "the KG is used as released; ToG writes nothing to it. Wrong triples can be fixed by a person after tracing a bad answer (§3.3), which is not automated",
+        "src": "paper §2, §3.3",
+        "url": "https://arxiv.org/pdf/2307.07697v6"
+      },
+      {
+        "step": "Append kept triples",
+        "how": "after each depth, the top 3 triples (non-zero score) are appended to the question's list; their tails replace the frontier",
+        "params": {
+          "per depth": "3",
+          "depths": "≤ 3"
+        },
+        "out": "at most 9 triples per question",
+        "src": "code freebase_func.py L227-L241; main_freebase.py L84-L101",
+        "url": "https://github.com/IDEA-FinAI/ToG/blob/7ccbb92e17579f934bb778386230de47eca0ab67/ToG/freebase_func.py#L227-L241"
+      }
+    ],
+    "read": [
+      {
+        "step": "Start entities",
+        "round": 1,
+        "input": "question",
+        "how": "code reads topic_entity ids from the dataset file; the paper says the LLM extracts them",
+        "out": "1.45 per CWQ question on average; 11 of 3,531 have none (these go straight to CoT)",
+        "src": "code main_freebase.py L39-L44; data/cwq.json",
+        "url": "https://github.com/IDEA-FinAI/ToG/blob/7ccbb92e17579f934bb778386230de47eca0ab67/ToG/main_freebase.py#L39-L44"
+      },
+      {
+        "step": "List relations",
+        "round": 1,
+        "how": "two SPARQL queries per frontier entity (outgoing and incoming); relations already used are removed",
+        "src": "code freebase_func.py L109-L130; paper App. E.1.1",
+        "url": "https://github.com/IDEA-FinAI/ToG/blob/7ccbb92e17579f934bb778386230de47eca0ab67/ToG/freebase_func.py#L109-L130"
+      },
+      {
+        "step": "Prune relations",
+        "round": 1,
+        "input": "question, entity name, sorted relation list",
+        "scores": "relation ids as text",
+        "how": "one LLM call per frontier entity returns 3 relations with scores summing to 1",
+        "params": {
+          "relations": "3 per entity",
+          "temperature": "0.4"
+        },
+        "src": "code freebase_func.py L101-L102, L132-L136; prompt_list.py L1",
+        "url": "https://github.com/IDEA-FinAI/ToG/blob/7ccbb92e17579f934bb778386230de47eca0ab67/ToG/freebase_func.py#L101-L136"
+      },
+      {
+        "step": "Fetch and score tails",
+        "round": 1,
+        "input": "question, relation, candidate entity names",
+        "scores": "entity names",
+        "how": "SPARQL fetches tails of each chosen relation; if 20 or more, 5 are sampled at random; one LLM call per relation scores them (scores sum to 1), multiplied by the relation score",
+        "params": {
+          "sample": "5 if ≥ 20"
+        },
+        "src": "code main_freebase.py L63-L77; freebase_func.py L166-L185",
+        "url": "https://github.com/IDEA-FinAI/ToG/blob/7ccbb92e17579f934bb778386230de47eca0ab67/ToG/main_freebase.py#L63-L77"
+      },
+      {
+        "step": "Keep top 3",
+        "round": 1,
+        "how": "all candidate triples of this depth are sorted by score; the 3 best with non-zero score are kept",
+        "params": {
+          "N": "3"
+        },
+        "src": "code freebase_func.py L227-L241",
+        "url": "https://github.com/IDEA-FinAI/ToG/blob/7ccbb92e17579f934bb778386230de47eca0ab67/ToG/freebase_func.py#L227-L241"
+      },
+      {
+        "step": "Sufficiency check",
+        "round": 1,
+        "input": "question, all kept triples",
+        "how": "LLM (temperature 0) answers {Yes} or {No}; a Yes reply also states the answer in braces and is returned as the output",
+        "src": "code freebase_func.py L244-L255; utils.py L163-L175; prompt_list.py L57",
+        "url": "https://github.com/IDEA-FinAI/ToG/blob/7ccbb92e17579f934bb778386230de47eca0ab67/ToG/freebase_func.py#L244-L255"
+      },
+      {
+        "step": "Next depth or fall back",
+        "round": 2,
+        "how": "on No, the kept tails start the next depth; after depth 3 the LLM answers with a CoT prompt and no triples; if a depth finds nothing new, an answer prompt with the triples so far is used",
+        "params": {
+          "D max": "3"
+        },
+        "src": "code main_freebase.py L79-L108; freebase_func.py L213-L224; utils.py L178-L181",
+        "url": "https://github.com/IDEA-FinAI/ToG/blob/7ccbb92e17579f934bb778386230de47eca0ab67/ToG/main_freebase.py#L79-L108"
+      }
+    ],
+    "answer_context": {
+      "sees": "the question and up to 9 kept triples",
+      "format": "evaluation prompt with 5 examples, then \"Q: {question}\" and \"Knowledge Triplets: \" followed by one \"head, relation, tail\" line per triple",
+      "excludes": [
+        "scores",
+        "discarded candidates",
+        "entity ids",
+        "path structure (triples are a flat list)"
+      ],
+      "includes": [
+        "kept triples from every depth so far"
+      ],
+      "note": "The answer is taken from the sufficiency reply itself; a separate answer prompt is used only when a depth finds nothing new. After depth 3 without Yes, the CoT prompt gets no triples at all.",
+      "src": "code freebase_func.py L219-L255",
+      "url": "https://github.com/IDEA-FinAI/ToG/blob/7ccbb92e17579f934bb778386230de47eca0ab67/ToG/freebase_func.py#L219-L255"
+    },
+    "compression": [
+      {
+        "what": "triples shown to the LLM vs triples reachable in the KG",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported. The code caps the list at 3 triples per depth (9 in all) but the number of candidate triples is not given.",
+        "src": "code freebase_func.py L232",
+        "url": "https://github.com/IDEA-FinAI/ToG/blob/7ccbb92e17579f934bb778386230de47eca0ab67/ToG/freebase_func.py#L232"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Average LLM calls per question",
+        "value": "14.3 CWQ, 11.2 WebQSP, 10.4 GrailQA, 11.4 QALD10-en, 8.7 SimpleQuestions, 10.5 WebQuestions, 7.7 T-REx, 7.6 Zero-Shot RE, 8.0 Creak",
+        "src": "paper Tables 7-8"
+      },
+      {
+        "label": "Maximum LLM calls",
+        "value": "2ND+D+1 = 22 (ToG), ND+D+1 (ToG-R), D+1 with BM25/SentenceBERT pruning",
+        "src": "paper §2.1.3, §2.2, App. B.2.1"
+      },
+      {
+        "label": "Correct answers resting only on the LLM's own knowledge",
+        "value": "about 20%; about 7% need both paths and LLM knowledge",
+        "src": "paper App. B.2, Fig. 7"
+      },
+      {
+        "label": "Top-1 (naive) beam search instead of top 3",
+        "value": "30.1 CWQ, 46.1 WebQSP (vs 58.8 / 76.2)",
+        "src": "paper Table 6"
+      },
+      {
+        "label": "SentenceBERT pruning with width 5",
+        "value": "66.3 → 68.5 on WebQSP",
+        "src": "paper App. B.2.1"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Start entities",
+        "paper": "the LLM extracts the topic entities from the question (§2.1.1)",
+        "code": "read from the dataset's topic_entity field; for CWQ 3,520 of 3,531 of these ids appear in the gold SPARQL",
+        "src": "main_freebase.py L39; data/cwq.json",
+        "url": "https://github.com/IDEA-FinAI/ToG/blob/7ccbb92e17579f934bb778386230de47eca0ab67/ToG/main_freebase.py#L39"
+      },
+      {
+        "topic": "Entity pruning cost",
+        "paper": "each prune step needs at most N LLM calls",
+        "code": "one entity-scoring call per chosen relation, so up to N × N = 9 calls per depth",
+        "src": "main_freebase.py L63-L77",
+        "url": "https://github.com/IDEA-FinAI/ToG/blob/7ccbb92e17579f934bb778386230de47eca0ab67/ToG/main_freebase.py#L63-L77"
+      },
+      {
+        "topic": "Large neighbourhoods",
+        "paper": "not mentioned",
+        "code": "if a relation has 20 or more tails, 5 are sampled at random before the LLM sees them",
+        "src": "main_freebase.py L69-L71",
+        "url": "https://github.com/IDEA-FinAI/ToG/blob/7ccbb92e17579f934bb778386230de47eca0ab67/ToG/main_freebase.py#L69-L71"
+      },
+      {
+        "topic": "Evaluate then generate",
+        "paper": "a separate generation call after a positive evaluation (Alg. 1, App. E.3.4)",
+        "code": "the Yes reply of the evaluation prompt already contains the answer and is returned; the generate prompt runs only when a depth finds no new triples",
+        "src": "main_freebase.py L86-L92; freebase_func.py L213-L224",
+        "url": "https://github.com/IDEA-FinAI/ToG/blob/7ccbb92e17579f934bb778386230de47eca0ab67/ToG/main_freebase.py#L86-L92"
+      },
+      {
+        "topic": "Reasoning paths",
+        "paper": "top-N reasoning paths of growing length",
+        "code": "a flat list of triples, 3 per depth; triples of different paths are not linked into chains",
+        "src": "freebase_func.py L240, L246",
+        "url": "https://github.com/IDEA-FinAI/ToG/blob/7ccbb92e17579f934bb778386230de47eca0ab67/ToG/freebase_func.py#L240-L246"
+      },
+      {
+        "topic": "Scoring the answer",
+        "paper": "exact match (Hits@1)",
+        "code": "eval.py compares the text in the first braces with the gold answers by substring in either direction; for replies from the sufficiency check that text is 'Yes' (a helper that takes the second braces is defined but not called)",
+        "src": "eval/utils.py L106-L147; eval/eval.py L18-L37",
+        "url": "https://github.com/IDEA-FinAI/ToG/blob/7ccbb92e17579f934bb778386230de47eca0ab67/eval/utils.py#L106-L147"
+      }
+    ],
+    "open_questions": [
+      "Topic entities in the released data are gold-linked ids, so the reported scores do not include entity-linking errors that a system extracting entities itself would face.",
+      "About 20% of correct answers come from the LLM's own knowledge alone (App. B.2), and every run that ends at depth 3 answers without triples; the paper does not report how often that fallback fires.",
+      "No run compares ToG with a plain retriever that feeds the same number of KG triples to the LLM, so the value of LLM-guided pruning over retrieval is shown only against BM25/SentenceBERT pruning inside ToG (Table 5)."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 232",
+        "body": "<text class=\"fig-t\" x=\"46\" y=\"16\" text-anchor=\"middle\">Knowledge graph</text><rect class=\"gi-l\" x=\"6\" y=\"28\" width=\"80\" height=\"124\" rx=\"10\"/><line class=\"gi-e\" x1=\"24\" y1=\"48\" x2=\"40\" y2=\"76\"/><line class=\"gi-e\" x1=\"60\" y1=\"44\" x2=\"40\" y2=\"76\"/><line class=\"gi-e\" x1=\"40\" y1=\"76\" x2=\"70\" y2=\"88\"/><line class=\"gi-e\" x1=\"40\" y1=\"76\" x2=\"22\" y2=\"110\"/><line class=\"gi-e\" x1=\"70\" y1=\"88\" x2=\"54\" y2=\"124\"/><line class=\"gi-e\" x1=\"22\" y1=\"110\" x2=\"54\" y2=\"124\"/><line class=\"gi-e\" x1=\"54\" y1=\"124\" x2=\"74\" y2=\"138\"/><line class=\"gi-e\" x1=\"60\" y1=\"44\" x2=\"70\" y2=\"88\"/><circle class=\"gi-n\" cx=\"24\" cy=\"48\" r=\"5\"/><circle class=\"gi-n\" cx=\"60\" cy=\"44\" r=\"5\"/><circle class=\"gi-hi\" cx=\"40\" cy=\"76\" r=\"5\"/><circle class=\"gi-n\" cx=\"70\" cy=\"88\" r=\"5\"/><circle class=\"gi-n\" cx=\"22\" cy=\"110\" r=\"5\"/><circle class=\"gi-n\" cx=\"54\" cy=\"124\" r=\"5\"/><circle class=\"gi-n\" cx=\"74\" cy=\"138\" r=\"5\"/><text class=\"fig-s\" x=\"46\" y=\"166\" text-anchor=\"middle\">Freebase or Wikidata</text><text class=\"fig-s\" x=\"46\" y=\"179\" text-anchor=\"middle\">read-only</text><text class=\"fig-t\" x=\"320\" y=\"16\" text-anchor=\"middle\">One search depth (up to 3)</text><rect class=\"gi-f\" x=\"96\" y=\"34\" width=\"80\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"136.0\" y=\"54.0\" text-anchor=\"middle\">Relations</text><text class=\"fig-s\" x=\"136.0\" y=\"67.0\" text-anchor=\"middle\">all, by SPARQL</text><rect class=\"gi-llm\" x=\"188\" y=\"34\" width=\"80\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"228.0\" y=\"54.0\" text-anchor=\"middle\">Prune</text><text class=\"fig-s\" x=\"228.0\" y=\"67.0\" text-anchor=\"middle\">LLM: 3 each</text><rect class=\"gi-f\" x=\"280\" y=\"34\" width=\"80\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"320.0\" y=\"54.0\" text-anchor=\"middle\">Entities</text><text class=\"fig-s\" x=\"320.0\" y=\"67.0\" text-anchor=\"middle\">5 random if ≥20</text><rect class=\"gi-llm\" x=\"372\" y=\"34\" width=\"80\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"412.0\" y=\"54.0\" text-anchor=\"middle\">Score</text><text class=\"fig-s\" x=\"412.0\" y=\"67.0\" text-anchor=\"middle\">LLM × relation</text><rect class=\"gi-hi\" x=\"464\" y=\"34\" width=\"80\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"504.0\" y=\"54.0\" text-anchor=\"middle\">Top 3</text><text class=\"fig-s\" x=\"504.0\" y=\"67.0\" text-anchor=\"middle\">triples kept</text><path class=\"gi-a\" d=\"M86 56 L89 56\"/><polygon class=\"gi-ah\" points=\"96,56 89,52 89,60\"/><path class=\"gi-a\" d=\"M176 56 L181 56\"/><polygon class=\"gi-ah\" points=\"188,56 181,52 181,60\"/><path class=\"gi-a\" d=\"M268 56 L273 56\"/><polygon class=\"gi-ah\" points=\"280,56 273,52 273,60\"/><path class=\"gi-a\" d=\"M360 56 L365 56\"/><polygon class=\"gi-ah\" points=\"372,56 365,52 365,60\"/><path class=\"gi-a\" d=\"M452 56 L457 56\"/><polygon class=\"gi-ah\" points=\"464,56 457,52 457,60\"/><path class=\"gi-a\" d=\"M504 78 L504 103\"/><polygon class=\"gi-ah\" points=\"504,110 508,103 500,103\"/><rect class=\"gi-ev\" x=\"188\" y=\"110\" width=\"356\" height=\"92\" rx=\"10\"/><text class=\"fig-t\" x=\"200\" y=\"128\" text-anchor=\"start\">Triples kept for this question</text><text class=\"fig-t\" x=\"532\" y=\"128\" text-anchor=\"end\">≤ 9</text><text class=\"fig-s\" x=\"200\" y=\"150\" text-anchor=\"start\">depth 1</text><rect class=\"gi-r\" x=\"250\" y=\"140\" width=\"88\" height=\"14\" rx=\"3\"/><line class=\"gi-t\" x1=\"256\" y1=\"147\" x2=\"324\" y2=\"147\"/><rect class=\"gi-r\" x=\"346\" y=\"140\" width=\"88\" height=\"14\" rx=\"3\"/><line class=\"gi-t\" x1=\"352\" y1=\"147\" x2=\"420\" y2=\"147\"/><rect class=\"gi-r\" x=\"442\" y=\"140\" width=\"88\" height=\"14\" rx=\"3\"/><line class=\"gi-t\" x1=\"448\" y1=\"147\" x2=\"516\" y2=\"147\"/><text class=\"fig-s\" x=\"200\" y=\"170\" text-anchor=\"start\">depth 2</text><rect class=\"gi-r\" x=\"250\" y=\"160\" width=\"88\" height=\"14\" rx=\"3\"/><line class=\"gi-t\" x1=\"256\" y1=\"167\" x2=\"324\" y2=\"167\"/><rect class=\"gi-r\" x=\"346\" y=\"160\" width=\"88\" height=\"14\" rx=\"3\"/><line class=\"gi-t\" x1=\"352\" y1=\"167\" x2=\"420\" y2=\"167\"/><rect class=\"gi-r\" x=\"442\" y=\"160\" width=\"88\" height=\"14\" rx=\"3\"/><line class=\"gi-t\" x1=\"448\" y1=\"167\" x2=\"516\" y2=\"167\"/><text class=\"fig-s\" x=\"200\" y=\"190\" text-anchor=\"start\">depth 3</text><rect class=\"gi-ev d\" x=\"250\" y=\"180\" width=\"88\" height=\"14\" rx=\"3\"/><line class=\"gi-t\" x1=\"256\" y1=\"187\" x2=\"324\" y2=\"187\"/><rect class=\"gi-ev d\" x=\"346\" y=\"180\" width=\"88\" height=\"14\" rx=\"3\"/><line class=\"gi-t\" x1=\"352\" y1=\"187\" x2=\"420\" y2=\"187\"/><rect class=\"gi-ev d\" x=\"442\" y=\"180\" width=\"88\" height=\"14\" rx=\"3\"/><line class=\"gi-t\" x1=\"448\" y1=\"187\" x2=\"516\" y2=\"187\"/><path class=\"gi-a d\" d=\"M188 156 L136 156 L136 85\"/><polygon class=\"gi-ah\" points=\"136,78 140,85 132,85\"/><text class=\"fig-s\" x=\"142\" y=\"93\" text-anchor=\"start\">tails start</text><text class=\"fig-s\" x=\"142\" y=\"105\" text-anchor=\"start\">next depth</text><text class=\"fig-s\" x=\"6\" y=\"222\" text-anchor=\"start\">Topic entities come with each question in the released data; nothing is written to the graph.</text>",
+        "text": [
+          "Nothing is written ahead of time: at each depth ToG lists the relations of the current entities, lets the LLM keep 3 per entity, fetches their tail entities and has the LLM score them.",
+          "The 3 best triples (relation score × entity score) join the question's list, at most 9 in all, and their tails start the next depth."
+        ],
+        "src": "paper §2.1; code main_freebase.py L48-L101, freebase_func.py L109-L241",
+        "url": "https://github.com/IDEA-FinAI/ToG/blob/7ccbb92e17579f934bb778386230de47eca0ab67/ToG/main_freebase.py#L48-L101"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 232",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"30\" width=\"74\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"41.0\" y=\"50.0\" text-anchor=\"middle\">Question</text><text class=\"fig-s\" x=\"41.0\" y=\"63.0\" text-anchor=\"middle\">+ topic entity</text><path class=\"gi-a\" d=\"M78 52 L83 52\"/><polygon class=\"gi-ah\" points=\"90,52 83,48 83,56\"/><rect class=\"gi-v fig-soft\" x=\"90\" y=\"30\" width=\"104\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"142.0\" y=\"50.0\" text-anchor=\"middle\">Explore depth d</text><text class=\"fig-s\" x=\"142.0\" y=\"63.0\" text-anchor=\"middle\">≤ 3 new triples</text><path class=\"gi-a\" d=\"M194 52 L199 52\"/><polygon class=\"gi-ah\" points=\"206,52 199,48 199,56\"/><rect class=\"gi-f\" x=\"206\" y=\"30\" width=\"92\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"252.0\" y=\"50.0\" text-anchor=\"middle\">All triples</text><text class=\"fig-s\" x=\"252.0\" y=\"63.0\" text-anchor=\"middle\">flat list</text><path class=\"gi-a\" d=\"M298 52 L307 52\"/><polygon class=\"gi-ah\" points=\"314,52 307,48 307,56\"/><polygon class=\"gi-llm\" points=\"362,26 410,52 362,78 314,52\"/><text class=\"fig-t\" x=\"362\" y=\"51\" text-anchor=\"middle\">Enough?</text><text class=\"fig-s\" x=\"362\" y=\"63\" text-anchor=\"middle\">LLM</text><path class=\"gi-a\" d=\"M410 52 L433 52\"/><polygon class=\"gi-ah\" points=\"440,52 433,48 433,56\"/><text class=\"fig-yes\" x=\"425\" y=\"44\" text-anchor=\"middle\">Yes</text><rect class=\"gi-hi\" x=\"440\" y=\"30\" width=\"114\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"497.0\" y=\"50.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"497.0\" y=\"63.0\" text-anchor=\"middle\">in the same reply</text><path class=\"gi-a\" d=\"M362 78 L362 103\"/><polygon class=\"gi-ah\" points=\"362,110 366,103 358,103\"/><text class=\"fig-no\" x=\"368\" y=\"98\" text-anchor=\"start\">No</text><polygon class=\"gi-f\" points=\"362,110 406,132 362,154 318,132\"/><text class=\"fig-t\" x=\"362\" y=\"136\" text-anchor=\"middle\">d &lt; 3?</text><path class=\"gi-a\" d=\"M318 132 L142 132 L142 81\"/><polygon class=\"gi-ah\" points=\"142,74 146,81 138,81\"/><text class=\"fig-yes\" x=\"230\" y=\"126\" text-anchor=\"middle\">Yes: next depth</text><path class=\"gi-a\" d=\"M406 132 L433 132\"/><polygon class=\"gi-ah\" points=\"440,132 433,128 433,136\"/><text class=\"fig-no\" x=\"423\" y=\"124\" text-anchor=\"middle\">No</text><rect class=\"gi-llm\" x=\"440\" y=\"110\" width=\"114\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"497.0\" y=\"130.0\" text-anchor=\"middle\">CoT answer</text><text class=\"fig-s\" x=\"497.0\" y=\"143.0\" text-anchor=\"middle\">triples not shown</text><path class=\"gi-a d\" d=\"M106 74 L106 110 L70 110 L70 169\"/><polygon class=\"gi-ah\" points=\"70,176 74,169 66,169\"/><text class=\"fig-s\" x=\"100\" y=\"100\" text-anchor=\"end\">nothing new found</text><rect class=\"gi-llm\" x=\"4\" y=\"176\" width=\"132\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"70.0\" y=\"196.0\" text-anchor=\"middle\">Answer prompt</text><text class=\"fig-s\" x=\"70.0\" y=\"209.0\" text-anchor=\"middle\">with triples so far</text><text class=\"fig-s\" x=\"554\" y=\"204\" text-anchor=\"end\">width 3, depth 3: at most 22 LLM calls (paper);</text><text class=\"fig-s\" x=\"554\" y=\"217\" text-anchor=\"end\">10 to 15 on average on the multi-hop sets</text>",
+        "text": [
+          "After each depth the LLM reads all kept triples and says whether they are enough; a Yes reply already contains the answer.",
+          "Otherwise the search goes one hop further, up to 3 depths; after that the LLM answers by chain-of-thought without any triples."
+        ],
+        "src": "paper §2.1.3, Alg. 1; code main_freebase.py L79-L108, freebase_func.py L213-L255",
+        "url": "https://github.com/IDEA-FinAI/ToG/blob/7ccbb92e17579f934bb778386230de47eca0ab67/ToG/main_freebase.py#L79-L108"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Graph",
+        "value": "Freebase (5 sets) · Wikidata (4 sets)",
+        "src": "paper §3.1.3",
+        "section": "construction"
+      },
+      {
+        "label": "Beam width and depth",
+        "value": "N = 3, D max = 3",
+        "src": "paper §3.1.3; code main_freebase.py L19-L22",
+        "section": "method"
+      },
+      {
+        "label": "Relations kept per entity",
+        "value": "3",
+        "src": "code freebase_func.py L101-L102",
+        "section": "method"
+      },
+      {
+        "label": "Tail entities scored",
+        "value": "all, or 5 at random if 20 or more",
+        "src": "code main_freebase.py L69-L71",
+        "section": "method"
+      },
+      {
+        "label": "Triples shown to the LLM",
+        "value": "≤ 9 (3 per depth)",
+        "src": "code freebase_func.py L232",
+        "section": "method"
+      },
+      {
+        "label": "Temperature",
+        "value": "0.4 exploration · 0 reasoning",
+        "src": "paper §3.1.3",
+        "section": "method"
+      },
+      {
+        "label": "In-context examples",
+        "value": "5 in reasoning prompts",
+        "src": "paper §3.1.3",
+        "section": "method"
+      },
+      {
+        "label": "LLM calls per question",
+        "value": "≤ 22; 14.3 CWQ, 11.2 WebQSP on average",
+        "src": "paper App. B.2.1, Table 7",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Search the graph",
+        "model": "fixed SPARQL queries (Freebase on Virtuoso) or 9 Wikidata API calls",
+        "kind": "rule",
+        "src": "paper App. E.1-E.2; code freebase_func.py L7-L11",
+        "url": "https://github.com/IDEA-FinAI/ToG/blob/7ccbb92e17579f934bb778386230de47eca0ab67/ToG/freebase_func.py#L7-L11"
+      },
+      {
+        "role": "Prune relations and entities",
+        "model": "ChatGPT (gpt-3.5-turbo), GPT-4 or Llama-2-70B-Chat",
+        "kind": "llm",
+        "src": "paper §3.1.3, App. E.3.1-E.3.2"
+      },
+      {
+        "role": "Keep top 3 triples",
+        "model": "sort by relation score × entity score",
+        "kind": "rule",
+        "src": "code freebase_func.py L227-L241",
+        "url": "https://github.com/IDEA-FinAI/ToG/blob/7ccbb92e17579f934bb778386230de47eca0ab67/ToG/freebase_func.py#L227-L241"
+      },
+      {
+        "role": "Enough? and answer",
+        "model": "same LLM, temperature 0",
+        "kind": "llm",
+        "src": "paper §2.1.3, App. E.3.3-E.3.4"
+      },
+      {
+        "role": "Pruning alternatives (ablation)",
+        "model": "BM25; SentenceBERT msmarco-distilbert-base-tas-b",
+        "kind": "retriever",
+        "src": "paper Table 5; code freebase_func.py L138-L144",
+        "url": "https://github.com/IDEA-FinAI/ToG/blob/7ccbb92e17579f934bb778386230de47eca0ab67/ToG/freebase_func.py#L138-L144"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "CWQ",
+        "WebQSP"
+      ],
+      "rows": [
+        [
+          "CoT (ChatGPT)",
+          "37.6",
+          "62.0"
+        ],
+        [
+          "ToG (Freebase, triples, ChatGPT pruning)",
+          "58.8",
+          "76.2"
+        ],
+        [
+          "ToG with Wikidata",
+          "54.9",
+          "68.6"
+        ],
+        [
+          "ToG, paths as sequences",
+          "57.2",
+          "73.2"
+        ],
+        [
+          "ToG, paths as sentences",
+          "58.6",
+          "73.0"
+        ],
+        [
+          "ToG, BM25 pruning",
+          "51.4",
+          "58.7"
+        ],
+        [
+          "ToG, SentenceBERT pruning",
+          "51.7",
+          "66.3"
+        ],
+        [
+          "ToG-R (Freebase)",
+          "59.2",
+          "75.1"
+        ],
+        [
+          "ToG-R with Wikidata",
+          "51.9",
+          "66.7"
+        ],
+        [
+          "ToG-R, BM25 pruning",
+          "49.4",
+          "57.3"
+        ],
+        [
+          "ToG-R, SentenceBERT pruning",
+          "50.1",
+          "60.1"
+        ],
+        [
+          "Naive top-1 beam search",
+          "30.1",
+          "46.1"
+        ]
+      ],
+      "src": "paper Tables 3-6 (1,000 random test questions per set, ChatGPT)"
+    },
+    "discussion": {
+      "takeaway": "Letting the LLM choose each hop on a knowledge graph, and stop when it judges the evidence enough, beats both LLM-only prompting and fixed KG retrieval without training; with GPT-4 it matches or beats fine-tuned systems on most of nine sets.",
+      "claims": [
+        {
+          "claim": "Tight LLM-KG coupling (the LLM reasons on the graph) beats using the LLM only to write queries.",
+          "evidence": "§1, Fig. 1; no direct head-to-head with a query-generation system beyond KB-BINDER numbers (Table 1)."
+        },
+        {
+          "claim": "Best result on 6 of 9 datasets without training.",
+          "evidence": "With GPT-4: WebQSP 82.6, GrailQA 81.4, QALD10-en 54.7 (ToG-R), WebQuestions 57.9, Zero-Shot RE 88.3, Creak 95.6, each above the cited prior SOTA. Table 1, §3.2.1"
+        },
+        {
+          "claim": "Larger gains over the LLM alone on multi-hop questions.",
+          "evidence": "GrailQA +51.8 and Zero-Shot RE +42.9 over prompting without KG; gains over CoT grow with question depth (App. B.2, Fig. 13). §3.2.1"
+        },
+        {
+          "claim": "A small LLM with ToG can beat a large LLM alone.",
+          "evidence": "Llama-2-70B ToG-R 57.6 CWQ vs GPT-4 CoT 46.0. Table 2, §3.2.2"
+        },
+        {
+          "claim": "The LLM is the best pruner.",
+          "evidence": "BM25 or SentenceBERT pruning drops CWQ by 8.4 and WebQSP by 15.1 points on average. Table 5"
+        },
+        {
+          "claim": "Explicit paths make answers traceable and let users correct KG errors.",
+          "evidence": "one worked example (Fig. 4, §3.3); not measured."
+        }
+      ],
+      "limits": [
+        "Computation grows with depth and width; the paper keeps both at 3 and lists ways to cut LLM calls (App. B.2.1).",
+        "Accuracy depends on KG quality and coverage; Wikidata search and pruning are harder than Freebase for these sets (§3.2.3).",
+        "Single-hop sets gain less than multi-hop ones (§3.2.1).",
+        "Remaining errors are hallucinations and refusals; longer paths add a few format errors (App. B.2)."
+      ],
+      "limits_src": "paper §3.2, App. B.2 (no separate limitations section)",
+      "reading": [
+        "The released code starts from topic entities stored in the data files; for CWQ these are the ids in the gold SPARQL, which removes entity linking from the task.",
+        "Table 1 and Table 2 disagree on which of ToG and ToG-R scored what: on CWQ with ChatGPT Table 1 gives ToG 57.1 / ToG-R 58.9 but Table 2 gives ToG 58.9 / ToG-R 57.1 (same swap with GPT-4, 67.6 / 69.5). Table 10 follows Table 1; our results file uses Table 1.",
+        "Llama-2 WebQSP numbers differ between Table 2 (ToG-R 68.9, ToG 63.7) and Table 11 (69.4, 64.1).",
+        "The Table 1 footnote credits CWQ's prior FT SOTA 70.4 to Das et al. (2021), but Tables 2 and 10 give that 70.4 to DecAF and 67.1 to CBR-KBQA (Das et al.).",
+        "Ablations (Tables 3-6) use 1,000-question subsets, so their full-system numbers (58.8 CWQ) differ from Table 1.",
+        "The released eval script matches by substring and takes the text in the first braces, which for replies from the sufficiency check is 'Yes'; the paper's numbers therefore cannot have come from that script unchanged.",
+        "IO, CoT and SC baselines use 6 examples; ToG reasoning prompts use 5."
+      ]
+    }
+  }
+}

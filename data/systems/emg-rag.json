@@ -1,0 +1,477 @@
+{
+  "id": "emg-rag",
+  "name": "EMG-RAG",
+  "paper": {
+    "title": "Crafting Personalized Agents through Retrieval-Augmented Generation on Editable Memory Graphs",
+    "arxiv": "2409.19401",
+    "url": "https://arxiv.org/abs/2409.19401",
+    "venue": "EMNLP 2024",
+    "venue_short": "EMNLP",
+    "track": "main",
+    "year": 2024,
+    "code": null
+  },
+  "design": {
+    "construction": {
+      "unit": "first-person memory sentence, attached to the entity nodes it mentions",
+      "kept_as": "LLM-standardized statements from assistant chats and OCR'd app screenshots",
+      "processing": "assistant filters raw data (auto-classification or user asks to remember); GPT-4 rewrites it as memory sentences with absolute dates and resolved coreference; entity recognition and relation extraction add graph nodes and edges",
+      "trigger": "other",
+      "writer": "GPT-4"
+    },
+    "organization": {
+      "structure": "three layers: 4 memory types -> subclasses (tree) -> entity-relation memory graph",
+      "stores": "one Editable Memory Graph per user, kept on the device",
+      "index": "CPT-Text embeddings of memories and questions (Faiss); TransE embeddings of entities, relations and subclasses"
+    },
+    "management": {
+      "operations": "insert, delete (time-limited memories) or replace, chosen by comparing a new memory with the top-1 memory in its nearest subclass",
+      "conflicts": "replacement rewrites the entity nodes of an existing relation (e.g. a changed departure time)",
+      "forgetting": "deletion of memories valid only until a date (e.g. an expiring voucher)",
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "question; its entity and relation are extracted for the policy state (method not stated)",
+      "candidates": "top-K=3 memories by embedding similarity activate graph nodes; depth-first walk from each",
+      "selection": "RL policy (2-layer MLP) decides per visited memory: include and go deeper, or stop the branch",
+      "budget": "no fixed number of memories; K=3 start nodes"
+    },
+    "use": {
+      "context": "question concatenated with the selected memories",
+      "reasoning": "single call to a frozen LLM"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "fixed-rule",
+      "retrieval": "learned-rl"
+    }
+  },
+  "classify": {
+    "structure": "graph",
+    "index": "vector",
+    "management": "update in place",
+    "candidates": "graph walk",
+    "decides": "reranker",
+    "note": "Structure is a type/subclass tree over an entity graph; retrieval walks the graph, so 'graph'. The set is fixed by a small learned policy (not an LLM, not top-k); 'reranker' is the closest option."
+  },
+  "tags": {
+    "fidelity": "rewritten",
+    "structure": [
+      "tree",
+      "graph"
+    ],
+    "write_time": [
+      "filter",
+      "extract",
+      "link",
+      "consolidate"
+    ],
+    "selection": [
+      "dense",
+      "graph-expansion"
+    ],
+    "memory_type": [
+      "episodic",
+      "semantic",
+      "profile"
+    ],
+    "learning": "mixed",
+    "domain": [
+      "conversation"
+    ]
+  },
+  "stages": {
+    "ingestion": "Chats with a phone assistant and OCR text of app screenshots; the assistant keeps items it classifies as memorable or that the user asks it to remember.",
+    "construction": "GPT-4 turns the filtered raw data into standardized first-person memory sentences, with absolute dates and coreference resolved.",
+    "organization": "Each user gets an Editable Memory Graph: 4 memory types, their subclasses as a tree, and below them an entity graph built by entity and relation extraction; TransE places each entity under its nearest subclass.",
+    "update": "A new memory is placed in its nearest subclass and compared with the top-1 memory there, then inserted, deleted (time-limited) or used to replace entity nodes.",
+    "retrieval": "The top-3 memories for the question activate graph nodes; a depth-first walk starts from each, and an RL policy decides at every node whether to include its memory and continue or stop.",
+    "answer": "A frozen LLM (GPT-4, ChatGLM3-6B or PanGu-38B) answers from the question plus the selected memories.",
+    "learning": "Only the selection policy is trained: supervised warm start on GPT-4-labelled required memories, then REINFORCE with the change in ROUGE/BLEU of the answer as reward; online fine-tuning on real user questions after deployment."
+  },
+  "summary": "Organizes a phone user's memories as an editable type/subclass tree over an entity graph and trains a small RL policy to walk the graph and choose which memories to give a frozen LLM, instead of a fixed top-K.",
+  "verified": false,
+  "notes": "Venue verified: EMNLP 2024 main, ACL Anthology 2024.emnlp-main.281; arXiv comment 'accepted by EMNLP 2024'. No code: the paper gives no repository and the anthology page lists none; the dataset is a proprietary Huawei assistant dataset. Paper read from arXiv v1 PDF.\nDESIGN: §4.1-4.4, §5.1, App. A. control.management = fixed-rule is a best reading: the paper says edits follow from comparing relations of the new and top-1 memories but not who makes the comparison. learning = mixed (supervised warm start + REINFORCE).",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2409.19401v1 (PDF read 2026-09-30)",
+      "code": null,
+      "code_note": "No official code found: none linked in the paper or on the ACL Anthology page, and a GitHub search for EMG-RAG finds only unrelated projects. Everything here is from the paper."
+    },
+    "headline": [
+      "The memory set is chosen by a tiny RL policy walking a user's memory graph, not by top-K; the LLM stays frozen.",
+      "Evaluation data, questions and reference answers are all generated by GPT-4 from a proprietary Huawei dataset, and there is no code."
+    ],
+    "units": [
+      {
+        "name": "Memory",
+        "role": "one standardized fact or event about the user",
+        "made_by": "GPT-4 from filtered chats and screenshots",
+        "fields": [
+          {
+            "name": "memory sentence",
+            "what": "first-person statement, dates made absolute, coreference resolved",
+            "kept_as": "rewritten",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper §4.1, App. A.1, Table 9",
+            "url": "https://arxiv.org/pdf/2409.19401"
+          },
+          {
+            "name": "embedding",
+            "what": "CPT-Text vector; also used for subclass partition centres (mean of memory embeddings)",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §4.2, §5.1",
+            "url": "https://arxiv.org/pdf/2409.19401"
+          }
+        ]
+      },
+      {
+        "name": "Entity node and relation edge",
+        "role": "memory graph layer; each in-degree node carries its memory",
+        "made_by": "entity recognition and relation extraction (models not named)",
+        "fields": [
+          {
+            "name": "entity / relation",
+            "what": "e.g. Boss -BookFlight-> EK349 -DepartAt-> 01:40; TransE embeddings",
+            "kept_as": "extracted",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §4.2, Fig. 2",
+            "url": "https://arxiv.org/pdf/2409.19401"
+          }
+        ]
+      },
+      {
+        "name": "Type and subclass",
+        "role": "tree over the graph: Relationship, Preference, Event, Attribute and their subclasses",
+        "made_by": "fixed by the designers (Table 8)",
+        "fields": [
+          {
+            "name": "subclass",
+            "what": "e.g. Colleague, Arrangement, Diet preference; entities assigned by TransE nearness",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §4.2, App. A.2, Table 8",
+            "url": "https://arxiv.org/pdf/2409.19401"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Collect",
+        "how": "assistant keeps chat items it classifies as memorable (Active Remember) or that the user asks to keep (Passive Remember); screenshots go through OCR",
+        "src": "paper App. A.1",
+        "url": "https://arxiv.org/pdf/2409.19401"
+      },
+      {
+        "step": "Standardize",
+        "how": "GPT-4 rewrites raw data into memory sentences; date conversion, anaphora and event coreference resolution",
+        "out": "~11.35B raw texts -> ~0.35B memories",
+        "src": "paper §4.1, §5.1, Table 9",
+        "url": "https://arxiv.org/pdf/2409.19401"
+      },
+      {
+        "step": "Build graph",
+        "how": "entity recognition for nodes, relation extraction for edges; TransE assigns entities to the closest subclass",
+        "src": "paper §4.2",
+        "url": "https://arxiv.org/pdf/2409.19401"
+      },
+      {
+        "step": "Edit",
+        "how": "embed new memory, find nearest subclass, retrieve top-1 memory in it, then insert, delete or replace by comparing relations",
+        "src": "paper §4.2, Fig. 2(a)",
+        "url": "https://arxiv.org/pdf/2409.19401"
+      }
+    ],
+    "read": [
+      {
+        "step": "Activate",
+        "round": 1,
+        "input": "question",
+        "scores": "memory sentences",
+        "how": "CPT-Text similarity; nodes of the top memories are activated",
+        "params": {
+          "K": "3"
+        },
+        "src": "paper §4.3, §5.1, Table 5",
+        "url": "https://arxiv.org/pdf/2409.19401"
+      },
+      {
+        "step": "Walk and select",
+        "round": 1,
+        "how": "depth-first search from each activated node; at each node the policy sees 3 cosine similarities (question entity vs node, question relation vs edge, question vs memory) and outputs include-and-continue or stop",
+        "params": {
+          "policy": "2-layer MLP, 20 tanh hidden units"
+        },
+        "src": "paper §4.3 Eq. 1-2, §5.1",
+        "url": "https://arxiv.org/pdf/2409.19401"
+      },
+      {
+        "step": "Answer",
+        "round": 1,
+        "input": "question ⊕ selected memories",
+        "how": "frozen LLM generates the answer",
+        "src": "paper §4.3",
+        "url": "https://arxiv.org/pdf/2409.19401"
+      }
+    ],
+    "answer_context": {
+      "sees": "the question and the memory sentences the policy selected",
+      "format": "not given beyond concatenation Q ⊕ M",
+      "excludes": [
+        "graph structure",
+        "entity and relation labels",
+        "raw chats and screenshots"
+      ],
+      "src": "paper §4.3",
+      "url": "https://arxiv.org/pdf/2409.19401"
+    },
+    "compression": [
+      {
+        "what": "answer context vs all user memories",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported: the paper gives no counts of selected memories or tokens. Users hold roughly 72-296 new memories per day (App. A.3).",
+        "src": "paper App. A.3",
+        "url": "https://arxiv.org/pdf/2409.19401"
+      }
+    ],
+    "open_questions": [
+      "Reference answers and 'required memories' come from GPT-4, and GPT-4 is also the answer model; the reward and the metric both favour matching GPT-4's wording.",
+      "No run separates the graph (editing, structure) from the learned selector: M-RAG differs in both."
+    ],
+    "glance": [
+      {
+        "q": "What is one memory item?",
+        "a": "A first-person sentence GPT-4 writes from chats or screenshots, tied to entity nodes in a graph.",
+        "src": "paper §4.1-4.2",
+        "url": "https://arxiv.org/pdf/2409.19401"
+      },
+      {
+        "q": "How is memory organised?",
+        "a": "4 types -> subclasses (a tree) -> an entity-relation graph, one per user.",
+        "src": "paper §4.2",
+        "url": "https://arxiv.org/pdf/2409.19401"
+      },
+      {
+        "q": "Can memory change?",
+        "a": "Yes: insert, delete time-limited memories, or replace entity nodes of an existing relation.",
+        "src": "paper §4.2",
+        "url": "https://arxiv.org/pdf/2409.19401"
+      },
+      {
+        "q": "Is there reranking?",
+        "a": "No reranker; a learned RL policy walks the graph from the top-3 matches and decides which memories to include.",
+        "src": "paper §4.3",
+        "url": "https://arxiv.org/pdf/2409.19401"
+      },
+      {
+        "q": "What does the answer model read?",
+        "a": "The question plus the selected memory sentences; the LLM is frozen.",
+        "src": "paper §4.3",
+        "url": "https://arxiv.org/pdf/2409.19401"
+      }
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 262",
+        "body": "<text class=\"fig-t\" x=\"42\" y=\"16\" text-anchor=\"middle\">Raw data</text><rect class=\"gi-ev\" x=\"4\" y=\"26\" width=\"76\" height=\"40\" rx=\"6\"/><text class=\"fig-s\" x=\"42\" y=\"43\" text-anchor=\"middle\">chats with</text><text class=\"fig-s\" x=\"42\" y=\"56\" text-anchor=\"middle\">the assistant</text><rect class=\"gi-ev\" x=\"4\" y=\"74\" width=\"76\" height=\"40\" rx=\"6\"/><text class=\"fig-s\" x=\"42\" y=\"91\" text-anchor=\"middle\">screenshots</text><text class=\"fig-s\" x=\"42\" y=\"104\" text-anchor=\"middle\">→ OCR text</text><text class=\"fig-s\" x=\"42\" y=\"132\" text-anchor=\"middle\">filtered: the</text><text class=\"fig-s\" x=\"42\" y=\"144\" text-anchor=\"middle\">assistant sorts,</text><text class=\"fig-s\" x=\"42\" y=\"156\" text-anchor=\"middle\">or user says</text><text class=\"fig-s\" x=\"42\" y=\"168\" text-anchor=\"middle\">'remember'</text><path class=\"gi-a\" d=\"M80.0 70.0 L115.0 70.0\"/><polygon class=\"gi-ah\" points=\"122.0,70.0 115.0,74.0 115.0,66.0\"/><rect class=\"gi-llm\" x=\"84\" y=\"52\" width=\"34\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"101.0\" y=\"62\" text-anchor=\"middle\">GPT-4</text><text class=\"fig-t\" x=\"174\" y=\"16\" text-anchor=\"middle\">Memories</text><rect class=\"gi-ev\" x=\"124\" y=\"26\" width=\"100\" height=\"20\" rx=\"6\"/><text class=\"fig-s\" x=\"130\" y=\"40\" text-anchor=\"start\">I booked EK349.</text><rect class=\"gi-ev\" x=\"124\" y=\"52\" width=\"100\" height=\"20\" rx=\"6\"/><text class=\"fig-s\" x=\"130\" y=\"66\" text-anchor=\"start\">EK349 leaves 01:40</text><rect class=\"gi-ev\" x=\"124\" y=\"78\" width=\"100\" height=\"20\" rx=\"6\"/><text class=\"fig-s\" x=\"130\" y=\"92\" text-anchor=\"start\">Boss flies to Amst.</text><rect class=\"gi-ev\" x=\"124\" y=\"104\" width=\"100\" height=\"20\" rx=\"6\"/><text class=\"fig-s\" x=\"130\" y=\"118\" text-anchor=\"start\">I like spicy food.</text><text class=\"fig-s\" x=\"174\" y=\"142\" text-anchor=\"middle\">first-person,</text><text class=\"fig-s\" x=\"174\" y=\"154\" text-anchor=\"middle\">dates made absolute</text><path class=\"gi-a\" d=\"M226.0 146.0 L311.0 146.0\"/><polygon class=\"gi-ah\" points=\"318.0,146.0 311.0,150.0 311.0,142.0\"/><text class=\"fig-s\" x=\"270\" y=\"138\" text-anchor=\"middle\">entities +</text><text class=\"fig-s\" x=\"270\" y=\"160\" text-anchor=\"middle\">relations</text><text class=\"fig-t\" x=\"430\" y=\"16\" text-anchor=\"middle\">Editable Memory Graph (per user)</text><circle class=\"gi-n\" cx=\"430\" cy=\"34\" r=\"7\"/><text class=\"fig-s\" x=\"444\" y=\"38\" text-anchor=\"start\">user</text><line class=\"gi-e\" x1=\"430\" y1=\"41\" x2=\"353\" y2=\"52\"/><rect class=\"gi-r\" x=\"330\" y=\"52\" width=\"46\" height=\"16\" rx=\"3\"/><text class=\"fig-s\" x=\"353\" y=\"64\" text-anchor=\"middle\">Relation</text><line class=\"gi-e\" x1=\"430\" y1=\"41\" x2=\"405\" y2=\"52\"/><rect class=\"gi-r\" x=\"382\" y=\"52\" width=\"46\" height=\"16\" rx=\"3\"/><text class=\"fig-s\" x=\"405\" y=\"64\" text-anchor=\"middle\">Prefer.</text><line class=\"gi-e\" x1=\"430\" y1=\"41\" x2=\"457\" y2=\"52\"/><rect class=\"gi-r\" x=\"434\" y=\"52\" width=\"46\" height=\"16\" rx=\"3\"/><text class=\"fig-s\" x=\"457\" y=\"64\" text-anchor=\"middle\">Event</text><line class=\"gi-e\" x1=\"430\" y1=\"41\" x2=\"509\" y2=\"52\"/><rect class=\"gi-r\" x=\"486\" y=\"52\" width=\"46\" height=\"16\" rx=\"3\"/><text class=\"fig-s\" x=\"509\" y=\"64\" text-anchor=\"middle\">Attribute</text><line class=\"gi-e\" x1=\"353\" y1=\"68\" x2=\"326\" y2=\"84\"/><rect class=\"gi-r\" x=\"320\" y=\"84\" width=\"12\" height=\"12\" rx=\"2\"/><line class=\"gi-e\" x1=\"353\" y1=\"68\" x2=\"348\" y2=\"84\"/><rect class=\"gi-r\" x=\"342\" y=\"84\" width=\"12\" height=\"12\" rx=\"2\"/><line class=\"gi-e\" x1=\"405\" y1=\"68\" x2=\"374\" y2=\"84\"/><rect class=\"gi-r\" x=\"368\" y=\"84\" width=\"12\" height=\"12\" rx=\"2\"/><line class=\"gi-e\" x1=\"405\" y1=\"68\" x2=\"400\" y2=\"84\"/><rect class=\"gi-r\" x=\"394\" y=\"84\" width=\"12\" height=\"12\" rx=\"2\"/><line class=\"gi-e\" x1=\"457\" y1=\"68\" x2=\"426\" y2=\"84\"/><rect class=\"gi-r\" x=\"420\" y=\"84\" width=\"12\" height=\"12\" rx=\"2\"/><line class=\"gi-e\" x1=\"457\" y1=\"68\" x2=\"452\" y2=\"84\"/><rect class=\"gi-r\" x=\"446\" y=\"84\" width=\"12\" height=\"12\" rx=\"2\"/><line class=\"gi-e\" x1=\"509\" y1=\"68\" x2=\"480\" y2=\"84\"/><rect class=\"gi-r\" x=\"474\" y=\"84\" width=\"12\" height=\"12\" rx=\"2\"/><line class=\"gi-e\" x1=\"509\" y1=\"68\" x2=\"508\" y2=\"84\"/><rect class=\"gi-r\" x=\"502\" y=\"84\" width=\"12\" height=\"12\" rx=\"2\"/><line class=\"gi-e\" x1=\"509\" y1=\"68\" x2=\"536\" y2=\"84\"/><rect class=\"gi-r\" x=\"530\" y=\"84\" width=\"12\" height=\"12\" rx=\"2\"/><text class=\"fig-s\" x=\"318\" y=\"64\" text-anchor=\"end\">4 types</text><text class=\"fig-s\" x=\"314\" y=\"94\" text-anchor=\"end\">subclasses</text><rect class=\"gi-l\" x=\"318\" y=\"108\" width=\"232\" height=\"86\" rx=\"10\"/><line class=\"gi-e\" x1=\"346\" y1=\"138\" x2=\"404\" y2=\"126\"/><line class=\"gi-e\" x1=\"346\" y1=\"138\" x2=\"414\" y2=\"164\"/><line class=\"gi-e\" x1=\"414\" y1=\"164\" x2=\"476\" y2=\"172\"/><line class=\"gi-e\" x1=\"404\" y1=\"126\" x2=\"476\" y2=\"130\"/><line class=\"gi-e\" x1=\"414\" y1=\"164\" x2=\"530\" y2=\"152\"/><circle class=\"gi-n\" cx=\"346\" cy=\"138\" r=\"5\"/><text class=\"fig-s\" x=\"346\" y=\"154\" text-anchor=\"middle\">Boss</text><circle class=\"gi-n\" cx=\"404\" cy=\"126\" r=\"5\"/><text class=\"fig-s\" x=\"404\" y=\"118\" text-anchor=\"middle\">Amst.</text><circle class=\"gi-n\" cx=\"414\" cy=\"164\" r=\"5\"/><text class=\"fig-s\" x=\"414\" y=\"180\" text-anchor=\"middle\">EK349</text><circle class=\"gi-n\" cx=\"476\" cy=\"172\" r=\"5\"/><text class=\"fig-s\" x=\"476\" y=\"188\" text-anchor=\"middle\">01:40</text><circle class=\"gi-n\" cx=\"476\" cy=\"130\" r=\"5\"/><text class=\"fig-s\" x=\"476\" y=\"122\" text-anchor=\"middle\">Hotel</text><circle class=\"gi-hi\" cx=\"530\" cy=\"152\" r=\"5\"/><text class=\"fig-s\" x=\"530\" y=\"144\" text-anchor=\"middle\">32D</text><line class=\"gi-e d\" x1=\"348\" y1=\"96\" x2=\"346\" y2=\"132\"/><line class=\"gi-e d\" x1=\"452\" y1=\"96\" x2=\"417\" y2=\"158\"/><text class=\"fig-s\" x=\"420\" y=\"207\" text-anchor=\"middle\">TransE puts each entity under its nearest subclass</text><rect class=\"gi-hi\" x=\"4\" y=\"216\" width=\"92\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"50.0\" y=\"234.0\" text-anchor=\"middle\">New memory</text><text class=\"fig-s\" x=\"50.0\" y=\"247.0\" text-anchor=\"middle\">“seat is 32D”</text><path class=\"gi-a\" d=\"M96.0 236.0 L107.0 236.0\"/><polygon class=\"gi-ah\" points=\"114.0,236.0 107.0,240.0 107.0,232.0\"/><rect class=\"gi-v fig-soft\" x=\"114\" y=\"216\" width=\"112\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"170.0\" y=\"234.0\" text-anchor=\"middle\">Nearest subclass</text><text class=\"fig-s\" x=\"170.0\" y=\"247.0\" text-anchor=\"middle\">CPT-Text embedding</text><path class=\"gi-a\" d=\"M226.0 236.0 L237.0 236.0\"/><polygon class=\"gi-ah\" points=\"244.0,236.0 237.0,240.0 237.0,232.0\"/><rect class=\"gi-f\" x=\"244\" y=\"216\" width=\"96\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"292.0\" y=\"234.0\" text-anchor=\"middle\">Top-1 memory</text><text class=\"fig-s\" x=\"292.0\" y=\"247.0\" text-anchor=\"middle\">in that partition</text><path class=\"gi-a\" d=\"M340.0 236.0 L351.0 236.0\"/><polygon class=\"gi-ah\" points=\"358.0,236.0 351.0,240.0 351.0,232.0\"/><rect class=\"gi-f\" x=\"358\" y=\"216\" width=\"192\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"454.0\" y=\"234.0\" text-anchor=\"middle\">Insert · Delete · Replace</text><text class=\"fig-s\" x=\"454.0\" y=\"247.0\" text-anchor=\"middle\">by comparing their relations</text>",
+        "text": [
+          "GPT-4 turns filtered assistant chats and screenshot text into memory sentences, whose entities and relations form a graph under a tree of 4 types and their subclasses.",
+          "A new memory is routed to its nearest subclass, compared with the closest memory there, and inserted, deleted or used to replace nodes."
+        ],
+        "src": "paper §4.1-4.2, Fig. 1-2, App. A",
+        "url": "https://arxiv.org/pdf/2409.19401"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 244",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"30\" width=\"66\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"37.0\" y=\"56.0\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M70.0 52.0 L75.0 52.0\"/><polygon class=\"gi-ah\" points=\"82.0,52.0 75.0,56.0 75.0,48.0\"/><rect class=\"gi-v fig-soft\" x=\"82\" y=\"30\" width=\"78\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"121.0\" y=\"50.0\" text-anchor=\"middle\">Top-3</text><text class=\"fig-s\" x=\"121.0\" y=\"63.0\" text-anchor=\"middle\">memories</text><text class=\"fig-s\" x=\"121\" y=\"88\" text-anchor=\"middle\">CPT-Text cosine</text><path class=\"gi-a\" d=\"M160.0 52.0 L165.0 52.0\"/><polygon class=\"gi-ah\" points=\"172.0,52.0 165.0,56.0 165.0,48.0\"/><rect class=\"gi-f\" x=\"172\" y=\"30\" width=\"68\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"206.0\" y=\"50.0\" text-anchor=\"middle\">Activate</text><text class=\"fig-s\" x=\"206.0\" y=\"63.0\" text-anchor=\"middle\">their nodes</text><path class=\"gi-a\" d=\"M240.0 52.0 L245.0 52.0\"/><polygon class=\"gi-ah\" points=\"252.0,52.0 245.0,56.0 245.0,48.0\"/><rect class=\"gi-f\" x=\"252\" y=\"30\" width=\"98\" height=\"44\" rx=\"8\"/><line class=\"gi-e\" x1=\"268\" y1=\"42\" x2=\"292\" y2=\"42\"/><line class=\"gi-e\" x1=\"292\" y1=\"42\" x2=\"316\" y2=\"42\"/><line class=\"gi-e\" x1=\"292\" y1=\"42\" x2=\"316\" y2=\"64\"/><line class=\"gi-e\" x1=\"316\" y1=\"42\" x2=\"338\" y2=\"52\"/><circle class=\"gi-hi\" cx=\"268\" cy=\"42\" r=\"6\"/><circle class=\"gi-n\" cx=\"292\" cy=\"42\" r=\"5\"/><circle class=\"gi-n\" cx=\"316\" cy=\"42\" r=\"5\"/><circle class=\"gi-n\" cx=\"316\" cy=\"64\" r=\"5\"/><circle class=\"gi-n\" cx=\"338\" cy=\"52\" r=\"5\"/><text class=\"fig-s\" x=\"301\" y=\"88\" text-anchor=\"middle\">depth-first walk</text><path class=\"gi-a\" d=\"M350.0 52.0 L355.0 52.0\"/><polygon class=\"gi-ah\" points=\"362.0,52.0 355.0,56.0 355.0,48.0\"/><polygon class=\"gi-w\" points=\"407,22 452,52 407,82 362,52\"/><text class=\"fig-t\" x=\"407\" y=\"50\" text-anchor=\"middle\">Include?</text><text class=\"fig-s\" x=\"407\" y=\"63\" text-anchor=\"middle\">RL policy</text><text class=\"fig-s\" x=\"460\" y=\"44\" text-anchor=\"start\">state: 3 cosines</text><text class=\"fig-s\" x=\"460\" y=\"56\" text-anchor=\"start\">(entity, relation,</text><text class=\"fig-s\" x=\"460\" y=\"68\" text-anchor=\"start\">question-memory)</text><path class=\"gi-a\" d=\"M407.0 22.0 L407.0 12.0 L301.0 12.0 L301.0 23.0\"/><polygon class=\"gi-ah\" points=\"301.0,30.0 297.0,23.0 305.0,23.0\"/><text class=\"fig-yes\" x=\"413\" y=\"13\" text-anchor=\"start\">Yes: add it, go deeper</text><text class=\"fig-no\" x=\"414\" y=\"100\" text-anchor=\"start\">No: stop this branch,</text><text class=\"fig-s\" x=\"414\" y=\"112\" text-anchor=\"start\">restart from another</text><path class=\"gi-a\" d=\"M407.0 82.0 L407.0 124.0 L60.0 124.0 L60.0 141.0\"/><polygon class=\"gi-ah\" points=\"60.0,148.0 56.0,141.0 64.0,141.0\"/><text class=\"fig-s\" x=\"240\" y=\"140\" text-anchor=\"middle\">walk ends</text><rect class=\"gi-f\" x=\"4\" y=\"148\" width=\"130\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"69.0\" y=\"168.0\" text-anchor=\"middle\">Selected memories</text><text class=\"fig-s\" x=\"69.0\" y=\"181.0\" text-anchor=\"middle\">no fixed K</text><path class=\"gi-a\" d=\"M134.0 170.0 L145.0 170.0\"/><polygon class=\"gi-ah\" points=\"152.0,170.0 145.0,174.0 145.0,166.0\"/><rect class=\"gi-llm\" x=\"152\" y=\"148\" width=\"110\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"207.0\" y=\"168.0\" text-anchor=\"middle\">Frozen LLM</text><text class=\"fig-s\" x=\"207.0\" y=\"181.0\" text-anchor=\"middle\">question ⊕ memories</text><path class=\"gi-a\" d=\"M262.0 170.0 L273.0 170.0\"/><polygon class=\"gi-ah\" points=\"280.0,170.0 273.0,174.0 273.0,166.0\"/><rect class=\"gi-hi\" x=\"280\" y=\"148\" width=\"80\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"320.0\" y=\"174.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"372\" y=\"158\" text-anchor=\"start\">Training (policy only):</text><text class=\"fig-s\" x=\"372\" y=\"171\" text-anchor=\"start\">1,000 warm-start episodes, BCE</text><text class=\"fig-s\" x=\"372\" y=\"184\" text-anchor=\"start\">on GPT-4's 'required memories';</text><text class=\"fig-s\" x=\"372\" y=\"197\" text-anchor=\"start\">100 REINFORCE episodes, reward =</text><text class=\"fig-s\" x=\"372\" y=\"210\" text-anchor=\"start\">gain in ROUGE / BLEU of the answer</text><text class=\"fig-s\" x=\"200\" y=\"232\" text-anchor=\"middle\">GPT-4, ChatGLM3-6B or PanGu-38B answers; only the policy is trained</text>",
+        "text": [
+          "The question's 3 closest memories activate graph nodes, and a depth-first walk starts from each; at every node an RL policy decides to include the memory and go on, or stop.",
+          "The selected memories go with the question to a frozen LLM; only the small policy is trained, with answer ROUGE/BLEU gains as reward."
+        ],
+        "src": "paper §4.3, §5.1",
+        "url": "https://arxiv.org/pdf/2409.19401"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Data",
+        "value": "~11.35B raw texts -> ~0.35B memories (Mar-Jun 2024)",
+        "src": "paper §5.1",
+        "section": "construction"
+      },
+      {
+        "label": "Memory types",
+        "value": "4, with 26 subclasses",
+        "src": "paper App. A.2, Table 8",
+        "section": "construction"
+      },
+      {
+        "label": "Users",
+        "value": "2,000 train, 500 test",
+        "src": "paper §5.1",
+        "section": "method"
+      },
+      {
+        "label": "Start nodes",
+        "value": "K = 3 (best of 1-5)",
+        "src": "paper Table 5",
+        "section": "method"
+      },
+      {
+        "label": "Policy",
+        "value": "MLP, 20 tanh hidden, 2 outputs; state = 3 cosines",
+        "src": "paper §4.3, §5.1",
+        "section": "method"
+      },
+      {
+        "label": "Training",
+        "value": "1,000 warm-start + 100 REINFORCE episodes; Adam 0.001; discount 0.99",
+        "src": "paper §5.1",
+        "section": "method"
+      },
+      {
+        "label": "Inference time",
+        "value": "2.14 s at K = 3 (1.35 s at K = 1, 3.32 s at K = 5)",
+        "src": "paper Table 5",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "ROUGE-1",
+        "ROUGE-2",
+        "ROUGE-L",
+        "BLEU"
+      ],
+      "rows": [
+        [
+          "EMG-RAG",
+          "93.46",
+          "83.55",
+          "88.06",
+          "75.99"
+        ],
+        [
+          "w/o activated nodes (walk from the root)",
+          "90.96",
+          "82.72",
+          "86.13",
+          "65.07"
+        ],
+        [
+          "w/o warm start",
+          "92.95",
+          "82.52",
+          "86.49",
+          "69.13"
+        ],
+        [
+          "w/o policy gradient",
+          "90.59",
+          "80.69",
+          "86.19",
+          "65.65"
+        ]
+      ],
+      "src": "paper Table 4 (question answering, GPT-4)"
+    },
+    "components": [
+      {
+        "role": "Memory writing, QA generation",
+        "model": "GPT-4",
+        "kind": "llm",
+        "src": "paper §4.1"
+      },
+      {
+        "role": "Question and memory embeddings",
+        "model": "CPT-Text, Faiss index",
+        "kind": "retriever",
+        "src": "paper §5.1"
+      },
+      {
+        "role": "Entity and relation embeddings",
+        "model": "TransE",
+        "kind": "retriever",
+        "src": "paper §4.2, §5.1"
+      },
+      {
+        "role": "Memory selection",
+        "model": "2-layer MLP policy (warm start + REINFORCE)",
+        "kind": "rule",
+        "src": "paper §4.3, §5.1"
+      },
+      {
+        "role": "Answer",
+        "model": "frozen GPT-4, ChatGLM3-6B or PanGu-38B",
+        "kind": "llm",
+        "src": "paper §5.1, Table 2"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Personal-assistant memory needs editing and multi-memory selection; an editable type/subclass/entity graph plus a small RL selector beats fixed top-K RAG on the authors' own assistant data.",
+      "claims": [
+        {
+          "claim": "EMG-RAG beats all baselines on question answering.",
+          "evidence": "GPT-4: R-1 93.46, BLEU 75.99 vs M-RAG 88.71, 64.16 (+5.3%, +18.4%). Table 2"
+        },
+        {
+          "claim": "It also helps autofill and user services.",
+          "evidence": "EM 92.86 autofill, 96.43 reminder, 91.46 travel vs M-RAG 90.87, 93.75, 86.67. Table 2"
+        },
+        {
+          "claim": "Editability keeps it ahead as memories change.",
+          "evidence": "About 10.6% (QA), 9.5% (AF), 9.7% (US) over M-RAG across 4 weeks of edits. Table 3"
+        },
+        {
+          "claim": "The policy gradient stage matters most.",
+          "evidence": "R-1 93.46 -> 90.59 without PG, 92.95 without WS. Table 4"
+        },
+        {
+          "claim": "Online fine-tuning on real questions fixes the cold start.",
+          "evidence": "One-month A/B test: QA 88.06 -> 91.99 (+4.5%). Table 6"
+        }
+      ],
+      "limits": [
+        "Training is no cheaper than naive RAG because the LLM must be queried during training to obtain rewards."
+      ],
+      "limits_src": "paper, §7 Limitations",
+      "reading": [
+        "The ~10% headline comes from the continuous-edit test (Table 3); in the main QA table the ROUGE-L gain over M-RAG is 3.9% (88.06 vs 84.74).",
+        "Questions, reference answers and required-memory labels are generated by GPT-4, and GPT-4 is the main answer model, so scores partly measure agreement with GPT-4.",
+        "The data is proprietary and there is no code, so no number can be reproduced.",
+        "M-RAG is run without its Agent-R, and all baselines are the authors' reimplementations.",
+        "The policy sees only three cosine similarities per node, not the memory text; §5.1 sets a 0.99 discount while Eq. 4 assumes no discounting.",
+        "The paper does not report how many memories are selected per question or the answer context size."
+      ]
+    },
+    "abstract": {
+      "text": "The paper defines the task of building personalized agents from the memories a user leaves on a smartphone assistant. EMG-RAG turns chats and screenshot text into memory sentences with GPT-4 and stores them in an Editable Memory Graph: a tree of memory types and subclasses over an entity graph that supports insertion, deletion and replacement. To answer, a reinforcement-learning policy walks the graph from the question's best matches and chooses which memories a frozen LLM receives. On the authors' real-world assistant data it improves question answering, form autofill and user services over existing RAG methods by about 10%, and it was deployed in a product assistant.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2409.19401"
+    },
+    "sections": {
+      "Memory architecture": "§4.2-4.3",
+      "Results": "§5.2 (1)-(4)",
+      "Ablation": "§5.2 (5)-(6)",
+      "Discussion": "§4.4, §7",
+      "Details": "§4.1, §5.1, App. A"
+    }
+  }
+}

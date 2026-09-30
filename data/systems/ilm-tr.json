@@ -1,0 +1,463 @@
+{
+  "id": "ilm-tr",
+  "name": "ILM-TR",
+  "paper": {
+    "title": "Enhancing Long Context Performance in LLMs Through Inner Loop Query Mechanism",
+    "arxiv": "2410.12859",
+    "url": "https://arxiv.org/abs/2410.12859",
+    "venue": "NeurIPS 2024 Workshop on Adaptive Foundation Models",
+    "venue_short": "NeurIPS",
+    "track": "workshop",
+    "year": 2024,
+    "code": null
+  },
+  "design": {
+    "construction": {
+      "unit": "tree node: raw chunk, chunk/cluster summary, or surprising-information text",
+      "kept_as": "leaves verbatim; summaries and surprising facts written by the LLM",
+      "processing": "chunk (≤600 tokens), LLM writes a summary plus a list of surprising facts; GMM clusters the summaries and each cluster is summarized again, recursively (RAPTOR-style)",
+      "trigger": "offline-batch",
+      "writer": "Meta-Llama-3-70B (Q4_K_M, llama.cpp) as summary model; SBERT multi-qa-mpnet-base-cos-v1 embeddings"
+    },
+    "organization": {
+      "structure": "RAPTOR tree of recursive summaries, with surprising-information nodes beside each summary",
+      "stores": "one tree per document, searched as a flat table; Short-Term Memory (STM) text buffer at query time",
+      "index": "SBERT embeddings of all nodes"
+    },
+    "management": {
+      "operations": "STM overwritten with the answer model's new output each inner-loop round",
+      "conflicts": null,
+      "forgetting": "previous STM text is replaced",
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "user query plus current STM text",
+      "candidates": "collapsed tree: every node of every level in one table",
+      "selection": "nearest by vector distance (top-k not stated)",
+      "budget": "not stated; up to 5 inner-loop rounds"
+    },
+    "use": {
+      "context": "retrieved nodes + previous STM + question",
+      "reasoning": "repeat retrieve-then-write until STM stops changing (LCS check) or 5 rounds; final STM is the answer"
+    },
+    "control": {
+      "construction": "fixed-rule",
+      "management": "prompted-llm",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "hierarchy",
+    "index": "vector",
+    "management": "update in place",
+    "candidates": "dense",
+    "decides": "top-k rule",
+    "note": "The document tree is append-only; what is updated in place is the STM buffer, which the answer LLM rewrites each round and which is fed back into the next query."
+  },
+  "tags": {
+    "fidelity": "verbatim+derived",
+    "structure": [
+      "tree"
+    ],
+    "write_time": [
+      "segment",
+      "summarize",
+      "extract"
+    ],
+    "selection": [
+      "dense",
+      "planner"
+    ],
+    "memory_type": [
+      "semantic",
+      "working"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "long-document"
+    ]
+  },
+  "stages": {
+    "ingestion": "The long input is split into contiguous chunks of at most 600 tokens; a sentence that would cross the limit moves to the next chunk.",
+    "construction": "The summary model writes, per chunk, a regular summary and a separate list of surprising facts that differ from the main text.",
+    "organization": "As in RAPTOR, summaries (not surprising facts) are embedded with SBERT, clustered with Gaussian mixtures and summarized again, recursively, into a multi-level tree.",
+    "update": "At query time a Short-Term Memory (STM) holds up to the answer model's output length; each inner-loop round overwrites it with the new answer text.",
+    "retrieval": "Collapsed-tree search: all nodes sit in one table and the closest by vector distance to the query (question plus current STM) are returned.",
+    "answer": "The answer model reads retrieved info, the previous STM and the question and writes a new STM; the loop stops when STM converges (LCS) or after 5 rounds, and the STM is returned as the answer.",
+    "learning": ""
+  },
+  "summary": "RAPTOR-style summary tree whose nodes also keep 'surprising' facts, read by an inner loop that re-queries the tree with the LLM's own intermediate answer (Short-Term Memory) until it stops changing.",
+  "verified": false,
+  "notes": "Long-context QA paper (4-page NeurIPS 2024 AFM workshop paper); memory is a document tree plus a query-time scratch buffer, not a conversational store. Results are heatmaps on M-NIAH and BABILong with 10 test cases per cell; there is no official code link in the paper and no repository was found by name search.\nDESIGN: §3, §4, App. A.1-A.3.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2410.12859v1 (PDF read 2026-09-30)",
+      "code": null,
+      "code_note": "No code link in the paper; a GitHub search for ILM-TR and the full method name found no repository. Top-k, retrieved-token budget and the LCS convergence threshold are not stated (App. A.3 says unlisted parameters are defaults)."
+    },
+    "sections": {
+      "Memory architecture": "§3, Fig. 1-2",
+      "Results": "§4, Fig. 3-4",
+      "Ablation": "§4 (ILM-TR without inner-loop query)",
+      "Discussion": "§4 (last paragraph), §5",
+      "Details": "App. A.1-A.3"
+    },
+    "abstract": {
+      "text": "ILM-TR targets long inputs that exceed the model's context window. It builds a RAPTOR-like tree of chunk and cluster summaries, but asks the summarizer to also list surprising facts that do not fit the main content. At question time an inner loop retrieves from the tree, lets the LLM write an intermediate answer into a small Short-Term Memory, and uses that memory together with the question as the next query, until the memory stops changing. With Llama-3-70B the authors report finding all needles in a multi-needle test up to 500k tokens and gains over RAPTOR on BABILong.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2410.12859"
+    },
+    "headline": [
+      "Two changes to RAPTOR: summaries also list 'surprising' facts, and retrieval loops, feeding the LLM's own intermediate answer back into the query.",
+      "The Short-Term Memory is a single ≤200-token text that is overwritten each round and returned as the final answer.",
+      "Results are 10 test cases per heatmap cell with a 4-bit Llama-3-70B; no top-k or context budget is given."
+    ],
+    "units": [
+      {
+        "name": "Tree node",
+        "role": "one searchable text in the collapsed tree",
+        "made_by": "chunker + summary model (Llama-3-70B)",
+        "fields": [
+          {
+            "name": "chunk",
+            "what": "original text, ≤600 tokens",
+            "kept_as": "verbatim",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper §3, App. A.3",
+            "url": "https://arxiv.org/pdf/2410.12859"
+          },
+          {
+            "name": "summary",
+            "what": "summary of a chunk or of a cluster of summaries (≤300 tokens)",
+            "kept_as": "summarized",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper §3, Fig. 2, App. A.3",
+            "url": "https://arxiv.org/pdf/2410.12859"
+          },
+          {
+            "name": "surprising information",
+            "what": "facts in the text that differ from its main content; not clustered",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper §3, App. A.1.2",
+            "url": "https://arxiv.org/pdf/2410.12859"
+          },
+          {
+            "name": "embedding",
+            "what": "SBERT multi-qa-mpnet-base-cos-v1 vector",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §3",
+            "url": "https://arxiv.org/pdf/2410.12859"
+          }
+        ]
+      },
+      {
+        "name": "Short-Term Memory",
+        "role": "query-time scratch text",
+        "made_by": "answer model (Llama-3-70B)",
+        "fields": [
+          {
+            "name": "STM",
+            "what": "latest intermediate answer, up to the answer model's max output (200 tokens)",
+            "kept_as": "rewritten",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper §3, App. A.2, A.3",
+            "url": "https://arxiv.org/pdf/2410.12859"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Chunk",
+        "how": "contiguous chunks, whole sentences",
+        "params": {
+          "max tokens": "600"
+        },
+        "src": "paper §3, App. A.3",
+        "url": "https://arxiv.org/pdf/2410.12859"
+      },
+      {
+        "step": "Summarize + surprise",
+        "how": "one LLM call per chunk returns '(Summary)' and '(Surprise)' parts",
+        "params": {
+          "output max": "300 tokens",
+          "temperature": "0.2"
+        },
+        "src": "paper §3, App. A.1.2, A.3",
+        "url": "https://arxiv.org/pdf/2410.12859"
+      },
+      {
+        "step": "Cluster and recurse",
+        "how": "GMM over SBERT embeddings of summaries only; each cluster summarized again with its own surprise part; repeat until clustering is impractical",
+        "src": "paper §3, Fig. 2",
+        "url": "https://arxiv.org/pdf/2410.12859"
+      }
+    ],
+    "read": [
+      {
+        "step": "Search",
+        "round": 1,
+        "input": "question (STM empty in round 1), later question + STM",
+        "scores": "all nodes of all levels",
+        "how": "closest by vector distance (collapsed tree)",
+        "src": "paper §3, Fig. 1-2",
+        "url": "https://arxiv.org/pdf/2410.12859"
+      },
+      {
+        "step": "Write STM",
+        "round": 1,
+        "how": "answer LLM reads retrieved info, previous STM and question; may write partial reasoning ('we need to find ...')",
+        "params": {
+          "max_tokens": "200",
+          "temperature": "0"
+        },
+        "src": "paper App. A.1.2, A.2, A.3",
+        "url": "https://arxiv.org/pdf/2410.12859"
+      },
+      {
+        "step": "Converged?",
+        "round": 2,
+        "how": "compare STM across rounds with longest common subsequence; stop when it stops changing or at the query limit",
+        "params": {
+          "max rounds": "5"
+        },
+        "src": "paper §3, §4, App. A.2.2",
+        "url": "https://arxiv.org/pdf/2410.12859"
+      }
+    ],
+    "answer_context": {
+      "sees": "retrieved tree nodes, the previous STM and the question",
+      "format": "'(Retrieved Info):' ... '(Memory):' ... '(Question):' with a few-shot example (App. A.1.2)",
+      "excludes": [
+        "STM texts from earlier rounds (overwritten)"
+      ],
+      "src": "paper App. A.1.2",
+      "url": "https://arxiv.org/pdf/2410.12859"
+    },
+    "compression": [
+      {
+        "what": "STM vs M-NIAH input",
+        "kept": 0.2,
+        "of": 500,
+        "unit": "k tokens",
+        "basis": "STM is capped at the answer model's max output (max_tokens 200, App. A.3); longest M-NIAH input 500k tokens (§4)",
+        "src": "paper §3, §4, App. A.3",
+        "url": "https://arxiv.org/pdf/2410.12859"
+      },
+      {
+        "what": "retrieved context vs document",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported: top-k and retrieved-token budget are not given.",
+        "src": "paper App. A.3",
+        "url": "https://arxiv.org/pdf/2410.12859"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "M-NIAH cells with all 3 needles (40 cells)",
+        "value": "ILM-TR 40 · without loop 23 · RAPTOR 0",
+        "src": "paper Fig. 3 (our count of cell colours)"
+      },
+      {
+        "label": "BABILong qa1 at 128k",
+        "value": "ILM-TR 60 · without loop 50 · RAPTOR 0",
+        "src": "paper Fig. 4"
+      }
+    ],
+    "open_questions": [
+      "The retrieval budget is not given, so it is unknown how much text the answer model sees per round and whether the loop gains come from reading more nodes over 5 rounds.",
+      "The no-loop ablation still uses surprise summaries; there is no run of RAPTOR plus the loop without surprise summaries, so the two changes are separated in one direction only."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 236",
+        "body": "<text class=\"fig-t\" x=\"51\" y=\"16\" text-anchor=\"middle\">Long text</text><rect class=\"gi-ev\" x=\"6\" y=\"26\" width=\"90\" height=\"22\" rx=\"6\"/><line class=\"gi-t\" x1=\"14\" y1=\"37\" x2=\"80\" y2=\"37\"/><rect class=\"gi-ev\" x=\"6\" y=\"54\" width=\"90\" height=\"22\" rx=\"6\"/><line class=\"gi-t\" x1=\"14\" y1=\"65\" x2=\"80\" y2=\"65\"/><rect class=\"gi-ev\" x=\"6\" y=\"82\" width=\"90\" height=\"22\" rx=\"6\"/><line class=\"gi-t\" x1=\"14\" y1=\"93\" x2=\"80\" y2=\"93\"/><rect class=\"gi-ev\" x=\"6\" y=\"110\" width=\"90\" height=\"22\" rx=\"6\"/><line class=\"gi-t\" x1=\"14\" y1=\"121\" x2=\"80\" y2=\"121\"/><rect class=\"gi-ev\" x=\"6\" y=\"138\" width=\"90\" height=\"22\" rx=\"6\"/><line class=\"gi-t\" x1=\"14\" y1=\"149\" x2=\"80\" y2=\"149\"/><text class=\"fig-s\" x=\"51\" y=\"184\" text-anchor=\"middle\">chunks ≤ 600 tokens,</text><text class=\"fig-s\" x=\"51\" y=\"197\" text-anchor=\"middle\">sentences kept whole</text><path class=\"gi-a\" d=\"M96 94 L113 94\"/><polygon class=\"gi-ah\" points=\"120,94 113,90 113,98\"/><rect class=\"gi-llm\" x=\"120\" y=\"64\" width=\"72\" height=\"60\" rx=\"8\"/><text class=\"fig-t\" x=\"156\" y=\"90\" text-anchor=\"middle\">Summary</text><text class=\"fig-s\" x=\"156\" y=\"105\" text-anchor=\"middle\">Llama-3-70B</text><path class=\"gi-a\" d=\"M192 94 L205 94\"/><polygon class=\"gi-ah\" points=\"212,94 205,90 205,98\"/><text class=\"fig-t\" x=\"268\" y=\"22\" text-anchor=\"middle\">per chunk</text><rect class=\"gi-f\" x=\"212\" y=\"32\" width=\"112\" height=\"36\" rx=\"6\"/><text class=\"fig-t\" x=\"220\" y=\"47\" text-anchor=\"start\">summary</text><text class=\"fig-s\" x=\"220\" y=\"61\" text-anchor=\"start\">main content</text><rect class=\"gi-hi\" x=\"212\" y=\"76\" width=\"112\" height=\"36\" rx=\"6\"/><text class=\"fig-t\" x=\"220\" y=\"91\" text-anchor=\"start\">surprise</text><text class=\"fig-s\" x=\"220\" y=\"105\" text-anchor=\"start\">facts unlike the rest</text><rect class=\"gi-ev d\" x=\"212\" y=\"120\" width=\"112\" height=\"36\" rx=\"6\"/><text class=\"fig-t\" x=\"220\" y=\"135\" text-anchor=\"start\">chunk</text><text class=\"fig-s\" x=\"220\" y=\"149\" text-anchor=\"start\">kept verbatim</text><path class=\"gi-a\" d=\"M326 50 L349 50\"/><polygon class=\"gi-ah\" points=\"356,50 349,46 349,54\"/><text class=\"fig-s\" x=\"341\" y=\"40\" text-anchor=\"middle\">GMM</text><text class=\"fig-t\" x=\"404\" y=\"16\" text-anchor=\"middle\">Tree</text><line class=\"gi-e\" x1=\"404\" y1=\"42\" x2=\"380\" y2=\"80\"/><line class=\"gi-e\" x1=\"404\" y1=\"42\" x2=\"428\" y2=\"80\"/><line class=\"gi-e\" x1=\"380\" y1=\"86\" x2=\"364\" y2=\"120\"/><line class=\"gi-e\" x1=\"380\" y1=\"86\" x2=\"380\" y2=\"120\"/><line class=\"gi-e\" x1=\"380\" y1=\"86\" x2=\"396\" y2=\"120\"/><line class=\"gi-e\" x1=\"428\" y1=\"86\" x2=\"416\" y2=\"120\"/><line class=\"gi-e\" x1=\"428\" y1=\"86\" x2=\"440\" y2=\"120\"/><circle class=\"gi-n\" cx=\"404\" cy=\"36\" r=\"6\"/><rect class=\"gi-hi\" x=\"413\" y=\"31\" width=\"9\" height=\"9\" rx=\"2\"/><circle class=\"gi-n\" cx=\"380\" cy=\"80\" r=\"6\"/><rect class=\"gi-hi\" x=\"389\" y=\"75\" width=\"9\" height=\"9\" rx=\"2\"/><circle class=\"gi-n\" cx=\"428\" cy=\"80\" r=\"6\"/><rect class=\"gi-hi\" x=\"437\" y=\"75\" width=\"9\" height=\"9\" rx=\"2\"/><rect class=\"gi-r\" x=\"360\" y=\"120\" width=\"8\" height=\"8\" rx=\"2\"/><rect class=\"gi-r\" x=\"376\" y=\"120\" width=\"8\" height=\"8\" rx=\"2\"/><rect class=\"gi-r\" x=\"392\" y=\"120\" width=\"8\" height=\"8\" rx=\"2\"/><rect class=\"gi-r\" x=\"412\" y=\"120\" width=\"8\" height=\"8\" rx=\"2\"/><rect class=\"gi-r\" x=\"436\" y=\"120\" width=\"8\" height=\"8\" rx=\"2\"/><text class=\"fig-s\" x=\"404\" y=\"150\" text-anchor=\"middle\">cluster summaries only,</text><text class=\"fig-s\" x=\"404\" y=\"163\" text-anchor=\"middle\">summarize each cluster,</text><text class=\"fig-s\" x=\"404\" y=\"176\" text-anchor=\"middle\">repeat while possible</text><path class=\"gi-a\" d=\"M456 94 L471 94\"/><polygon class=\"gi-ah\" points=\"478,94 471,90 471,98\"/><rect class=\"gi-f\" x=\"478\" y=\"36\" width=\"78\" height=\"116\" rx=\"8\"/><text class=\"fig-t\" x=\"517\" y=\"54\" text-anchor=\"middle\">One table</text><text class=\"fig-s\" x=\"517\" y=\"76\" text-anchor=\"middle\">chunks</text><text class=\"fig-s\" x=\"517\" y=\"93\" text-anchor=\"middle\">summaries</text><text class=\"fig-s\" x=\"517\" y=\"110\" text-anchor=\"middle\">surprises</text><text class=\"fig-s\" x=\"517\" y=\"127\" text-anchor=\"middle\">all levels</text><text class=\"fig-s\" x=\"517\" y=\"170\" text-anchor=\"middle\">SBERT vectors</text><text class=\"fig-s\" x=\"280\" y=\"226\" text-anchor=\"middle\">surprise items are stored and searchable but never clustered</text>",
+        "text": [
+          "The text is cut into chunks of up to 600 tokens; the LLM writes a summary and a list of surprising facts for each.",
+          "Summaries are clustered and summarized again into a tree; all nodes, including surprises, are searched as one table."
+        ],
+        "src": "paper §3, Fig. 2, App. A.1.2, A.3",
+        "url": "https://arxiv.org/pdf/2410.12859"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 236",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"36\" width=\"66\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"37\" y=\"62\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M70 58 L83 58\"/><polygon class=\"gi-ah\" points=\"90,58 83,54 83,62\"/><rect class=\"gi-f\" x=\"90\" y=\"30\" width=\"90\" height=\"56\" rx=\"8\"/><text class=\"fig-t\" x=\"135\" y=\"54\" text-anchor=\"middle\">Query</text><text class=\"fig-s\" x=\"135\" y=\"68\" text-anchor=\"middle\">question + STM</text><path class=\"gi-a\" d=\"M180 58 L191 58\"/><polygon class=\"gi-ah\" points=\"198,58 191,54 191,62\"/><rect class=\"gi-v fig-soft\" x=\"198\" y=\"30\" width=\"92\" height=\"56\" rx=\"8\"/><text class=\"fig-t\" x=\"244\" y=\"54\" text-anchor=\"middle\">Search table</text><text class=\"fig-s\" x=\"244\" y=\"68\" text-anchor=\"middle\">vector distance</text><path class=\"gi-a\" d=\"M290 58 L301 58\"/><polygon class=\"gi-ah\" points=\"308,58 301,54 301,62\"/><rect class=\"gi-f\" x=\"308\" y=\"30\" width=\"72\" height=\"56\" rx=\"8\"/><text class=\"fig-t\" x=\"344\" y=\"54\" text-anchor=\"middle\">Retrieved</text><text class=\"fig-s\" x=\"344\" y=\"68\" text-anchor=\"middle\">any level</text><path class=\"gi-a\" d=\"M380 58 L391 58\"/><polygon class=\"gi-ah\" points=\"398,58 391,54 391,62\"/><rect class=\"gi-llm\" x=\"398\" y=\"30\" width=\"96\" height=\"56\" rx=\"8\"/><text class=\"fig-t\" x=\"446\" y=\"54\" text-anchor=\"middle\">Answer LLM</text><text class=\"fig-s\" x=\"446\" y=\"68\" text-anchor=\"middle\">info + STM + Q</text><path class=\"gi-a\" d=\"M446 86 L446 99\"/><polygon class=\"gi-ah\" points=\"446,106 442,99 450,99\"/><rect class=\"gi-hi\" x=\"398\" y=\"106\" width=\"96\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"446\" y=\"124\" text-anchor=\"middle\">STM</text><text class=\"fig-s\" x=\"446\" y=\"138\" text-anchor=\"middle\">≤ 200 tokens</text><text class=\"fig-s\" x=\"500\" y=\"124\" text-anchor=\"start\">overwritten</text><text class=\"fig-s\" x=\"500\" y=\"137\" text-anchor=\"start\">each round</text><path class=\"gi-a\" d=\"M446 146 L446 159\"/><polygon class=\"gi-ah\" points=\"446,166 442,159 450,159\"/><polygon class=\"gi-f\" points=\"446,166 486,188 446,210 406,188\"/><text class=\"fig-s\" x=\"446\" y=\"192\" text-anchor=\"middle\">changed?</text><path class=\"gi-a\" d=\"M486 188 L493 188\"/><polygon class=\"gi-ah\" points=\"500,188 493,184 493,192\"/><rect class=\"gi-hi\" x=\"500\" y=\"170\" width=\"56\" height=\"36\" rx=\"8\"/><text class=\"fig-t\" x=\"528\" y=\"186\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"528\" y=\"199\" text-anchor=\"middle\">= STM</text><text class=\"fig-yes\" x=\"556\" y=\"222\" text-anchor=\"end\">no, or round 5</text><path class=\"gi-a\" d=\"M406 188 L135 188 L135 93\"/><polygon class=\"gi-ah\" points=\"135,86 131,93 139,93\"/><text class=\"fig-no\" x=\"270\" y=\"182\" text-anchor=\"middle\">yes, before round 5: retrieve again with the new STM</text><text class=\"fig-s\" x=\"6\" y=\"226\" text-anchor=\"start\">round 1: STM is empty, so the query is the question alone</text>",
+        "text": [
+          "The question plus the Short-Term Memory is used to search the whole tree; the answer LLM rewrites the STM from what it finds.",
+          "The loop repeats until the STM stops changing or after 5 rounds, and the STM itself is returned as the answer."
+        ],
+        "src": "paper §3, Fig. 1, App. A.1.2-A.3",
+        "url": "https://arxiv.org/pdf/2410.12859"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Chunk size",
+        "value": "≤ 600 tokens",
+        "src": "paper App. A.3",
+        "section": "construction"
+      },
+      {
+        "label": "Summary length",
+        "value": "≤ 300 tokens",
+        "src": "paper App. A.3",
+        "section": "construction"
+      },
+      {
+        "label": "Summary / answer model",
+        "value": "Llama-3-70B, Q4_K_M (llama.cpp)",
+        "src": "paper §4",
+        "section": "construction"
+      },
+      {
+        "label": "Embeddings",
+        "value": "SBERT multi-qa-mpnet-base-cos-v1",
+        "src": "paper §3",
+        "section": "method"
+      },
+      {
+        "label": "Inner-loop rounds",
+        "value": "up to 5 (stop on LCS convergence)",
+        "src": "paper §4, App. A.2.2",
+        "section": "method"
+      },
+      {
+        "label": "STM size",
+        "value": "≤ 200 tokens (answer max_tokens)",
+        "src": "paper §3, App. A.3",
+        "section": "method"
+      },
+      {
+        "label": "Retrieved per round",
+        "value": "not stated",
+        "src": "paper App. A.3",
+        "section": "method"
+      },
+      {
+        "label": "Answer calls per question",
+        "value": "up to 5 (vs 1 without the loop)",
+        "src": "paper §4",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Summaries and surprising facts",
+        "model": "Meta-Llama-3-70B, Q4_K_M, llama.cpp",
+        "kind": "llm",
+        "src": "paper §4, App. A.1.2"
+      },
+      {
+        "role": "Cluster summaries",
+        "model": "Gaussian Mixture Model (as in RAPTOR)",
+        "kind": "rule",
+        "src": "paper §3"
+      },
+      {
+        "role": "Search all nodes",
+        "model": "SBERT multi-qa-mpnet-base-cos-v1",
+        "kind": "retriever",
+        "src": "paper §3"
+      },
+      {
+        "role": "Write STM / answer",
+        "model": "Meta-Llama-3-70B, Q4_K_M",
+        "kind": "llm",
+        "src": "paper §4, App. A.1.2"
+      },
+      {
+        "role": "Stop check",
+        "model": "longest common subsequence between rounds",
+        "kind": "rule",
+        "src": "paper App. A.2.2"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "M-NIAH: cells with all 3 of 40",
+        "BABILong qa1 128k",
+        "BABILong qa4 128k",
+        "BABILong qa5 128k"
+      ],
+      "rows": [
+        [
+          "RAPTOR (Llama-3-70B)",
+          "0",
+          "0",
+          "0",
+          "0"
+        ],
+        [
+          "ILM-TR without inner loop",
+          "23",
+          "50",
+          "50",
+          "70"
+        ],
+        [
+          "ILM-TR",
+          "40",
+          "60",
+          "60",
+          "80"
+        ]
+      ],
+      "src": "paper Fig. 3 (our count of cell colours) and Fig. 4 (printed cell values, % of 10 cases)"
+    },
+    "discussion": {
+      "takeaway": "Letting the LLM's intermediate answer steer further retrieval, and keeping surprising facts in the summaries, helps a RAPTOR tree find several scattered needles in very long inputs.",
+      "claims": [
+        {
+          "claim": "Adding surprising information to summaries improves multi-needle retrieval.",
+          "evidence": "M-NIAH: RAPTOR finds no needle in any of the 40 cells, ILM-TR without the loop finds all three in 23 and two in 13 (150k-500k tokens). §4, Fig. 3"
+        },
+        {
+          "claim": "The inner loop finds all needles.",
+          "evidence": "M-NIAH: all 40 cells score 10 up to 500k tokens. Fig. 3(c)"
+        },
+        {
+          "claim": "ILM-TR beats the RAPTOR baseline on BABILong.",
+          "evidence": "e.g. qa1 at 128k: 60 vs 0; qa5 at 64k: 70 vs 20 (10 cases per cell). Fig. 4"
+        },
+        {
+          "claim": "No major loss as context grows to 500k tokens.",
+          "evidence": "§1 and Fig. 3(c)"
+        }
+      ],
+      "limits": [
+        "The inner loop needs several iterations, so answering takes longer.",
+        "Writing surprise summaries needs a model that follows complex instructions; 7-8B models failed the prompt, so a slower 70B model was used."
+      ],
+      "limits_src": "paper §4 (last paragraph), §4 setup",
+      "reading": [
+        "Each heatmap cell has only 10 test cases (BABILong) and M-NIAH cells are shown by colour only, so small differences are within noise; our M-NIAH counts are read from colours.",
+        "The loop's gain on BABILong is mixed: ILM-TR is below its no-loop variant in some cells (qa2 at 8k 10 vs 20, qa4 at 64k 70 vs 80, qa5 at 32k 60 vs 70) and above in others.",
+        "The RAPTOR baseline uses a plain summary prompt and a plain answer prompt, while ILM-TR's no-loop variant changes only the summary prompt, so the no-loop variant isolates the surprise-summary change and the full system isolates the loop.",
+        "Retrieval top-k and token budget are not reported; the final answer is the STM text, which can still hold intermediate reasoning (App. A.2.2), and the BABILong scoring rule is not stated.",
+        "M-NIAH uses three needles on one topic (pizza ingredients) inserted into a haystack whose source text is not named."
+      ]
+    }
+  }
+}

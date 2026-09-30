@@ -1,0 +1,633 @@
+{
+  "id": "mem-alpha",
+  "name": "Mem-α",
+  "paper": {
+    "title": "Mem-α: Learning Memory Construction via Reinforcement Learning",
+    "arxiv": "2509.25911",
+    "url": "https://arxiv.org/abs/2509.25911",
+    "venue": "arXiv 2025",
+    "venue_short": "arXiv",
+    "track": "preprint",
+    "year": 2025,
+    "code": "https://github.com/wangyu-ustc/Mem-alpha"
+  },
+  "design": {
+    "construction": {
+      "unit": "core paragraph (≤512 tokens) + semantic fact entries + episodic timestamped event entries",
+      "kept_as": "written by the agent: facts and events restated from the chunk; core is a running summary",
+      "processing": "for each incoming chunk the RL-trained agent issues insert / update / delete tool calls on the three stores in one response",
+      "trigger": "other",
+      "writer": "Memalpha-4B (Qwen3-4B trained with GRPO)"
+    },
+    "organization": {
+      "structure": "three typed stores: core paragraph, semantic list, episodic list",
+      "stores": "core (always in context), semantic memory, episodic memory",
+      "index": "BM25 over semantic and episodic entries (embeddings also computed but unused by the default reader)"
+    },
+    "management": {
+      "operations": "agent chooses insert, update or delete per entry; core can only be rewritten whole; exact duplicate inserts are skipped",
+      "conflicts": "left to the agent, which can edit only entries whose ids it sees (core + 5 newest per list)",
+      "forgetting": "agent-issued delete; core cut at 512 tokens",
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "question as is",
+      "candidates": "BM25 separately over semantic and over episodic entries",
+      "selection": "top 20 per store, lowered by 1 until the prompt is under 30K tokens (code)",
+      "budget": "core + ≤20 + ≤20 entries, < 30K tokens"
+    },
+    "use": {
+      "context": "core paragraph + retrieved semantic and episodic entries as numbered lines in a fixed system prompt",
+      "reasoning": "single call to a frozen Qwen3-32B (thinking off)"
+    },
+    "control": {
+      "construction": "learned-rl",
+      "management": "learned-rl",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "typed stores",
+    "index": "lexical",
+    "management": "update in place",
+    "candidates": "lexical",
+    "decides": "top-k rule",
+    "note": "Only the write policy is learned; retrieval is a fixed BM25 top-k and the answer model is frozen."
+  },
+  "tags": {
+    "fidelity": "extracted",
+    "structure": [
+      "typed-stores"
+    ],
+    "write_time": [
+      "extract",
+      "summarize",
+      "agent-chosen",
+      "learned"
+    ],
+    "selection": [
+      "lexical"
+    ],
+    "memory_type": [
+      "working",
+      "semantic",
+      "episodic"
+    ],
+    "learning": "rl",
+    "domain": [
+      "conversation",
+      "long-document"
+    ]
+  },
+  "stages": {
+    "ingestion": "Inputs arrive as a sequence of chunks (dialogues, documents, labelled examples or book passages wrapped as user-assistant turns), processed one at a time.",
+    "construction": "For each chunk the writer model gets a fixed memorising prompt plus the current core memory and the 5 newest entries of each list, and answers with a batch of insert / update / delete function calls.",
+    "organization": "Three stores: a core paragraph capped at 512 tokens that is always shown, a semantic list of facts and an episodic list of timestamped events; entries carry short random ids.",
+    "update": "The agent updates or deletes entries by id and rewrites the core whole; there is no separate consolidation step.",
+    "retrieval": "At question time BM25 ranks semantic and episodic entries separately against the question and keeps the top 20 of each (fewer if the prompt would exceed 30K tokens).",
+    "answer": "A frozen Qwen3-32B answers from the core paragraph plus the retrieved entries in a fixed memory prompt.",
+    "learning": "The writer (Qwen3-4B) is trained with GRPO, without a KL term, on 562 instances of up to 30K tokens; reward = QA accuracy of the final memory + tool-call success + 0.05 × compression + 0.1 × a Qwen3-32B check that each write fits its memory type."
+  },
+  "summary": "Trains a small model with RL to write a core/semantic/episodic memory through tool calls, rewarding the QA accuracy that a fixed BM25 reader achieves on the final memory; the learned writer generalises from 30K-token training inputs to 400K+.",
+  "verified": false,
+  "notes": "Venue: arXiv v1 (2025-09-30) is marked 'Preprint'; no venue found in the PDF. Code link from the PDF header ('Source Code') and README: https://github.com/wangyu-ustc/Mem-alpha. DESIGN: §3.1-3.3, §4.1, App. B-C; code memory.py, memory_server.py, agent.py, functions.py at 294299a. trigger='other' (one write action per input chunk). Paper conflict: §4.1 gives γ = 1 but §4.4, the README and the training script use γ = 0.1; recorded as 0.1. fidelity='extracted' because stores hold agent-written facts and events, not raw text; core is a summary. management/control=learned-rl because the same trained policy decides updates and deletes.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2509.25911 v1 (PDF read 2026-09-30)",
+      "code": "https://github.com/wangyu-ustc/Mem-alpha/tree/294299a37b33d25b35796dcba0678616a78e2d3e/",
+      "code_note": "First commit (2025-09-26, four days before arXiv v1), taken as closest to the paper. Later commits (to 2025-12-25) add OpenRouter support, memory-type exclusion and answer-format fixes; the retrieval top-k, 30K cap and write-time view are the same at HEAD 9c0e1f6."
+    },
+    "headline": [
+      "Only the memory writer is trained: a 4B model learns by RL which insert / update / delete calls to make; retrieval (BM25) and the answer model (Qwen3-32B) stay fixed.",
+      "The reward is the QA accuracy that fixed reader gets from the final memory, plus tool-call success, a compression term and an LLM check that each write fits its store.",
+      "While writing, the agent sees only the core paragraph and the 5 newest entries of each list, so it can edit only those."
+    ],
+    "sections": {
+      "Memory architecture": "§3.3",
+      "Results": "§4.2",
+      "Ablation": "§4.3, §4.4, App. C.4",
+      "Discussion": "§5",
+      "Details": "§3.1-3.4, §4.1, App. A-C"
+    },
+    "abstract": {
+      "text": "Mem-α argues that memory agents fail less from missing tools than from not knowing what to store, where, and when to update, and proposes to learn this with reinforcement learning. An agent reads a stream of chunks and writes to a memory made of a core summary, a semantic fact list and an episodic event list through tool calls; after the stream ends, questions are answered from that memory by a fixed retriever and reader, and the accuracy becomes the reward, together with format, compression and content-validity terms. A Qwen3-4B trained this way on a purpose-built dataset beats long-context, BM25 RAG, MemAgent and MEM1 baselines, and although trained on inputs of at most 30K tokens it handles MemoryAgentBench inputs above 400K tokens.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2509.25911"
+    },
+    "units": [
+      {
+        "name": "Core memory",
+        "role": "a running summary of the user, of what is being read, or of the classification rules",
+        "made_by": "writer agent via memory_update (whole rewrite)",
+        "fields": [
+          {
+            "name": "core paragraph",
+            "what": "one paragraph, cut to 512 tokens with a truncation note if longer",
+            "kept_as": "summarized",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.3; code memory.py L309-L340",
+            "url": "https://github.com/wangyu-ustc/Mem-alpha/blob/294299a37b33d25b35796dcba0678616a78e2d3e/memory.py#L309-L340"
+          }
+        ]
+      },
+      {
+        "name": "Semantic entry",
+        "role": "one fact or piece of knowledge (for classification data, a 'Sample: …; Label: …' pair)",
+        "made_by": "writer agent via new_memory_insert / memory_update / memory_delete",
+        "fields": [
+          {
+            "name": "content",
+            "what": "one agent-written sentence",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper §3.3, Fig. 6; code memory.py L273-L307",
+            "url": "https://github.com/wangyu-ustc/Mem-alpha/blob/294299a37b33d25b35796dcba0678616a78e2d3e/memory.py#L273-L307"
+          },
+          {
+            "name": "id",
+            "what": "first 4 characters of a random UUID; needed to update or delete, not shown to the reader",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "code memory.py L71-L73; memory_server.py L318-L338",
+            "url": "https://github.com/wangyu-ustc/Mem-alpha/blob/294299a37b33d25b35796dcba0678616a78e2d3e/memory_server.py#L318-L338"
+          },
+          {
+            "name": "embedding",
+            "what": "text-embedding-3-small vector computed on insert and update",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "code memory.py L84-L100; not read by the default /batch_process reader",
+            "url": "https://github.com/wangyu-ustc/Mem-alpha/blob/294299a37b33d25b35796dcba0678616a78e2d3e/memory.py#L84-L100"
+          }
+        ]
+      },
+      {
+        "name": "Episodic entry",
+        "role": "one event with a timestamp (user, friends or assistant actions)",
+        "made_by": "writer agent via the same tools",
+        "fields": [
+          {
+            "name": "content",
+            "what": "\"At timestamp t, user did X\" style sentence",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper §3.3, Fig. 6",
+            "url": "https://arxiv.org/pdf/2509.25911"
+          },
+          {
+            "name": "id",
+            "what": "4-character id, as for semantic entries",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "code memory.py L71-L73",
+            "url": "https://github.com/wangyu-ustc/Mem-alpha/blob/294299a37b33d25b35796dcba0678616a78e2d3e/memory.py#L71-L73"
+          },
+          {
+            "name": "embedding",
+            "what": "text-embedding-3-small vector, unused by the default reader",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "code memory.py L84-L100",
+            "url": "https://github.com/wangyu-ustc/Mem-alpha/blob/294299a37b33d25b35796dcba0678616a78e2d3e/memory.py#L84-L100"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Wrap the chunk",
+        "how": "each chunk is placed in one universal memorising prompt (update core, store events and facts, stay brief); the response limit is 80% of 2,048 tokens",
+        "src": "paper Fig. 6, App. C.3; code main.py L232, config/prompts_wrt_datasource.yaml L1",
+        "url": "https://github.com/wangyu-ustc/Mem-alpha/blob/294299a37b33d25b35796dcba0678616a78e2d3e/main.py#L232"
+      },
+      {
+        "step": "Show current memory",
+        "how": "the system prompt shows the core paragraph and only the 5 newest semantic and 5 newest episodic entries, with ids",
+        "params": {
+          "visible": "5 per list (training halves it if the prompt exceeds 6,144 tokens)"
+        },
+        "src": "code agent.py L40, L1112-L1125; memalpha/llm_agent/generation.py L130-L142",
+        "url": "https://github.com/wangyu-ustc/Mem-alpha/blob/294299a37b33d25b35796dcba0678616a78e2d3e/agent.py#L1112-L1125"
+      },
+      {
+        "step": "Call tools",
+        "how": "Memalpha-4B (thinking off, greedy decoding) emits several function calls in one response: new_memory_insert (semantic / episodic), memory_update (any store, core rewritten whole), memory_delete",
+        "src": "paper §3.1.1, §3.3; code functions.py L75-L208, main.py L350-L358",
+        "url": "https://github.com/wangyu-ustc/Mem-alpha/blob/294299a37b33d25b35796dcba0678616a78e2d3e/functions.py#L75-L208"
+      },
+      {
+        "step": "Apply",
+        "how": "calls run in order; an insert identical to an existing entry is skipped; core over 512 tokens is truncated",
+        "src": "code memory.py L273-L340",
+        "url": "https://github.com/wangyu-ustc/Mem-alpha/blob/294299a37b33d25b35796dcba0678616a78e2d3e/memory.py#L273-L340"
+      },
+      {
+        "step": "Train (RL only)",
+        "how": "after the last chunk a fixed BM25 + Qwen3-32B reader answers the instance's questions; reward r1 (accuracy) + r2 (share of calls that execute) + 0.05·r3 (1 − memory/input length) + 0.1·r4 (share of writes a Qwen3-32B judge finds valid for their store); GRPO without KL, 8 rollouts",
+        "params": {
+          "β": "0.05",
+          "γ": "0.1 (§4.4, code; §4.1 says 1)",
+          "lr": "1e-6",
+          "batch": "32",
+          "steps": "205"
+        },
+        "src": "paper §3.1.2-3.2, §4.1, App. B; code verl/workers/reward_manager/naive.py L306-L383; train script L7-L8, L47-L50",
+        "url": "https://github.com/wangyu-ustc/Mem-alpha/blob/294299a37b33d25b35796dcba0678616a78e2d3e/verl/workers/reward_manager/naive.py#L306-L383"
+      }
+    ],
+    "read": [
+      {
+        "step": "Search",
+        "round": 1,
+        "input": "question",
+        "scores": "semantic entries and episodic entries, each store ranked on its own",
+        "how": "BM25Okapi over lower-cased word tokens; the core is not searched",
+        "params": {
+          "k": "20 per store"
+        },
+        "src": "paper §3.1.3; code memory_server.py L390-L472, L1496-L1497",
+        "url": "https://github.com/wangyu-ustc/Mem-alpha/blob/294299a37b33d25b35796dcba0678616a78e2d3e/memory_server.py#L390-L472"
+      },
+      {
+        "step": "Fit the budget",
+        "round": 1,
+        "how": "build the prompt; while it exceeds 30K tokens, lower k by one for both stores and rebuild",
+        "params": {
+          "limit": "30,000 tokens"
+        },
+        "src": "code memory_server.py L1496-L1515",
+        "url": "https://github.com/wangyu-ustc/Mem-alpha/blob/294299a37b33d25b35796dcba0678616a78e2d3e/memory_server.py#L1496-L1515"
+      },
+      {
+        "step": "Answer",
+        "round": 0,
+        "how": "frozen Qwen3-32B, thinking disabled, temperature 0.7, up to 2,048 new tokens",
+        "src": "paper App. C.3, Fig. 10; code memory_server.py L1474-L1475, L474-L517",
+        "url": "https://github.com/wangyu-ustc/Mem-alpha/blob/294299a37b33d25b35796dcba0678616a78e2d3e/memory_server.py#L474-L517"
+      }
+    ],
+    "answer_context": {
+      "sees": "the core paragraph + up to 20 semantic and 20 episodic entries",
+      "format": "system prompt with a memory-structure legend, <core_memory>, <semantic_memory> and <episodic_memory> blocks of \"1. text\" lines and fixed instructions; the question is the user message",
+      "includes": [
+        "core paragraph (whole)",
+        "BM25-ranked semantic entries",
+        "BM25-ranked episodic entries"
+      ],
+      "excludes": [
+        "entry ids",
+        "BM25 scores",
+        "raw chunks",
+        "entries beyond the top 20"
+      ],
+      "note": "An optional agentic mode (--agentic_search) starts from top 2 and lets the reader search again; the paper's tables use the default.",
+      "src": "code memory_server.py L318-L338, L474-L517; main.py L624-L630",
+      "url": "https://github.com/wangyu-ustc/Mem-alpha/blob/294299a37b33d25b35796dcba0678616a78e2d3e/memory_server.py#L474-L517"
+    },
+    "compression": [
+      {
+        "what": "stored memory vs validation input (average over 7 sources)",
+        "kept": 7.9,
+        "of": 11.3,
+        "unit": "k tokens",
+        "basis": "Table 1 Mem. column: Mem-α 7.9K vs RAG-Top2 11.3K, where RAG stores all raw chunks (Long-Context: 10.8K)",
+        "src": "paper Table 1",
+        "url": "https://arxiv.org/pdf/2509.25911"
+      },
+      {
+        "what": "stored memory vs MemoryAgentBench input (average over 9 sets)",
+        "kept": 129,
+        "of": 207,
+        "unit": "k tokens",
+        "basis": "Table 2 Mem. column: Mem-α 129K vs RAG-Top2 207K, where RAG stores all raw chunks",
+        "src": "paper Table 2",
+        "url": "https://arxiv.org/pdf/2509.25911"
+      },
+      {
+        "what": "answer context vs stored memory",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported. The code caps the reader prompt below 30K tokens (core + ≤20 + ≤20 entries).",
+        "src": "code memory_server.py L1496-L1515",
+        "url": "https://github.com/wangyu-ustc/Mem-alpha/blob/294299a37b33d25b35796dcba0678616a78e2d3e/memory_server.py#L1496-L1515"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Validation average (Table 1)",
+        "value": "Mem-α 0.642 · Long-Context 0.588 · RAG-Top2 0.567 · MemAgent 0.236 · MEM1 0.111",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "MemoryAgentBench average (Table 2)",
+        "value": "Mem-α 0.592 · RAG-Top2 0.502 · Long-Context 0.461 · MemAgent 0.198 · MEM1 0.071",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "Same memory framework, untrained writer",
+        "value": "Qwen3-4B 0.389 · gpt-4.1-mini 0.517",
+        "src": "paper Table 3"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Content-reward weight γ",
+        "paper": "γ = 1 in §4.1, γ = 0.1 in §4.4",
+        "code": "0.1 in the main training script and README",
+        "src": "train_memory_grpo_qwen3-4b-4node-compression0.05-content0.1.sh L7-L8",
+        "url": "https://github.com/wangyu-ustc/Mem-alpha/blob/294299a37b33d25b35796dcba0678616a78e2d3e/scripts/train_memory_grpo_qwen3-4b-4node-compression0.05-content0.1.sh#L7-L8"
+      },
+      {
+        "topic": "Retrieval k",
+        "paper": "top-k by BM25, k not given",
+        "code": "20 per store, reduced until the prompt is under 30K tokens",
+        "src": "memory_server.py L1496-L1515",
+        "url": "https://github.com/wangyu-ustc/Mem-alpha/blob/294299a37b33d25b35796dcba0678616a78e2d3e/memory_server.py#L1496-L1515"
+      },
+      {
+        "topic": "Memory the writer sees",
+        "paper": "the current memory M(t−1)",
+        "code": "core + the 5 newest entries of each list",
+        "src": "agent.py L40, L1124",
+        "url": "https://github.com/wangyu-ustc/Mem-alpha/blob/294299a37b33d25b35796dcba0678616a78e2d3e/agent.py#L40"
+      }
+    ],
+    "open_questions": [
+      "Read budgets differ across methods: RAG-Top2 answers from 2 raw chunks, Long-Context from the last 32K tokens, Mem-α from up to 40 entries plus the core under 30K tokens; the tables cannot separate better writing from a larger reading window.",
+      "The paper does not report how many updates and deletes the trained writer issues versus inserts, so how much of the gain is organising versus storing more is open."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 260",
+        "body": "<text class=\"fig-t\" x=\"44\" y=\"16\" text-anchor=\"middle\">Chunk t</text><rect class=\"gi-ev\" x=\"8\" y=\"26\" width=\"72\" height=\"96\" rx=\"8\"/><line class=\"gi-t\" x1=\"16\" y1=\"40\" x2=\"70\" y2=\"40\"/><line class=\"gi-t\" x1=\"16\" y1=\"54\" x2=\"70\" y2=\"54\"/><line class=\"gi-t\" x1=\"16\" y1=\"68\" x2=\"70\" y2=\"68\"/><line class=\"gi-t\" x1=\"16\" y1=\"82\" x2=\"70\" y2=\"82\"/><line class=\"gi-t\" x1=\"16\" y1=\"96\" x2=\"70\" y2=\"96\"/><line class=\"gi-t\" x1=\"16\" y1=\"110\" x2=\"70\" y2=\"110\"/><text class=\"fig-s\" x=\"44\" y=\"138\" text-anchor=\"middle\">one of 8-219</text><text class=\"fig-s\" x=\"44\" y=\"150\" text-anchor=\"middle\">chunks, in order</text><path class=\"gi-a\" d=\"M80.0 74.0 L97.0 74.0\"/><polygon class=\"gi-ah\" points=\"104.0,74.0 97.0,78.0 97.0,70.0\"/><rect class=\"gi-llm\" x=\"104\" y=\"44\" width=\"104\" height=\"60\" rx=\"8\"/><text class=\"fig-t\" x=\"156.0\" y=\"72.0\" text-anchor=\"middle\">Memalpha-4B</text><text class=\"fig-s\" x=\"156.0\" y=\"85.0\" text-anchor=\"middle\">Qwen3-4B, RL-trained</text><text class=\"fig-s\" x=\"156\" y=\"120\" text-anchor=\"middle\">prompt shows core +</text><text class=\"fig-s\" x=\"156\" y=\"132\" text-anchor=\"middle\">5 newest entries per list</text><path class=\"gi-a\" d=\"M208.0 74.0 L227.0 74.0\"/><polygon class=\"gi-ah\" points=\"234.0,74.0 227.0,78.0 227.0,70.0\"/><text class=\"fig-t\" x=\"274\" y=\"36\" text-anchor=\"middle\">tool calls</text><rect class=\"gi-r\" x=\"238\" y=\"46\" width=\"72\" height=\"16\" rx=\"4\"/><text class=\"fig-s\" x=\"274\" y=\"58\" text-anchor=\"middle\">insert</text><rect class=\"gi-r\" x=\"238\" y=\"66\" width=\"72\" height=\"16\" rx=\"4\"/><text class=\"fig-s\" x=\"274\" y=\"78\" text-anchor=\"middle\">update</text><rect class=\"gi-r\" x=\"238\" y=\"86\" width=\"72\" height=\"16\" rx=\"4\"/><text class=\"fig-s\" x=\"274\" y=\"98\" text-anchor=\"middle\">delete</text><path class=\"gi-a\" d=\"M310.0 74.0 L327.0 74.0\"/><polygon class=\"gi-ah\" points=\"334.0,74.0 327.0,78.0 327.0,70.0\"/><rect class=\"gi-hi\" x=\"334\" y=\"8\" width=\"220\" height=\"42\" rx=\"8\"/><text class=\"fig-t\" x=\"342\" y=\"24\" text-anchor=\"start\">Core</text><text class=\"fig-s\" x=\"342\" y=\"40\" text-anchor=\"start\">one paragraph, ≤512 tokens, rewritten whole</text><rect class=\"gi-f\" x=\"334\" y=\"56\" width=\"220\" height=\"42\" rx=\"8\"/><text class=\"fig-t\" x=\"342\" y=\"72\" text-anchor=\"start\">Semantic</text><text class=\"fig-s\" x=\"342\" y=\"88\" text-anchor=\"start\">list of facts, each with an id</text><rect class=\"gi-r\" x=\"500\" y=\"64\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"514\" y=\"64\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"528\" y=\"64\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-f\" x=\"334\" y=\"104\" width=\"220\" height=\"42\" rx=\"8\"/><text class=\"fig-t\" x=\"342\" y=\"120\" text-anchor=\"start\">Episodic</text><text class=\"fig-s\" x=\"342\" y=\"136\" text-anchor=\"start\">list of timestamped events</text><rect class=\"gi-r\" x=\"500\" y=\"112\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"514\" y=\"112\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-r\" x=\"528\" y=\"112\" width=\"10\" height=\"10\" rx=\"2\"/><path class=\"gi-a d\" d=\"M444 146 L444 160 L156 160\"/><path class=\"gi-a d\" d=\"M156.0 160.0 L156.0 149.0\"/><polygon class=\"gi-ah\" points=\"156.0,142.0 160.0,149.0 152.0,149.0\"/><text class=\"fig-s\" x=\"300\" y=\"172\" text-anchor=\"middle\">memory so far goes into the prompt for chunk t+1</text><rect class=\"gi-l\" x=\"6\" y=\"184\" width=\"548\" height=\"70\" rx=\"8\"/><text class=\"gi-lbl\" x=\"14\" y=\"198\" text-anchor=\"start\">Training only</text><rect class=\"gi-v fig-soft\" x=\"14\" y=\"206\" width=\"120\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"74.0\" y=\"224.0\" text-anchor=\"middle\">Answer questions</text><text class=\"fig-s\" x=\"74.0\" y=\"237.0\" text-anchor=\"middle\">BM25 + Qwen3-32B</text><path class=\"gi-a\" d=\"M134.0 226.0 L145.0 226.0\"/><polygon class=\"gi-ah\" points=\"152.0,226.0 145.0,230.0 145.0,222.0\"/><rect class=\"gi-w\" x=\"152\" y=\"206\" width=\"190\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"247.0\" y=\"224.0\" text-anchor=\"middle\">Reward r1 + r2 + βr3 + γr4</text><text class=\"fig-s\" x=\"247.0\" y=\"237.0\" text-anchor=\"middle\">β = 0.05, γ = 0.1</text><path class=\"gi-a\" d=\"M342.0 226.0 L353.0 226.0\"/><polygon class=\"gi-ah\" points=\"360.0,226.0 353.0,230.0 353.0,222.0\"/><rect class=\"gi-f\" x=\"360\" y=\"206\" width=\"90\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"405.0\" y=\"224.0\" text-anchor=\"middle\">GRPO</text><text class=\"fig-s\" x=\"405.0\" y=\"237.0\" text-anchor=\"middle\">8 rollouts</text><path class=\"gi-a d\" d=\"M450 226 L540 226\"/><path class=\"gi-a d\" d=\"M540.0 226.0 L540.0 169.0\"/><polygon class=\"gi-ah\" points=\"540.0,162.0 544.0,169.0 536.0,169.0\"/><text class=\"fig-s\" x=\"496\" y=\"220\" text-anchor=\"middle\">update writer</text>",
+        "text": [
+          "Chunks arrive one by one; the RL-trained 4B writer sees the core paragraph and the newest entries and answers with insert, update and delete calls on three stores.",
+          "In training, questions are answered from the final memory by a fixed BM25 + Qwen3-32B reader, and the accuracy plus format, length and content terms is the reward for GRPO."
+        ],
+        "src": "paper §3.1-3.3, Fig. 2-3, App. B; code agent.py L40, functions.py, memory.py L273-L340",
+        "url": "https://github.com/wangyu-ustc/Mem-alpha/blob/294299a37b33d25b35796dcba0678616a78e2d3e/agent.py#L1112-L1125"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 232",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"84\" width=\"62\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"35.0\" y=\"110.0\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M66 100 L80 100 L80 52\"/><path class=\"gi-a\" d=\"M80.0 52.0 L89.0 52.0\"/><polygon class=\"gi-ah\" points=\"96.0,52.0 89.0,56.0 89.0,48.0\"/><path class=\"gi-a\" d=\"M66 112 L80 112 L80 160\"/><path class=\"gi-a\" d=\"M80.0 160.0 L89.0 160.0\"/><polygon class=\"gi-ah\" points=\"96.0,160.0 89.0,164.0 89.0,156.0\"/><rect class=\"gi-v fig-soft\" x=\"96\" y=\"30\" width=\"118\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"155.0\" y=\"50.0\" text-anchor=\"middle\">BM25: semantic</text><text class=\"fig-s\" x=\"155.0\" y=\"63.0\" text-anchor=\"middle\">top 20 facts</text><rect class=\"gi-v fig-soft\" x=\"96\" y=\"138\" width=\"118\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"155.0\" y=\"158.0\" text-anchor=\"middle\">BM25: episodic</text><text class=\"fig-s\" x=\"155.0\" y=\"171.0\" text-anchor=\"middle\">top 20 events</text><rect class=\"gi-hi\" x=\"96\" y=\"196\" width=\"118\" height=\"30\" rx=\"8\"/><text class=\"fig-t\" x=\"155.0\" y=\"215.0\" text-anchor=\"middle\">Core: always in full</text><path class=\"gi-a\" d=\"M214 52 L232 52 L232 100\"/><path class=\"gi-a\" d=\"M232.0 100.0 L239.0 100.0\"/><polygon class=\"gi-ah\" points=\"246.0,100.0 239.0,104.0 239.0,96.0\"/><path class=\"gi-a\" d=\"M214 160 L232 160 L232 112\"/><path class=\"gi-a\" d=\"M232.0 112.0 L239.0 112.0\"/><polygon class=\"gi-ah\" points=\"246.0,112.0 239.0,116.0 239.0,108.0\"/><path class=\"gi-a\" d=\"M214 211 L238 211 L238 120\"/><path class=\"gi-a\" d=\"M238.0 120.0 L239.0 120.0\"/><polygon class=\"gi-ah\" points=\"246.0,120.0 239.0,124.0 239.0,116.0\"/><rect class=\"gi-f\" x=\"246\" y=\"84\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"290.0\" y=\"104.0\" text-anchor=\"middle\">Prompt</text><text class=\"fig-s\" x=\"290.0\" y=\"117.0\" text-anchor=\"middle\">core + 20 + 20</text><path class=\"gi-a\" d=\"M334.0 106.0 L341.0 106.0\"/><polygon class=\"gi-ah\" points=\"348.0,106.0 341.0,110.0 341.0,102.0\"/><polygon class=\"gi-llm\" points=\"400,76 452,106 400,136 348,106\"/><text class=\"fig-t\" x=\"400\" y=\"104\" text-anchor=\"middle\">&gt; 30k tokens?</text><text class=\"fig-s\" x=\"400\" y=\"117\" text-anchor=\"middle\">count</text><path class=\"gi-a\" d=\"M400 76 L400 16 L290 16\"/><path class=\"gi-a\" d=\"M290.0 16.0 L290.0 77.0\"/><polygon class=\"gi-ah\" points=\"290.0,84.0 286.0,77.0 294.0,77.0\"/><text class=\"fig-yes\" x=\"406\" y=\"38\" text-anchor=\"start\">Yes: k − 1 per store</text><path class=\"gi-a\" d=\"M452.0 106.0 L467.0 106.0\"/><polygon class=\"gi-ah\" points=\"474.0,106.0 467.0,110.0 467.0,102.0\"/><text class=\"fig-no\" x=\"463\" y=\"98\" text-anchor=\"middle\">No</text><rect class=\"gi-hi\" x=\"474\" y=\"80\" width=\"80\" height=\"52\" rx=\"8\"/><text class=\"fig-t\" x=\"514.0\" y=\"104.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"514.0\" y=\"117.0\" text-anchor=\"middle\">Qwen3-32B</text><text class=\"fig-s\" x=\"514\" y=\"146\" text-anchor=\"middle\">frozen, no thinking,</text><text class=\"fig-s\" x=\"514\" y=\"158\" text-anchor=\"middle\">temperature 0.7</text><text class=\"fig-s\" x=\"398\" y=\"190\" text-anchor=\"middle\">Entries shown as numbered lines,</text><text class=\"fig-s\" x=\"398\" y=\"203\" text-anchor=\"middle\">without their ids or scores.</text>",
+        "text": [
+          "The question is matched by BM25 against semantic and episodic entries separately, keeping 20 of each; the core paragraph is always included.",
+          "If the prompt would pass 30K tokens, both lists shrink by one until it fits; a frozen Qwen3-32B then answers in one call."
+        ],
+        "src": "paper §3.1.3, Fig. 10; code memory_server.py L390-L517, L1496-L1515",
+        "url": "https://github.com/wangyu-ustc/Mem-alpha/blob/294299a37b33d25b35796dcba0678616a78e2d3e/memory_server.py#L1496-L1515"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Core memory",
+        "value": "one paragraph ≤ 512 tokens",
+        "src": "paper §3.3",
+        "section": "construction"
+      },
+      {
+        "label": "Entries visible while writing",
+        "value": "5 newest per list (code)",
+        "src": "code agent.py L40",
+        "section": "construction"
+      },
+      {
+        "label": "Training data",
+        "value": "562 instances (of 4,139), ≤ 30K tokens each",
+        "src": "paper §3.4, Tables 6-7",
+        "section": "method"
+      },
+      {
+        "label": "Reward weights",
+        "value": "β 0.05 (compression) · γ 0.1 (content)",
+        "src": "paper §4.4; code train script L7-L8",
+        "section": "method"
+      },
+      {
+        "label": "RL run",
+        "value": "GRPO, 8 rollouts, batch 32, lr 1e-6, 205 steps, 32 H100 for 3 days",
+        "src": "paper §4.1",
+        "section": "method"
+      },
+      {
+        "label": "Entries retrieved",
+        "value": "top 20 semantic + top 20 episodic by BM25 (code)",
+        "src": "code memory_server.py L1496",
+        "section": "method"
+      },
+      {
+        "label": "Reader prompt cap",
+        "value": "< 30K tokens (code)",
+        "src": "code memory_server.py L1504-L1515",
+        "section": "method"
+      },
+      {
+        "label": "Stored memory, validation",
+        "value": "7.9K tokens vs 10.8K long-context input",
+        "src": "paper Table 1",
+        "section": "results"
+      },
+      {
+        "label": "Stored memory, MemoryAgentBench",
+        "value": "129K tokens avg vs 207K raw (RAG store); inputs up to 474K",
+        "src": "paper Table 2, §4.2",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Write memory (tool calls)",
+        "model": "Memalpha-4B: Qwen3-4B trained with GRPO",
+        "kind": "llm",
+        "src": "paper §4.1; code config/memalpha-qwen3-4b_agent_0.05-0.1.yaml",
+        "url": "https://github.com/wangyu-ustc/Mem-alpha/blob/294299a37b33d25b35796dcba0678616a78e2d3e/config/memalpha-qwen3-4b_agent_0.05-0.1.yaml"
+      },
+      {
+        "role": "Rank entries",
+        "model": "BM25 (rank_bm25 BM25Okapi), per store",
+        "kind": "retriever",
+        "src": "paper §3.1.3; code memory_server.py L390-L472",
+        "url": "https://github.com/wangyu-ustc/Mem-alpha/blob/294299a37b33d25b35796dcba0678616a78e2d3e/memory_server.py#L390-L472"
+      },
+      {
+        "role": "Fit prompt under 30K",
+        "model": "rule: lower k by one",
+        "kind": "rule",
+        "src": "code memory_server.py L1504-L1515",
+        "url": "https://github.com/wangyu-ustc/Mem-alpha/blob/294299a37b33d25b35796dcba0678616a78e2d3e/memory_server.py#L1504-L1515"
+      },
+      {
+        "role": "Answer",
+        "model": "Qwen3-32B, frozen",
+        "kind": "llm",
+        "src": "paper App. C.3; code memory_server.py L56",
+        "url": "https://github.com/wangyu-ustc/Mem-alpha/blob/294299a37b33d25b35796dcba0678616a78e2d3e/memory_server.py#L56"
+      },
+      {
+        "role": "Judge write validity (training reward r4)",
+        "model": "Qwen3-32B",
+        "kind": "llm",
+        "src": "paper §3.1.2, App. C.3"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "SQuAD",
+        "HotpotQA",
+        "PerLTQA",
+        "TREC-C",
+        "NLU",
+        "PubMed",
+        "BookSum",
+        "Avg.",
+        "Memory"
+      ],
+      "rows": [
+        [
+          "Mem-α (β 0.05, γ 0.1)",
+          "0.786",
+          "0.832",
+          "0.659",
+          "0.666",
+          "0.658",
+          "0.545",
+          "0.187",
+          "0.642",
+          "7.9K"
+        ],
+        [
+          "untrained Qwen3-4B writer",
+          "0.338",
+          "0.637",
+          "0.557",
+          "0.416",
+          "0.381",
+          "0.281",
+          "0.130",
+          "0.389",
+          "3.9K"
+        ],
+        [
+          "gpt-4.1-mini writer",
+          "0.426",
+          "0.749",
+          "0.492",
+          "0.637",
+          "0.519",
+          "0.544",
+          "0.246",
+          "0.517",
+          "4.8K"
+        ],
+        [
+          "β 0.05, γ 0 (no content reward)",
+          "0.701",
+          "0.802",
+          "0.652",
+          "0.423",
+          "0.542",
+          "0.501",
+          "0.183",
+          "0.543",
+          "7.5K"
+        ],
+        [
+          "β 0, γ 0.1 (no compression reward)",
+          "0.817",
+          "0.853",
+          "0.678",
+          "0.605",
+          "0.629",
+          "0.572",
+          "0.183",
+          "0.630",
+          "7.9K"
+        ],
+        [
+          "β 0.2, γ 0.1",
+          "0.822",
+          "0.838",
+          "0.615",
+          "0.558",
+          "0.176",
+          "0.401",
+          "0.193",
+          "0.525",
+          "4.7K"
+        ],
+        [
+          "β 0.4, γ 0.1",
+          "0.691",
+          "0.810",
+          "0.533",
+          "0.475",
+          "0.405",
+          "0.455",
+          "0.201",
+          "0.509",
+          "3.6K"
+        ]
+      ],
+      "src": "paper Tables 3-4 (validation sets; MemoryAgentBench version in Table 9)"
+    },
+    "discussion": {
+      "takeaway": "Train the memory writer, not the reader: RL on end-task QA accuracy teaches a 4B model to fill a core/semantic/episodic memory well enough to beat long-context and RAG baselines, and the skill carries over to inputs more than 13× longer than any seen in training.",
+      "claims": [
+        {
+          "claim": "Mem-α beats all baselines on average, in and out of distribution.",
+          "evidence": "Validation avg 0.642 vs 0.588 (Long-Context) and 0.567 (RAG-Top2); MemoryAgentBench avg 0.592 vs 0.502 and 0.461. Tables 1-2, §4.2"
+        },
+        {
+          "claim": "The gain comes from RL, not the memory design.",
+          "evidence": "Same framework with an untrained Qwen3-4B writer 0.389, with gpt-4.1-mini 0.517, with Mem-α 0.642. Table 3, §4.3"
+        },
+        {
+          "claim": "Trained on ≤30K tokens, it generalises to 400K+.",
+          "evidence": "MemoryAgentBench Multi-Doc inputs reach 474K tokens; Mem-α 0.680 there vs 0.450 RAG-Top2. Table 2, §4.2"
+        },
+        {
+          "claim": "The content-validity reward is essential.",
+          "evidence": "γ = 0 drops the validation average to 0.543 (0.445 on MemoryAgentBench). Table 4, Table 9"
+        },
+        {
+          "claim": "The compression reward trades memory size for accuracy.",
+          "evidence": "β 0.2 and 0.4 give 4.7K and 3.6K tokens at 0.525 and 0.509; β 0.05 shrinks BookSum memory from 4.5K to 2.2K at similar accuracy. Table 4, §4.4"
+        },
+        {
+          "claim": "Flat single-paragraph memories are not enough.",
+          "evidence": "MemAgent 0.198 and MEM1 0.071 on MemoryAgentBench. Table 2, §4.2"
+        }
+      ],
+      "limits": [
+        "The memory architecture is simple; richer systems such as MIRIX could help.",
+        "Training and evaluation run in simulated settings; real databases and production use raise latency, scalability and safety questions.",
+        "Conflict resolution is not trained or evaluated, for lack of realistic benchmarks (§3.4).",
+        "Qwen3-8B could not follow the tool format reliably and was dropped (App. C.1)."
+      ],
+      "limits_src": "paper §5, §3.4, App. C.1",
+      "reading": [
+        "The 'Mem.' columns count everything stored, not what the reader sees: on MemoryAgentBench Mem-α stores 129K tokens on average, but the reader gets at most core + 20 + 20 entries under 30K tokens (code), while RAG-Top2 reads only 2 raw chunks and Long-Context the last 32K tokens.",
+        "Mem-α does not win every set: on MemoryAgentBench it trails Long-Context on NLU (0.710 vs 0.740), Clinic (0.730 vs 0.860) and Banking77 (0.700 vs 0.770) and RAG-Top2 on LME(S*) (0.520 vs 0.581); on validation it trails on HotpotQA, NLU and PubMed.",
+        "Table 1 sets are the validation split of the training sources, so they are in-distribution; Table 2 is the out-of-distribution test.",
+        "MemAgent answers with its own 14B model, while every other method answers with Qwen3-32B.",
+        "When writing, the agent is shown only the 5 newest entries of each list, so updates and deletes can target only recent entries; older contradictions cannot be fixed.",
+        "Embeddings (text-embedding-3-small) are computed for every entry but the default reader ranks by BM25 only.",
+        "The averages mix different metrics (SubEM, EM, keyword hit, LLM judge), and the LME(S*) judge model is not named.",
+        "The paper gives γ = 1 in §4.1 and γ = 0.1 in §4.4; the code and README use 0.1."
+      ]
+    }
+  }
+}

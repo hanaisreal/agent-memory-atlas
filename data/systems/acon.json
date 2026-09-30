@@ -1,0 +1,590 @@
+{
+  "id": "acon",
+  "name": "ACON",
+  "paper": {
+    "title": "ACON: Optimizing Context Compression for Long-horizon LLM Agents",
+    "arxiv": "2510.00615",
+    "url": "https://arxiv.org/abs/2510.00615",
+    "venue": "ICML 2026",
+    "venue_short": "ICML",
+    "track": "main",
+    "year": 2026,
+    "code": "https://github.com/microsoft/acon"
+  },
+  "design": {
+    "construction": {
+      "unit": "one structured history summary (REASONING, VARS, TODO, COMPLETED, GUARDRAILS in the optimized AppWorld guideline); optionally a refined version of each long observation",
+      "kept_as": "LLM-compressed text that replaces the raw history; the last action-observation pair stays raw",
+      "processing": "compressor LLM follows a natural-language guideline optimized offline from contrasts between full-context and compressed runs",
+      "trigger": "buffer-full",
+      "writer": "compressor LLM (gpt-4.1, gpt-4.1-mini, or a LoRA-distilled Qwen3-14B, Qwen3-8B or Phi-4)"
+    },
+    "organization": {
+      "structure": "single summary block in the prompt, followed by the kept and newer turns",
+      "stores": "none outside the agent's context",
+      "index": null
+    },
+    "management": {
+      "operations": "when history passes the threshold, the compressor rewrites previous summary + older turns into a new summary that replaces the old one and a new session starts",
+      "conflicts": "resolved implicitly by the rewrite",
+      "forgetting": "raw turns are dropped after being summarized; long observations are replaced by their refined version",
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": null,
+      "candidates": "none: the whole compressed context is in the prompt",
+      "selection": "none",
+      "budget": "history compressed above 4,096 tokens (AppWorld, OfficeBench) or 2,048 (QA); observations above 1,024 / 512 / 400 tokens"
+    },
+    "use": {
+      "context": "system prompt + task + <HISTORY_SUMMARY> + last kept turn and newer turns (+ refined observation in observation mode)",
+      "reasoning": "ReAct agent: one thought and action per step"
+    },
+    "control": {
+      "construction": "feedback-optimized",
+      "management": "fixed-rule",
+      "retrieval": "none"
+    }
+  },
+  "classify": {
+    "structure": "flat",
+    "index": "none",
+    "management": "consolidate",
+    "candidates": "read everything",
+    "decides": "reads everything",
+    "note": "Memory is one rolling summary inside the agent's prompt; each compression rewrites the previous summary together with the older turns. The contribution is how the compression instruction is learned, not how memory is searched."
+  },
+  "tags": {
+    "fidelity": "compressed",
+    "structure": [
+      "flat"
+    ],
+    "write_time": [
+      "summarize",
+      "filter",
+      "learned"
+    ],
+    "selection": [
+      "full-context"
+    ],
+    "memory_type": [
+      "working"
+    ],
+    "learning": "mixed",
+    "domain": [
+      "general",
+      "web"
+    ]
+  },
+  "stages": {
+    "ingestion": "Each agent step adds a thought/action and the tool's observation to the interaction history.",
+    "construction": "When the history passes a token threshold, a compressor LLM rewrites it into a structured summary; separately, any observation longer than its own threshold is rewritten into a shorter refined observation before it enters the history.",
+    "organization": "No store outside the prompt: a new session holds the system prompt, the task, the summary and the last raw action-observation pair.",
+    "update": "Each later compression reads the previous summary plus the turns since then and writes a summary that replaces it.",
+    "retrieval": "",
+    "answer": "The ReAct agent reads its whole compressed context at every step.",
+    "learning": "The compressor's guideline is optimized offline: o3 reads trajectories where full context succeeded but compression failed, writes feedback, and proposes 5 revised guidelines, of which the best on training tasks is kept (UT); an optional second pass trims content that successful compressed runs never used (CO). The compressor can then be distilled into a small model with LoRA."
+  },
+  "summary": "Compresses a long-horizon agent's history and long tool outputs with an LLM whose instruction is refined offline from failures caused by compression, then distils that compressor into small models.",
+  "verified": false,
+  "notes": "Venue checked: ICML 2026 main-conference poster (icml.cc/virtual/2026/poster/66270; PDF footer 'Proceedings of the 43rd ICML, PMLR 306'). Paper text from arXiv v3 (1 Jun 2026). Code: official repo microsoft/acon at d63f9ae (2025-10-14), the only commit after the initial one; it predates v3 by eight months. Two variants: history compression and observation compression, each after the UT step or UT+CO steps; they are run separately in the main tables (combined in App. Table 14).",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2510.00615 v3 (PDF read 2026-09-30)",
+      "code": "https://github.com/microsoft/acon/tree/d63f9ae18959dc7215ff62899c94c5e8c56847ae/",
+      "code_note": "Official repo named in the paper. d63f9ae (2025-10-14) is the latest of two commits, both from October 2025, so it matches arXiv v1 rather than the ICML version (v3, 2026-06). The repo ships the unoptimized starting guidelines and the optimizer scripts, not the optimized guidelines; those are printed in App. D."
+    },
+    "headline": [
+      "ACON is prompt optimization for a summarizer: the memory itself is one rolling summary that replaces the raw history once it passes 4,096 tokens.",
+      "The guideline is learned from contrast pairs: tasks the agent solves with full context but fails after compression.",
+      "On AppWorld with gpt-4.1, UTCO history compression keeps accuracy (56.5 vs 56.0) at 26% lower peak tokens (7.33k vs 9.93k)."
+    ],
+    "units": [
+      {
+        "name": "History summary",
+        "role": "replaces all interaction turns except the most recent one",
+        "made_by": "compressor LLM with the optimized guideline",
+        "fields": [
+          {
+            "name": "REASONING",
+            "what": "progress, decisions and why",
+            "kept_as": "summarized",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper Prompt D.6",
+            "url": "https://arxiv.org/pdf/2510.00615"
+          },
+          {
+            "name": "VARS",
+            "what": "runtime values the next session must re-declare (tokens, ids, page indexes)",
+            "kept_as": "extracted",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper Prompt D.6",
+            "url": "https://arxiv.org/pdf/2510.00615"
+          },
+          {
+            "name": "TODO / COMPLETED",
+            "what": "pending and finished subtasks",
+            "kept_as": "summarized",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper Prompt D.6",
+            "url": "https://arxiv.org/pdf/2510.00615"
+          },
+          {
+            "name": "GUARDRAILS",
+            "what": "reminders that prevent repeated errors",
+            "kept_as": "summarized",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper Prompt D.6",
+            "url": "https://arxiv.org/pdf/2510.00615"
+          }
+        ]
+      },
+      {
+        "name": "Kept turn",
+        "role": "latest action and observation, left raw",
+        "made_by": "rule (preserve_last_k_turns = 1)",
+        "fields": [
+          {
+            "name": "last action + observation",
+            "what": "the most recent step, verbatim",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper App. B.3; code memory.py L385-L413",
+            "url": "https://github.com/microsoft/acon/blob/d63f9ae18959dc7215ff62899c94c5e8c56847ae/src/productive_agents/agents/memory.py#L385-L413"
+          }
+        ]
+      },
+      {
+        "name": "Refined observation",
+        "role": "shorter version of a long tool output (observation mode)",
+        "made_by": "compressor LLM, sees task + current session history + the observation",
+        "fields": [
+          {
+            "name": "refined observation",
+            "what": "'minimal but sufficient' part of the observation for the next steps",
+            "kept_as": "extracted",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code prompt_user.jinja L1-L22; obs_optimizer.py L78-L117",
+            "url": "https://github.com/microsoft/acon/blob/d63f9ae18959dc7215ff62899c94c5e8c56847ae/experiments/appworld/prompts/context_opt/prompt_user.jinja#L1-L22"
+          }
+        ]
+      },
+      {
+        "name": "Compression guideline",
+        "role": "the instruction the compressor follows; the thing ACON optimizes",
+        "made_by": "o3 optimizer from contrastive feedback",
+        "fields": [
+          {
+            "name": "guideline P*",
+            "what": "natural-language prompt, one per benchmark and compression type",
+            "kept_as": "rewritten",
+            "used_for": [],
+            "src": "paper §3.3, App. D",
+            "url": "https://arxiv.org/pdf/2510.00615"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Check length",
+        "how": "count tokens of previous summary + turns except the task prompt and the last turn",
+        "params": {
+          "T_hist": "4,096 AppWorld/OfficeBench, 2,048 QA"
+        },
+        "src": "paper App. B.3; code memory.py L415-L427, history_optimizer.py L135-L161",
+        "url": "https://github.com/microsoft/acon/blob/d63f9ae18959dc7215ff62899c94c5e8c56847ae/src/productive_agents/ctxopt/history_optimizer.py#L135-L161"
+      },
+      {
+        "step": "Compress history",
+        "how": "compressor reads the task, the previous summary and the older turns and writes a new summary",
+        "src": "code history_optimizer.py L83-L196",
+        "url": "https://github.com/microsoft/acon/blob/d63f9ae18959dc7215ff62899c94c5e8c56847ae/src/productive_agents/ctxopt/history_optimizer.py#L83-L196"
+      },
+      {
+        "step": "New session",
+        "how": "system prompt + task + <HISTORY_SUMMARY> (replacing the previous one) + last action-observation pair",
+        "params": {
+          "kept turns": "1",
+          "rule": "reset"
+        },
+        "src": "code memory.py L441-L498",
+        "url": "https://github.com/microsoft/acon/blob/d63f9ae18959dc7215ff62899c94c5e8c56847ae/src/productive_agents/agents/memory.py#L441-L498"
+      },
+      {
+        "step": "Compress observation",
+        "how": "if the new observation is longer than T_obs, the compressor rewrites it given the task and the current session",
+        "params": {
+          "T_obs": "1,024 AppWorld, 512 OfficeBench, 400 QA"
+        },
+        "src": "paper Eq. 4, App. B.3; code memory.py L320-L355",
+        "url": "https://github.com/microsoft/acon/blob/d63f9ae18959dc7215ff62899c94c5e8c56847ae/src/productive_agents/agents/memory.py#L320-L355"
+      },
+      {
+        "step": "Optimize guideline (offline, UT)",
+        "how": "run training tasks with and without compression; for pairs where only full context succeeds, o3 writes feedback; o3 proposes 5 guidelines from all feedback; keep the best on training tasks",
+        "params": {
+          "optimizer": "o3",
+          "candidates": "5",
+          "rounds": "1"
+        },
+        "src": "paper §3.3, Alg. 1, App. B.3; code unified_update_history_prompt.py",
+        "url": "https://github.com/microsoft/acon/blob/d63f9ae18959dc7215ff62899c94c5e8c56847ae/experiments/prompt_optimizer/unified_update_history_prompt.py"
+      },
+      {
+        "step": "Optimize guideline (offline, CO)",
+        "how": "from successful compressed runs, o3 notes what was actually used; the guideline is revised toward shorter summaries",
+        "src": "paper §3.3, Prompt D.3-D.4",
+        "url": "https://arxiv.org/pdf/2510.00615"
+      },
+      {
+        "step": "Distil (optional)",
+        "how": "LoRA fine-tune a small model on the teacher's compressions from tasks the teacher solved",
+        "params": {
+          "rank": "16",
+          "alpha": "32",
+          "epochs": "3",
+          "lr": "1e-4"
+        },
+        "src": "paper §3.4, App. B.3",
+        "url": "https://arxiv.org/pdf/2510.00615"
+      }
+    ],
+    "read": [
+      {
+        "step": "Read context",
+        "round": 0,
+        "input": "whole prompt",
+        "how": "the agent reads everything: no retrieval step",
+        "src": "paper Eq. 1, §3.2",
+        "url": "https://arxiv.org/pdf/2510.00615"
+      }
+    ],
+    "answer_context": {
+      "sees": "system prompt, task, the current <HISTORY_SUMMARY>, the last raw action-observation pair and every turn since",
+      "format": "first user message = task + '<HISTORY_SUMMARY> ... </HISTORY_SUMMARY>', then the kept and newer turns as chat messages",
+      "excludes": [
+        "raw turns that were summarized",
+        "earlier summaries",
+        "raw long observations (observation mode)"
+      ],
+      "src": "code memory.py L441-L498",
+      "url": "https://github.com/microsoft/acon/blob/d63f9ae18959dc7215ff62899c94c5e8c56847ae/src/productive_agents/agents/memory.py#L441-L498",
+      "includes": [
+        "one structured summary",
+        "the most recent raw turn"
+      ]
+    },
+    "compression": [
+      {
+        "what": "peak context, AppWorld history compression (UTCO) vs no compression",
+        "kept": 7.33,
+        "of": 9.93,
+        "unit": "k tokens",
+        "basis": "Table 1 average peak input tokens, gpt-4.1 agent and compressor",
+        "src": "paper Table 1",
+        "url": "https://arxiv.org/pdf/2510.00615"
+      },
+      {
+        "what": "peak context, 8-objective QA history compression (UTCO) vs no compression",
+        "kept": 4.65,
+        "of": 10.35,
+        "unit": "k tokens",
+        "basis": "Table 2b peak input tokens",
+        "src": "paper Table 2",
+        "url": "https://arxiv.org/pdf/2510.00615"
+      },
+      {
+        "what": "one summary vs the turns it replaces",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported per compression; the UTCO guideline asks for well under 1,500 characters.",
+        "src": "paper Prompt D.7",
+        "url": "https://arxiv.org/pdf/2510.00615"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "AppWorld accuracy, no compression / ACON history UTCO",
+        "value": "56.0 / 56.5",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "Distilled compressors keep of the teacher's accuracy",
+        "value": "over 95%",
+        "src": "paper §4.3, Fig. 4"
+      },
+      {
+        "label": "Compression cost per example",
+        "value": "$0.045 gpt-4.1 · $0.014 gpt-4.1-mini · $0.0004 distilled Qwen3-14B",
+        "src": "paper §4.5"
+      },
+      {
+        "label": "Guideline optimization cost",
+        "value": "under $2 per benchmark (o3); rollouts about $20 on AppWorld",
+        "src": "paper §4.5, App. C.2"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Observation threshold on AppWorld",
+        "paper": "T_obs = 1,024",
+        "code": "the checked-in config uses 256, while the pipeline that writes configs for optimized guidelines uses 1,024",
+        "src": "configs/context_opt/gpt-4.1_obs.yaml L7; run_ctxopt_pipeline.py L80",
+        "url": "https://github.com/microsoft/acon/blob/d63f9ae18959dc7215ff62899c94c5e8c56847ae/experiments/appworld/run_ctxopt_pipeline.py#L70-L84"
+      },
+      {
+        "topic": "What the history threshold measures",
+        "paper": "length of the history h_t (Eq. 3)",
+        "code": "tokens of the previous summary + turns since, excluding the task prompt and the kept last turn",
+        "src": "memory.py L385-L427",
+        "url": "https://github.com/microsoft/acon/blob/d63f9ae18959dc7215ff62899c94c5e8c56847ae/src/productive_agents/agents/memory.py#L385-L427"
+      },
+      {
+        "topic": "Optimized guidelines",
+        "paper": "given in App. D",
+        "code": "only the starting guideline (identical to Prompt D.5) is in the repo",
+        "src": "prompt_history_v2.jinja",
+        "url": "https://github.com/microsoft/acon/blob/d63f9ae18959dc7215ff62899c94c5e8c56847ae/experiments/appworld/prompts/context_opt/prompt_history_v2.jinja"
+      }
+    ],
+    "open_questions": [
+      "Main tables apply history or observation compression alone; combining them (App. Table 14) drops AppWorld accuracy to 44.6-45.8, so the two do not simply add up.",
+      "A second UT round after UT+CO lowers AppWorld accuracy to 47.0 (Table 14), and only one round is run; how stable the optimization is across seeds or reruns is not reported.",
+      "FIFO and retrieval baselines keep a fixed number of turns rather than matching ACON's token budget, so part of the gap may be the budget rather than the guideline."
+    ],
+    "glance": [
+      {
+        "q": "What is stored?",
+        "a": "One structured summary of the history so far, plus the last raw step; in observation mode, shortened tool outputs.",
+        "src": "paper Prompt D.6; code memory.py L441-L498",
+        "url": "https://github.com/microsoft/acon/blob/d63f9ae18959dc7215ff62899c94c5e8c56847ae/src/productive_agents/agents/memory.py#L441-L498"
+      },
+      {
+        "q": "When is it written?",
+        "a": "Whenever the older history passes 4,096 tokens (2,048 on QA); observations are shortened when longer than 1,024 / 512 / 400 tokens.",
+        "src": "paper App. B.3",
+        "url": "https://arxiv.org/pdf/2510.00615"
+      },
+      {
+        "q": "Is there retrieval?",
+        "a": "No. The agent reads its whole compressed context every step.",
+        "src": "paper §3.2",
+        "url": "https://arxiv.org/pdf/2510.00615"
+      },
+      {
+        "q": "What is learned?",
+        "a": "The compressor's instruction, by o3 reading failures caused by compression; optionally the compressor is then distilled into a small model.",
+        "src": "paper §3.3-3.4",
+        "url": "https://arxiv.org/pdf/2510.00615"
+      }
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 254",
+        "body": "<text class=\"fig-t\" x=\"54\" y=\"14\" text-anchor=\"middle\">Agent context</text><rect class=\"gi-f\" x=\"8\" y=\"22\" width=\"92\" height=\"16\" rx=\"5\"/><text class=\"fig-s\" x=\"54\" y=\"34\" text-anchor=\"middle\">system + task</text><rect class=\"gi-ev\" x=\"8\" y=\"42\" width=\"92\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"15\" y1=\"49\" x2=\"86\" y2=\"49\"/><rect class=\"gi-ev\" x=\"8\" y=\"60\" width=\"92\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"15\" y1=\"67\" x2=\"86\" y2=\"67\"/><rect class=\"gi-ev\" x=\"8\" y=\"78\" width=\"92\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"15\" y1=\"85\" x2=\"86\" y2=\"85\"/><rect class=\"gi-ev\" x=\"8\" y=\"96\" width=\"92\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"15\" y1=\"103\" x2=\"86\" y2=\"103\"/><rect class=\"gi-hi\" x=\"8\" y=\"114\" width=\"92\" height=\"16\" rx=\"5\"/><text class=\"fig-s\" x=\"54\" y=\"126\" text-anchor=\"middle\">last action + obs</text><path class=\"gi-a\" d=\"M104 42 L108 42 L108 110 L104 110\"/><text class=\"fig-s\" x=\"54\" y=\"146\" text-anchor=\"middle\">older turns &gt; 4,096</text><text class=\"fig-s\" x=\"54\" y=\"158\" text-anchor=\"middle\">tokens trigger it</text><path class=\"gi-a\" d=\"M108 76 L143 76\"/><polygon class=\"gi-ah\" points=\"150,76 143,72 143,80\"/><rect class=\"gi-llm\" x=\"150\" y=\"54\" width=\"100\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"200\" y=\"74\" text-anchor=\"middle\">Compressor</text><text class=\"fig-s\" x=\"200\" y=\"87\" text-anchor=\"middle\">LLM + guideline P*</text><text class=\"fig-s\" x=\"200\" y=\"46\" text-anchor=\"middle\">also reads the old summary</text><path class=\"gi-a\" d=\"M250 76 L265 76\"/><polygon class=\"gi-ah\" points=\"272,76 265,72 265,80\"/><rect class=\"gi-ev\" x=\"272\" y=\"18\" width=\"124\" height=\"116\" rx=\"10\"/><text class=\"fig-t\" x=\"334\" y=\"34\" text-anchor=\"middle\">HISTORY_SUMMARY</text><text class=\"fig-s\" x=\"282\" y=\"54\" text-anchor=\"start\">1 REASONING</text><text class=\"fig-s\" x=\"282\" y=\"71\" text-anchor=\"start\">2 VARS: name | value</text><text class=\"fig-s\" x=\"282\" y=\"88\" text-anchor=\"start\">3 TODO</text><text class=\"fig-s\" x=\"282\" y=\"105\" text-anchor=\"start\">4 COMPLETED</text><text class=\"fig-s\" x=\"282\" y=\"122\" text-anchor=\"start\">5 GUARDRAILS</text><path class=\"gi-a\" d=\"M396 76 L407 76\"/><polygon class=\"gi-ah\" points=\"414,76 407,72 407,80\"/><text class=\"fig-t\" x=\"484\" y=\"14\" text-anchor=\"middle\">Next session</text><rect class=\"gi-f\" x=\"414\" y=\"22\" width=\"140\" height=\"18\" rx=\"5\"/><text class=\"fig-s\" x=\"484\" y=\"35\" text-anchor=\"middle\">system + task</text><rect class=\"gi-hi\" x=\"414\" y=\"44\" width=\"140\" height=\"18\" rx=\"5\"/><text class=\"fig-s\" x=\"484\" y=\"57\" text-anchor=\"middle\">summary (replaces old one)</text><rect class=\"gi-ev\" x=\"414\" y=\"66\" width=\"140\" height=\"18\" rx=\"5\"/><text class=\"fig-s\" x=\"484\" y=\"79\" text-anchor=\"middle\">last action + obs, raw</text><rect class=\"gi-ev d\" x=\"414\" y=\"88\" width=\"140\" height=\"18\" rx=\"5\"/><text class=\"fig-s\" x=\"484\" y=\"101\" text-anchor=\"middle\">new turns append here</text><rect class=\"gi-ev d\" x=\"4\" y=\"172\" width=\"552\" height=\"76\" rx=\"10\"/><text class=\"fig-t\" x=\"14\" y=\"188\" text-anchor=\"start\">Guideline optimization, offline on training tasks</text><rect class=\"gi-f\" x=\"14\" y=\"196\" width=\"90\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"59\" y=\"214\" text-anchor=\"middle\">Roll out</text><text class=\"fig-s\" x=\"59\" y=\"227\" text-anchor=\"middle\">with and without</text><path class=\"gi-a\" d=\"M104 216 L111 216\"/><polygon class=\"gi-ah\" points=\"118,216 111,212 111,220\"/><rect class=\"gi-f\" x=\"118\" y=\"196\" width=\"118\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"177\" y=\"214\" text-anchor=\"middle\">Contrast pairs</text><text class=\"fig-s\" x=\"177\" y=\"227\" text-anchor=\"middle\">compression broke it</text><path class=\"gi-a\" d=\"M236 216 L241 216\"/><polygon class=\"gi-ah\" points=\"248,216 241,212 241,220\"/><rect class=\"gi-llm\" x=\"248\" y=\"196\" width=\"86\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"291\" y=\"214\" text-anchor=\"middle\">o3 feedback</text><text class=\"fig-s\" x=\"291\" y=\"227\" text-anchor=\"middle\">what was lost</text><path class=\"gi-a\" d=\"M334 216 L341 216\"/><polygon class=\"gi-ah\" points=\"348,216 341,212 341,220\"/><rect class=\"gi-llm\" x=\"348\" y=\"196\" width=\"90\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"393\" y=\"214\" text-anchor=\"middle\">o3 rewrites</text><text class=\"fig-s\" x=\"393\" y=\"227\" text-anchor=\"middle\">5 candidates</text><path class=\"gi-a\" d=\"M438 216 L445 216\"/><polygon class=\"gi-ah\" points=\"452,216 445,212 445,220\"/><rect class=\"gi-f\" x=\"452\" y=\"196\" width=\"96\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"500\" y=\"214\" text-anchor=\"middle\">Pick best</text><text class=\"fig-s\" x=\"500\" y=\"227\" text-anchor=\"middle\">on training tasks</text><path class=\"gi-a d\" d=\"M500 196 L500 150 L200 150 L200 105\"/><polygon class=\"gi-ah\" points=\"200,98 196,105 204,105\"/><text class=\"fig-s\" x=\"350\" y=\"146\" text-anchor=\"middle\">P*; a second pass (CO) cuts what successful runs never used</text>",
+        "text": [
+          "When the older turns pass 4,096 tokens, a compressor rewrites them, with the previous summary, into one structured summary; the agent restarts from the task, that summary and its last raw step.",
+          "The compressor's guideline is optimized offline by o3 from training tasks that full context solved but compression broke."
+        ],
+        "src": "paper §3.2-3.3, App. B.3, Prompt D.6; code memory.py L357-L498",
+        "url": "https://github.com/microsoft/acon/blob/d63f9ae18959dc7215ff62899c94c5e8c56847ae/src/productive_agents/agents/memory.py#L357-L498"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 212",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"30\" width=\"80\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"44\" y=\"50\" text-anchor=\"middle\">Tool output</text><text class=\"fig-s\" x=\"44\" y=\"63\" text-anchor=\"middle\">new observation</text><path class=\"gi-a\" d=\"M84 52 L89 52\"/><polygon class=\"gi-ah\" points=\"96,52 89,48 89,56\"/><polygon class=\"gi-llm\" points=\"136,26 176,52 136,78 96,52\"/><text class=\"fig-t\" x=\"136\" y=\"51\" text-anchor=\"middle\">Long?</text><text class=\"fig-s\" x=\"136\" y=\"63\" text-anchor=\"middle\">&gt; T_obs</text><path class=\"gi-a\" d=\"M176 52 L191 52\"/><polygon class=\"gi-ah\" points=\"198,52 191,48 191,56\"/><text class=\"fig-yes\" x=\"187\" y=\"44\" text-anchor=\"middle\">Yes</text><rect class=\"gi-llm\" x=\"198\" y=\"30\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"246\" y=\"50\" text-anchor=\"middle\">Compressor</text><text class=\"fig-s\" x=\"246\" y=\"63\" text-anchor=\"middle\">refined obs.</text><path class=\"gi-a\" d=\"M294 52 L300 52 L300 104 L303 104\"/><polygon class=\"gi-ah\" points=\"310,104 303,100 303,108\"/><path class=\"gi-a\" d=\"M136 78 L136 128 L370 128 L370 120\"/><polygon class=\"gi-ah\" points=\"370,113 366,120 374,120\"/><text class=\"fig-no\" x=\"142\" y=\"100\" text-anchor=\"start\">No: kept raw</text><text class=\"fig-t\" x=\"370\" y=\"16\" text-anchor=\"middle\">Agent reads every step</text><rect class=\"gi-f\" x=\"310\" y=\"26\" width=\"120\" height=\"18\" rx=\"5\"/><text class=\"fig-s\" x=\"370\" y=\"39\" text-anchor=\"middle\">system prompt + task</text><rect class=\"gi-hi\" x=\"310\" y=\"48\" width=\"120\" height=\"18\" rx=\"5\"/><text class=\"fig-s\" x=\"370\" y=\"61\" text-anchor=\"middle\">HISTORY_SUMMARY</text><rect class=\"gi-ev\" x=\"310\" y=\"70\" width=\"120\" height=\"18\" rx=\"5\"/><text class=\"fig-s\" x=\"370\" y=\"83\" text-anchor=\"middle\">kept and newer turns</text><rect class=\"gi-ev\" x=\"310\" y=\"92\" width=\"120\" height=\"18\" rx=\"5\"/><text class=\"fig-s\" x=\"370\" y=\"105\" text-anchor=\"middle\">latest observation</text><path class=\"gi-a\" d=\"M430 70 L445 70\"/><polygon class=\"gi-ah\" points=\"452,70 445,66 445,74\"/><rect class=\"gi-llm\" x=\"452\" y=\"48\" width=\"100\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"502\" y=\"68\" text-anchor=\"middle\">Agent LLM</text><text class=\"fig-s\" x=\"502\" y=\"81\" text-anchor=\"middle\">thought + action</text><path class=\"gi-a\" d=\"M502 92 L502 150 L44 150 L44 81\"/><polygon class=\"gi-ah\" points=\"44,74 40,81 48,81\"/><text class=\"fig-s\" x=\"270\" y=\"146\" text-anchor=\"middle\">action runs in the environment</text><text class=\"fig-s\" x=\"280\" y=\"176\" text-anchor=\"middle\">No search: the agent reads its whole compressed context at every step.</text><text class=\"fig-s\" x=\"280\" y=\"190\" text-anchor=\"middle\">T_obs = 1,024 tokens AppWorld · 512 OfficeBench · 400 multi-objective QA</text><text class=\"fig-s\" x=\"280\" y=\"204\" text-anchor=\"middle\">Compressor: gpt-4.1, or a LoRA-distilled Qwen3-14B, Qwen3-8B or Phi-4</text>",
+        "text": [
+          "There is no search: at every step the agent reads its whole context, with the summary in place of old turns.",
+          "In observation mode, a tool output longer than T_obs is first rewritten by the compressor into a shorter refined observation."
+        ],
+        "src": "paper §3.2 Eq. 1-4, App. B.3; code memory.py L320-L355",
+        "url": "https://github.com/microsoft/acon/blob/d63f9ae18959dc7215ff62899c94c5e8c56847ae/src/productive_agents/agents/memory.py#L320-L355"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "History threshold",
+        "value": "4,096 tokens AppWorld, OfficeBench · 2,048 QA",
+        "src": "paper App. B.3",
+        "section": "construction"
+      },
+      {
+        "label": "Observation threshold",
+        "value": "1,024 AppWorld · 512 OfficeBench · 400 QA",
+        "src": "paper App. B.3",
+        "section": "construction"
+      },
+      {
+        "label": "Raw turns kept",
+        "value": "last 1 action + observation",
+        "src": "paper App. B.3",
+        "section": "construction"
+      },
+      {
+        "label": "Guideline search",
+        "value": "o3, 5 candidates, 1 UT + 1 CO step",
+        "src": "paper App. B.3",
+        "section": "method"
+      },
+      {
+        "label": "Training tasks",
+        "value": "90 AppWorld · 92 OfficeBench · 100 QA",
+        "src": "paper App. B.1",
+        "section": "method"
+      },
+      {
+        "label": "Peak tokens cut",
+        "value": "26-54%",
+        "src": "paper §1, Tables 1-2",
+        "section": "results"
+      },
+      {
+        "label": "API cost per AppWorld task",
+        "value": "$0.331 → $0.285 (history), $0.272 (observation)",
+        "src": "paper Table 4",
+        "section": "results"
+      },
+      {
+        "label": "Median latency per task",
+        "value": "73.2 s → 87.7 s (history), 101.9 s (observation)",
+        "src": "paper Table 4",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "AppWorld accuracy"
+      ],
+      "rows": [
+        [
+          "o3 optimizer, contrastive feedback (default, UT)",
+          "51.2"
+        ],
+        [
+          "o3, failed runs only (no contrast)",
+          "50.6"
+        ],
+        [
+          "gpt-4.1 optimizer",
+          "47.6"
+        ],
+        [
+          "gpt-5 optimizer",
+          "50.6"
+        ],
+        [
+          "extra UT round after UT+CO",
+          "47.0"
+        ],
+        [
+          "history + observation, Prompting",
+          "36.3"
+        ],
+        [
+          "history + observation, ACON",
+          "45.8"
+        ],
+        [
+          "history + observation, ACON UTCO",
+          "44.6"
+        ]
+      ],
+      "src": "paper Table 3 and App. Table 14 (gpt-4.1 agent and compressor, test-normal)"
+    },
+    "components": [
+      {
+        "role": "Agent",
+        "model": "gpt-4.1 (also gpt-4.1-mini, gpt-5-chat, distilled Qwen3-14B)",
+        "kind": "llm",
+        "src": "paper §4, App. C.1"
+      },
+      {
+        "role": "Compressor",
+        "model": "gpt-4.1; distilled Qwen3-14B, Qwen3-8B, Phi-4; gpt-4.1-mini",
+        "kind": "llm",
+        "src": "paper §4.3"
+      },
+      {
+        "role": "Guideline feedback and rewrite",
+        "model": "o3",
+        "kind": "llm",
+        "src": "paper App. B.3"
+      },
+      {
+        "role": "When to compress",
+        "model": "token-length thresholds",
+        "kind": "rule",
+        "src": "paper Eq. 3-4"
+      }
+    ],
+    "discussion": {
+      "takeaway": "An agent's history can be replaced by an LLM summary without losing accuracy if the summarizer's instruction is tuned on the failures that compression causes; the tuned summarizer can run on a small model.",
+      "claims": [
+        {
+          "claim": "ACON cuts peak tokens by 26-54% while beating other compression baselines.",
+          "evidence": "AppWorld history UTCO 56.5 at 7.33k peak vs 56.0 at 9.93k with no compression and 43.5 for naive prompting (Table 1); 8-objective QA peak 10.35k → 4.65k (Table 2b)."
+        },
+        {
+          "claim": "Optimized compressors distil into small models with little loss.",
+          "evidence": "Qwen3-14B, Qwen3-8B and Phi-4 compressors keep over 95% of the gpt-4.1 teacher's accuracy. Fig. 4"
+        },
+        {
+          "claim": "Compression helps small agents by removing distraction.",
+          "evidence": "Distilled Qwen3-14B agent: AppWorld 25.6 → 33.9 (+32%), 8-objective QA EM 0.158 → 0.230 (+46%). Fig. 5, §4.4"
+        },
+        {
+          "claim": "Contrastive feedback and a strong optimizer matter.",
+          "evidence": "o3 with contrast 51.2 vs 50.6 without contrast and 47.6 with gpt-4.1 as optimizer. Table 3"
+        },
+        {
+          "claim": "Moderate thresholds give the best trade-off.",
+          "evidence": "4,096 for history and 1,024 for observations on AppWorld. Fig. 6"
+        }
+      ],
+      "limits": [
+        "Experiments mostly use GPT models; other model families are untested.",
+        "Benchmarks are controlled environments, not live deployments.",
+        "Natural-language guideline optimization has no convergence guarantee.",
+        "Distilled students still trail the teacher; training data is about 100 examples per domain.",
+        "Compression adds latency and invalidates the KV cache of the history."
+      ],
+      "limits_src": "paper §5, App. A",
+      "reading": [
+        "UT beats UTCO on OfficeBench (74.74 vs 72.63) and QA EM (0.373 vs 0.335) but loses on AppWorld (51.2 vs 56.5); the paper picks the variant per environment after seeing test results, so no single setting wins everywhere.",
+        "On AppWorld only UTCO history compression matches no compression (56.5 vs 56.0); UT history (51.2) and both observation variants (47.0, 53.6) stay below it.",
+        "The FIFO baseline keeps the last 5 turns and Retrieval keeps 4 retrieved turns plus the last one; these are not set to ACON's token budget, and FIFO scores 84.2 on easy AppWorld tasks, above ACON UT (77.2).",
+        "Latency per task rises with compression (73.2 s → 87.7 s history, 101.9 s observation) even though API cost falls (Table 4).",
+        "The public code predates the ICML version by eight months and does not include the optimized guidelines used for the tables."
+      ]
+    },
+    "abstract": {
+      "text": "Long-horizon LLM agents accumulate an ever-growing log of actions and observations, which raises memory cost and distracts the model. ACON compresses both the interaction history and long observations with an LLM, and improves the compressor's instructions in natural language: on training tasks, it compares runs that succeed with full context against runs that fail after compression, and an optimizer LLM rewrites the guideline from that feedback. The optimized compressor can then be distilled into smaller models. On AppWorld, OfficeBench and multi-objective QA it lowers peak tokens by 26-54% while doing better than other compression methods, and it helps small models act as agents.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2510.00615"
+    },
+    "sections": {
+      "Memory architecture": "§3",
+      "Results": "§4.2-4.4",
+      "Ablation": "§4.5, App. C.2",
+      "Discussion": "§5, App. A",
+      "Details": "§4.1, App. B, D"
+    }
+  }
+}

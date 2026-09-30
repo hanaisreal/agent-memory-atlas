@@ -87,5 +87,284 @@
   },
   "summary": "OS-inspired virtual context management: the LLM pages information between a bounded main context and external recall/archival stores via its own function calls.",
   "verified": false,
-  "notes": "AXES CORRECTED from the paper; earlier taxonomy row was: page | verbatim | none | main/archival | LLM function calls (vector). AXES-CHECK: the paper has three stores (working context in main context, recall storage of all messages, archival storage), not only main/archival; write-time is not 'none' - the LLM chooses what to save to working context/archival storage and evicted messages are recursively summarised; 'page' refers to paginated retrieval results, the stored unit is messages/text objects. The paper does not specify the search mechanism of recall/archival storage in the sections read (embeddings are mentioned for the document-analysis archival store). Code URL as given in the paper; project continues as Letta (system id 'letta').\nDESIGN: Sec 2.1-2.4, Sec 3 (implementation details), 3.1, 3.2.1, App. 6.1. Corrected: 'page' unit -> message/text object; write-time 'none' -> agent-chosen saves + recursive summary; stores include recall storage."
+  "notes": "AXES CORRECTED from the paper; earlier taxonomy row was: page | verbatim | none | main/archival | LLM function calls (vector). AXES-CHECK: the paper has three stores (working context in main context, recall storage of all messages, archival storage), not only main/archival; write-time is not 'none' - the LLM chooses what to save to working context/archival storage and evicted messages are recursively summarised; 'page' refers to paginated retrieval results, the stored unit is messages/text objects. The paper does not specify the search mechanism of recall/archival storage in the sections read (embeddings are mentioned for the document-analysis archival store). Code URL as given in the paper; project continues as Letta (system id 'letta').\nDESIGN: Sec 2.1-2.4, Sec 3 (implementation details), 3.1, 3.2.1, App. 6.1. Corrected: 'page' unit -> message/text object; write-time 'none' -> agent-chosen saves + recursive summary; stores include recall storage.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2310.08560v2 (PDF read 2026-09-30)",
+      "code": "https://github.com/letta-ai/letta/tree/75fd604d7a4e121914910694609f38b0584f0c5d/",
+      "code_note": "Tag 0.3.2 of the MemGPT repository (now letta-ai/letta), committed 2024-02-12, the same day as paper v2, whose experiments use gpt-4-1106-preview and gpt-3.5-turbo-1106. The repository holds no script for the MSC tasks (DMR, conversation opener); document QA and nested KV scripts were added later in paper_experiments/ (commit 0f38548c, 2024-03-28). The paper points to https://research.memgpt.ai for code."
+    },
+    "sections": {
+      "Memory architecture": "§2",
+      "Results": "§3.1-3.2",
+      "Discussion": "§3.2, §5",
+      "Details": "§2.2-2.4, §3, App. 6.1"
+    },
+    "abstract": {
+      "text": "MemGPT borrows virtual memory from operating systems to let a fixed-context LLM work with far more information than fits in its window. The prompt is split into read-only instructions, a small editable working context and a queue of recent messages; older messages are evicted into a recursive summary but stay searchable in recall storage, and an archival store holds arbitrary text. The LLM moves information between these tiers with its own function calls and can chain calls before replying. On multi-session chat and on document analysis tasks it outperforms fixed-context baselines.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2310.08560"
+    },
+    "units": [
+      {
+        "name": "Working context (core memory in the code)",
+        "role": "fixed-size text block always in the prompt",
+        "made_by": "the LLM, through core_memory_append and core_memory_replace",
+        "fields": [
+          {
+            "name": "persona",
+            "what": "the agent's persona; 2,000-character limit in the code",
+            "kept_as": "rewritten",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §2.1; code constants.py L92, agent.py L103-L120",
+            "url": "https://github.com/letta-ai/letta/blob/75fd604d7a4e121914910694609f38b0584f0c5d/memgpt/agent.py#L103-L120"
+          },
+          {
+            "name": "human",
+            "what": "key facts about the user that the LLM chose to save; 2,000-character limit",
+            "kept_as": "extracted",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §2.1, Fig. 4; code constants.py L93, base.py L54-L84",
+            "url": "https://github.com/letta-ai/letta/blob/75fd604d7a4e121914910694609f38b0584f0c5d/memgpt/functions/function_sets/base.py#L54-L84"
+          }
+        ]
+      },
+      {
+        "name": "FIFO queue",
+        "role": "rolling message history inside the prompt",
+        "made_by": "queue manager (rule) and a summarizer call",
+        "fields": [
+          {
+            "name": "recent messages",
+            "what": "user, assistant, system-alert and function messages as they happened",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §2.1",
+            "url": "https://arxiv.org/pdf/2310.08560"
+          },
+          {
+            "name": "recursive summary",
+            "what": "first-person summary of evicted messages, under 100 words, folded with the previous summary",
+            "kept_as": "summarized",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §2.2; code gpt_summarize.py L1-L14, agent.py L678-L790",
+            "url": "https://github.com/letta-ai/letta/blob/75fd604d7a4e121914910694609f38b0584f0c5d/memgpt/agent.py#L678-L790"
+          }
+        ]
+      },
+      {
+        "name": "Recall storage",
+        "role": "database of every message ever exchanged",
+        "made_by": "queue manager, automatically",
+        "fields": [
+          {
+            "name": "message",
+            "what": "each incoming and generated message; searched by case-insensitive substring match or by date",
+            "kept_as": "verbatim",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper §2.2; code persistence_manager.py L128-L146, memory.py L315-L323, db.py L386-L399",
+            "url": "https://github.com/letta-ai/letta/blob/75fd604d7a4e121914910694609f38b0584f0c5d/memgpt/agent_store/db.py#L386-L399"
+          }
+        ]
+      },
+      {
+        "name": "Archival storage",
+        "role": "unbounded store of text passages",
+        "made_by": "the LLM (archival_memory_insert) or a document loader",
+        "fields": [
+          {
+            "name": "passage text",
+            "what": "text the LLM chose to save, or loaded documents, split into 300-token chunks",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §2.2, §3.2.1; code memory.py L396-L427, data_types.py L366",
+            "url": "https://github.com/letta-ai/letta/blob/75fd604d7a4e121914910694609f38b0584f0c5d/memgpt/memory.py#L396-L427"
+          },
+          {
+            "name": "embedding",
+            "what": "text-embedding-ada-002 vector per passage; cosine search",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §3.2.1; code data_types.py L364",
+            "url": "https://github.com/letta-ai/letta/blob/75fd604d7a4e121914910694609f38b0584f0c5d/memgpt/data_types.py#L364"
+          }
+        ]
+      }
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 248",
+        "body": "<text class=\"fig-t\" x=\"8\" y=\"14\" text-anchor=\"start\">Main context: the prompt (8k tokens for GPT-4)</text><rect class=\"gi-l\" x=\"4\" y=\"20\" width=\"552\" height=\"92\" rx=\"10\"/><rect class=\"gi-f\" x=\"12\" y=\"30\" width=\"104\" height=\"72\" rx=\"8\"/><text class=\"fig-t\" x=\"64.0\" y=\"59.0\" text-anchor=\"middle\">System</text><text class=\"fig-s\" x=\"64.0\" y=\"72.0\" text-anchor=\"middle\">instructions</text><text class=\"fig-s\" x=\"64.0\" y=\"84.0\" text-anchor=\"middle\">read-only</text><rect class=\"gi-hi\" x=\"124\" y=\"30\" width=\"128\" height=\"72\" rx=\"8\"/><text class=\"fig-t\" x=\"188.0\" y=\"59.0\" text-anchor=\"middle\">Working context</text><text class=\"fig-s\" x=\"188.0\" y=\"72.0\" text-anchor=\"middle\">persona + human</text><text class=\"fig-s\" x=\"188.0\" y=\"84.0\" text-anchor=\"middle\">LLM edits by call</text><rect class=\"gi-ev\" x=\"260\" y=\"30\" width=\"288\" height=\"72\" rx=\"8\"/><text class=\"fig-t\" x=\"268\" y=\"46\" text-anchor=\"start\">FIFO queue</text><text class=\"fig-s\" x=\"540\" y=\"46\" text-anchor=\"end\">rolling messages</text><rect class=\"gi-w\" x=\"268\" y=\"56\" width=\"64\" height=\"36\" rx=\"5\"/><text class=\"fig-s\" x=\"300\" y=\"72\" text-anchor=\"middle\">recursive</text><text class=\"fig-s\" x=\"300\" y=\"84\" text-anchor=\"middle\">summary</text><rect class=\"gi-r\" x=\"372\" y=\"62\" width=\"22\" height=\"24\" rx=\"3\"/><line class=\"gi-t\" x1=\"377\" y1=\"74\" x2=\"389\" y2=\"74\"/><rect class=\"gi-r\" x=\"400\" y=\"62\" width=\"22\" height=\"24\" rx=\"3\"/><line class=\"gi-t\" x1=\"405\" y1=\"74\" x2=\"417\" y2=\"74\"/><rect class=\"gi-r\" x=\"428\" y=\"62\" width=\"22\" height=\"24\" rx=\"3\"/><line class=\"gi-t\" x1=\"433\" y1=\"74\" x2=\"445\" y2=\"74\"/><rect class=\"gi-r\" x=\"456\" y=\"62\" width=\"22\" height=\"24\" rx=\"3\"/><line class=\"gi-t\" x1=\"461\" y1=\"74\" x2=\"473\" y2=\"74\"/><rect class=\"gi-r\" x=\"484\" y=\"62\" width=\"22\" height=\"24\" rx=\"3\"/><line class=\"gi-t\" x1=\"489\" y1=\"74\" x2=\"501\" y2=\"74\"/><rect class=\"gi-r\" x=\"512\" y=\"62\" width=\"22\" height=\"24\" rx=\"3\"/><line class=\"gi-t\" x1=\"517\" y1=\"74\" x2=\"529\" y2=\"74\"/><path class=\"gi-a d\" d=\"M370.0 74.0 L341.0 74.0\"/><polygon class=\"gi-ah\" points=\"334.0,74.0 341.0,70.0 341.0,78.0\"/><text class=\"fig-s\" x=\"352\" y=\"98\" text-anchor=\"middle\">evict</text><rect class=\"gi-f\" x=\"12\" y=\"150\" width=\"84\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"54.0\" y=\"170.0\" text-anchor=\"middle\">New</text><text class=\"fig-s\" x=\"54.0\" y=\"183.0\" text-anchor=\"middle\">message</text><path class=\"gi-a\" d=\"M96.0 172.0 L117.0 172.0\"/><polygon class=\"gi-ah\" points=\"124.0,172.0 117.0,176.0 117.0,168.0\"/><rect class=\"gi-f\" x=\"124\" y=\"150\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"172.0\" y=\"170.0\" text-anchor=\"middle\">Queue</text><text class=\"fig-s\" x=\"172.0\" y=\"183.0\" text-anchor=\"middle\">manager</text><path class=\"gi-a\" d=\"M172 150 L172 128 L470 128\"/><path class=\"gi-a\" d=\"M470.0 128.0 L470.0 111.0\"/><polygon class=\"gi-ah\" points=\"470.0,104.0 474.0,111.0 466.0,111.0\"/><text class=\"fig-s\" x=\"320\" y=\"124\" text-anchor=\"middle\">append</text><path class=\"gi-a\" d=\"M220.0 172.0 L255.0 172.0\"/><polygon class=\"gi-ah\" points=\"262.0,172.0 255.0,176.0 255.0,168.0\"/><text class=\"fig-s\" x=\"241\" y=\"166\" text-anchor=\"middle\">copy</text><rect class=\"gi-ev\" x=\"262\" y=\"150\" width=\"138\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"331.0\" y=\"170.0\" text-anchor=\"middle\">Recall storage</text><text class=\"fig-s\" x=\"331.0\" y=\"183.0\" text-anchor=\"middle\">every message, verbatim</text><rect class=\"gi-ev\" x=\"410\" y=\"150\" width=\"142\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"481.0\" y=\"170.0\" text-anchor=\"middle\">Archival storage</text><text class=\"fig-s\" x=\"481.0\" y=\"183.0\" text-anchor=\"middle\">300-token passages</text><path class=\"gi-a d\" d=\"M540 102 L540 142 L520 142\"/><path class=\"gi-a d\" d=\"M520.0 142.0 L520.0 143.0\"/><polygon class=\"gi-ah\" points=\"520.0,150.0 516.0,143.0 524.0,143.0\"/><rect class=\"gi-llm\" x=\"486\" y=\"118\" width=\"32\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"502\" y=\"128\" text-anchor=\"middle\">LLM</text><text class=\"fig-s\" x=\"6\" y=\"214\" text-anchor=\"start\">At 70% of the window (75% in code) a system alert lets the LLM save facts:</text><text class=\"fig-s\" x=\"6\" y=\"227\" text-anchor=\"start\">core_memory_append / replace into working context, archival_memory_insert into archival.</text><text class=\"fig-s\" x=\"6\" y=\"240\" text-anchor=\"start\">At 100% the queue manager evicts old messages and folds them into the summary.</text>",
+        "text": [
+          "Every message is appended to the in-prompt queue and copied to recall storage; nothing is extracted unless the LLM decides to.",
+          "Near the context limit a system alert prompts the LLM to save facts to working context or archival storage; at the limit old messages are evicted into a recursive summary."
+        ],
+        "src": "paper §2.1-2.3, Fig. 3; code constants.py L71-L93, agent.py L647-L790",
+        "url": "https://github.com/letta-ai/letta/blob/75fd604d7a4e121914910694609f38b0584f0c5d/memgpt/agent.py#L647-L790"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 252",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"30\" width=\"56\" height=\"46\" rx=\"8\"/><text class=\"fig-t\" x=\"32.0\" y=\"57.0\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M60.0 53.0 L63.0 53.0\"/><polygon class=\"gi-ah\" points=\"70.0,53.0 63.0,57.0 63.0,49.0\"/><rect class=\"gi-llm\" x=\"70\" y=\"30\" width=\"100\" height=\"46\" rx=\"8\"/><text class=\"fig-t\" x=\"120.0\" y=\"51.0\" text-anchor=\"middle\">LLM</text><text class=\"fig-s\" x=\"120.0\" y=\"64.0\" text-anchor=\"middle\">reads main context</text><path class=\"gi-a\" d=\"M170.0 53.0 L199.0 53.0\"/><polygon class=\"gi-ah\" points=\"206.0,53.0 199.0,57.0 199.0,49.0\"/><polygon class=\"gi-llm\" points=\"250,24 294,53 250,82 206,53\"/><text class=\"fig-t\" x=\"250\" y=\"52\" text-anchor=\"middle\">Search?</text><text class=\"fig-s\" x=\"250\" y=\"64\" text-anchor=\"middle\">LLM</text><path class=\"gi-a\" d=\"M294.0 53.0 L463.0 53.0\"/><polygon class=\"gi-ah\" points=\"470.0,53.0 463.0,57.0 463.0,49.0\"/><text class=\"fig-yes\" x=\"382\" y=\"46\" text-anchor=\"middle\">No</text><rect class=\"gi-hi\" x=\"470\" y=\"30\" width=\"86\" height=\"46\" rx=\"8\"/><text class=\"fig-t\" x=\"513.0\" y=\"51.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"513.0\" y=\"64.0\" text-anchor=\"middle\">send_message</text><path class=\"gi-a\" d=\"M250 82 L250 100\"/><path class=\"gi-a\" d=\"M250 100 L215 100\"/><path class=\"gi-a\" d=\"M215.0 100.0 L215.0 111.0\"/><polygon class=\"gi-ah\" points=\"215.0,118.0 211.0,111.0 219.0,111.0\"/><path class=\"gi-a\" d=\"M250 100 L371 100\"/><path class=\"gi-a\" d=\"M371.0 100.0 L371.0 111.0\"/><polygon class=\"gi-ah\" points=\"371.0,118.0 367.0,111.0 375.0,111.0\"/><text class=\"fig-no\" x=\"258\" y=\"95\" text-anchor=\"start\">Yes</text><rect class=\"gi-v fig-soft\" x=\"150\" y=\"118\" width=\"130\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"215.0\" y=\"140.0\" text-anchor=\"middle\">Recall search</text><text class=\"fig-s\" x=\"215.0\" y=\"153.0\" text-anchor=\"middle\">substring match</text><rect class=\"gi-v fig-soft\" x=\"296\" y=\"118\" width=\"150\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"371.0\" y=\"140.0\" text-anchor=\"middle\">Archival search</text><text class=\"fig-s\" x=\"371.0\" y=\"153.0\" text-anchor=\"middle\">embedding, top 100</text><path class=\"gi-a\" d=\"M215.0 166.0 L215.0 185.0\"/><polygon class=\"gi-ah\" points=\"215.0,192.0 211.0,185.0 219.0,185.0\"/><path class=\"gi-a\" d=\"M371.0 166.0 L371.0 185.0\"/><polygon class=\"gi-ah\" points=\"371.0,192.0 367.0,185.0 375.0,185.0\"/><rect class=\"gi-f\" x=\"196\" y=\"192\" width=\"190\" height=\"36\" rx=\"8\"/><text class=\"fig-t\" x=\"291.0\" y=\"214.0\" text-anchor=\"middle\">Page of 5 into FIFO queue</text><path class=\"gi-a\" d=\"M196 210 L110 210\"/><path class=\"gi-a\" d=\"M110.0 210.0 L110.0 83.0\"/><polygon class=\"gi-ah\" points=\"110.0,76.0 114.0,83.0 106.0,83.0\"/><text class=\"fig-s\" x=\"104\" y=\"150\" text-anchor=\"end\">heartbeat:</text><text class=\"fig-s\" x=\"104\" y=\"163\" text-anchor=\"end\">run again</text><text class=\"fig-s\" x=\"452\" y=\"150\" text-anchor=\"start\">next page on</text><text class=\"fig-s\" x=\"452\" y=\"163\" text-anchor=\"start\">a follow-up call</text><text class=\"fig-s\" x=\"280\" y=\"246\" text-anchor=\"middle\">DMR baseline instead reads a summary of sessions 1-5 and answers once</text>",
+        "text": [
+          "The LLM decides whether to search; recall search matches a substring over past messages, archival search ranks passages by embedding similarity.",
+          "Results come back in pages of 5 and the LLM can chain more searches or pages before it answers."
+        ],
+        "src": "paper §2.3-2.4, Figs. 2, 6; code base.py L87-L186, constants.py L114, memory.py L430-L450",
+        "url": "https://github.com/letta-ai/letta/blob/75fd604d7a4e121914910694609f38b0584f0c5d/memgpt/functions/function_sets/base.py#L87-L186"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Memory-pressure alert",
+        "value": "70% of the context window (paper), 75% (code)",
+        "src": "paper §2.2; code constants.py L72",
+        "section": "construction"
+      },
+      {
+        "label": "Queue flush",
+        "value": "at 100%, evicting about 50% (paper); code summarizes 75% of message tokens and keeps the last 3",
+        "src": "paper §2.2; code constants.py L85-L89",
+        "section": "construction"
+      },
+      {
+        "label": "Recursive summary length",
+        "value": "under 100 words",
+        "src": "code gpt_summarize.py L1",
+        "section": "construction"
+      },
+      {
+        "label": "Working context size",
+        "value": "2,000 characters each for persona and human",
+        "src": "code constants.py L92-L93",
+        "section": "construction"
+      },
+      {
+        "label": "Archival passages",
+        "value": "300-token chunks, text-embedding-ada-002",
+        "src": "code data_types.py L364-L366; paper §3.2.1",
+        "section": "construction"
+      },
+      {
+        "label": "Search page size",
+        "value": "5 results (the paper's Fig. 6 shows 10)",
+        "src": "code constants.py L114",
+        "section": "method"
+      },
+      {
+        "label": "Archival candidates",
+        "value": "top 100 by embedding, cached per query",
+        "src": "code memory.py L360, L430-L450",
+        "section": "method"
+      },
+      {
+        "label": "Context windows tested",
+        "value": "GPT-4 8,192; GPT-3.5 Turbo 16,385; GPT-4 Turbo 128,000 tokens",
+        "src": "paper §3",
+        "section": "method"
+      },
+      {
+        "label": "Nested KV task size",
+        "value": "140 UUID pairs, about 8k tokens; 0-4 nesting levels",
+        "src": "paper §3.2.2",
+        "section": "method"
+      }
+    ],
+    "components": [
+      {
+        "role": "Processor: edits memory, searches, answers",
+        "model": "gpt-4-0613, gpt-4-1106-preview or gpt-3.5-turbo-1106",
+        "kind": "llm",
+        "src": "paper §3"
+      },
+      {
+        "role": "Recursive summary",
+        "model": "same LLM, separate call",
+        "kind": "llm",
+        "src": "code agent.py L761",
+        "url": "https://github.com/letta-ai/letta/blob/75fd604d7a4e121914910694609f38b0584f0c5d/memgpt/agent.py#L761"
+      },
+      {
+        "role": "Queue eviction and memory-pressure alert",
+        "model": "token-count thresholds",
+        "kind": "rule",
+        "src": "paper §2.2; code agent.py L647-L673",
+        "url": "https://github.com/letta-ai/letta/blob/75fd604d7a4e121914910694609f38b0584f0c5d/memgpt/agent.py#L647-L673"
+      },
+      {
+        "role": "Recall search",
+        "model": "case-insensitive substring match (SQL)",
+        "kind": "rule",
+        "src": "code db.py L386-L399",
+        "url": "https://github.com/letta-ai/letta/blob/75fd604d7a4e121914910694609f38b0584f0c5d/memgpt/agent_store/db.py#L386-L399"
+      },
+      {
+        "role": "Archival search",
+        "model": "text-embedding-ada-002, cosine; PostgreSQL pgvector with HNSW index in doc QA",
+        "kind": "retriever",
+        "src": "paper §3.2.1; code memory.py L430-L450",
+        "url": "https://github.com/letta-ai/letta/blob/75fd604d7a4e121914910694609f38b0584f0c5d/memgpt/memory.py#L430-L450"
+      },
+      {
+        "role": "Judge (DMR, doc QA)",
+        "model": "LLM judge; model not named",
+        "kind": "llm",
+        "src": "paper §3.1.1, App. 6.1.2, 6.1.5"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Treat the context window like an OS treats RAM: keep a small working set in the prompt and let the LLM page information in and out of external stores with function calls. With MemGPT the same base models answer questions about earlier sessions far more accurately than with a recursive summary.",
+      "claims": [
+        {
+          "claim": "Paging memory improves consistency in long conversations.",
+          "evidence": "DMR accuracy 92.5 vs 32.1 (GPT-4), 93.4 vs 35.3 (GPT-4 Turbo), 66.9 vs 38.7 (GPT-3.5 Turbo); ROUGE-L recall 0.814 vs 0.296 with GPT-4. Table 2"
+        },
+        {
+          "claim": "Memory makes conversation openers as engaging as human ones.",
+          "evidence": "SIM-1 0.830-0.868 vs 0.800 for the human opener; SIM-H 0.767-0.817. Table 3"
+        },
+        {
+          "claim": "Document QA no longer caps at what fits in the window.",
+          "evidence": "Accuracy stays flat as retrieved documents grow, while truncating baselines degrade. Fig. 5 (values plotted, not tabulated)"
+        },
+        {
+          "claim": "Function chaining enables multi-hop lookup.",
+          "evidence": "Nested KV: MemGPT with GPT-4 is unaffected by nesting level; GPT-4 and GPT-4 Turbo baselines reach 0% by 3 levels, GPT-3.5 at 1. Fig. 7, §3.2.2"
+        }
+      ],
+      "limits": [
+        "With GPT-3.5 MemGPT degrades markedly on document QA because of weaker function calling.",
+        "MemGPT often stops paging through retriever results before exhausting them.",
+        "With GPT-4 Turbo and GPT-3.5 it drops off at 2 nesting levels by making too few lookups.",
+        "Open directions: other unbounded-context domains, other memory tier technologies, and better control-flow and memory-management policies."
+      ],
+      "limits_src": "paper §3.2.1, §3.2.2, §5 (no Limitations section)",
+      "reading": [
+        "In DMR the baselines read a lossy summary of sessions 1-5 while MemGPT searches the full history; no baseline is given the full five sessions, which the paper describes as about a dozen messages each.",
+        "There is no ablation of working context, recursive summary or recall search, so Table 2 does not show which tier carries the gain; the DMR persona tells the agent to use core memory and conversation search (App. 6.1.1).",
+        "DMR questions were written by an LLM and scored by an LLM judge whose model is not named; the conversation-opener table has no without-MemGPT row, only the human opener.",
+        "Code at tag 0.3.2 differs from the text: alert at 75% (not 70%), eviction of 75% of message tokens keeping the last 3 (not about 50%), and 5 results per page where Fig. 6 shows 10.",
+        "Recall storage search in the code is a case-insensitive substring match, not embedding search; the paper does not say how recall is searched.",
+        "The MSC task scripts are not in the repository, so how the five sessions were loaded into recall storage for DMR cannot be checked."
+      ]
+    }
+  }
 }

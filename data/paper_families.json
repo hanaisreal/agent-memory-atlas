@@ -11373,5 +11373,25 @@
   "x": "not-stated",
   "y": "not-stated",
   "unique": "(title only) Anda Hippocampus"
+ },
+ "2601.02845": {
+  "family": "hierarchy",
+  "also": [],
+  "function": [
+   "factual"
+  ],
+  "name": "TiMem",
+  "what": "Dialogue exchanges become leaf fragments; session, day, week and monthly-profile nodes are written as each time window closes, forming a Temporal Memory Tree. Recall searches the leaves (dense + BM25) and walks up parent links, with depth set by question complexity.",
+  "confidence": "high",
+  "basis": "paper and code (annotated record)",
+  "fit": "",
+  "learning": "none",
+  "learning_also": [],
+  "learns_what": "nothing; consolidation is prompted, no fine-tuning (abstract)",
+  "learning_confidence": "high",
+  "x": "scheduled-periodic",
+  "y": "similarity-plus-aggregation",
+  "unique": "Temporal Memory Tree: consolidation follows time granularity from raw turns to persona, with complexity-aware recall.",
+  "checked": true
  }
 }

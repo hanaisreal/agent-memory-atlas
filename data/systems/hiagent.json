@@ -1,0 +1,509 @@
+{
+ "id": "hiagent",
+ "name": "HiAgent",
+ "paper": {
+  "title": "HiAgent: Hierarchical Working Memory Management for Solving Long-Horizon Agent Tasks with Large Language Model",
+  "arxiv": null,
+  "url": "https://aclanthology.org/2025.acl-long.1575/",
+  "venue": "ACL 2025",
+  "venue_short": "ACL",
+  "track": "main",
+  "year": 2025,
+  "code": "https://github.com/HiAgent2024/HiAgent"
+ },
+ "design": {
+  "construction": {
+   "unit": "subgoal chunk: an LLM-written subgoal plus the action-observation pairs taken under it",
+   "kept_as": "current subgoal's pairs verbatim; each finished subgoal as subgoal + LLM summary",
+   "processing": "the LLM writes a subgoal before acting; when it opens the next one, the finished chunk is shown as subgoal + summarized observation",
+   "trigger": "agent-decides",
+   "writer": "backbone LLM (gpt-4-turbo) for subgoals and summaries"
+  },
+  "organization": {
+   "structure": "two levels inside one trial: numbered subgoals, each holding its action-observation pairs",
+   "stores": "one in-trial history list; raw pairs of finished subgoals kept but hidden from the prompt",
+   "index": "subgoal number"
+  },
+  "management": {
+   "operations": "replace a finished chunk's pairs by its summary in the prompt; retrieve(id) shows the pairs again until the next subgoal",
+   "conflicts": null,
+   "forgetting": "nothing deleted; code drops the oldest entries when the prompt exceeds the 8,192-token window",
+   "timing": "online"
+  },
+  "retrieval": {
+   "query": "agent emits retrieve(subgoal_id, ...) as an action",
+   "candidates": "past subgoals named by id",
+   "selection": "the agent chooses which ids to expand",
+   "budget": "no cap on ids; expansion lasts until a new subgoal is written (code)"
+  },
+  "use": {
+   "context": "instruction + 1 in-context example + past subgoals with summaries + current subgoal's full pairs",
+   "reasoning": "one LLM call per step outputs an action, or a new subgoal and its first action"
+  },
+  "control": {
+   "construction": "prompted-llm",
+   "management": "prompted-llm",
+   "retrieval": "agent-tool-calls"
+  }
+ },
+ "classify": {
+  "structure": "hierarchy",
+  "index": "exact match",
+  "management": "consolidate",
+  "candidates": "agent searches",
+  "decides": "LLM decides",
+  "note": "Memory is the in-trial context only. A finished subgoal's pairs are folded into a summary in the prompt; the agent re-expands a subgoal by id, so the lookup is by number, not by similarity."
+ },
+ "tags": {
+  "fidelity": "mixed",
+  "structure": [
+   "tree"
+  ],
+  "write_time": [
+   "segment",
+   "summarize",
+   "agent-chosen"
+  ],
+  "selection": [
+   "llm-tool-call"
+  ],
+  "memory_type": [
+   "working"
+  ],
+  "learning": "training-free",
+  "domain": [
+   "embodied",
+   "general"
+  ]
+ },
+ "stages": {
+  "ingestion": "Every environment observation is appended, with the action that caused it, to the chunk of the current subgoal.",
+  "construction": "Before acting, the LLM writes a subgoal; its actions and observations form one chunk. When the LLM judges the subgoal done it writes the next subgoal together with its first action.",
+  "organization": "Working memory is a two-level list: numbered past subgoals, each shown with a summarized observation, then the current subgoal with all of its pairs.",
+  "update": "A finished chunk's pairs are replaced in the prompt by an LLM summary that also states whether the subgoal was met; the raw pairs stay in the history.",
+  "retrieval": "When the LLM outputs retrieve(id), the pairs of that past subgoal are put back into the prompt in place of its summary, until a new subgoal is written.",
+  "answer": "Each step one LLM call reads the instruction, one in-context example and the working memory and outputs the next action.",
+  "learning": ""
+ },
+ "summary": "Working-memory manager for long agent tasks: the LLM writes subgoals as memory chunks, finished chunks are shown only as subgoal + summary, and the agent can re-expand a past chunk by id.",
+ "verified": false,
+ "notes": "VENUE: ACL 2025 main, long paper (Proceedings of the 63rd ACL, Volume 1: Long Papers, pp. 32779-32798; aclanthology 2025.acl-long.1575), read from the ACL PDF. No arXiv id was given to us; the ACL page is used as the paper URL.\nCODE: https://github.com/HiAgent2024/HiAgent at cebdd8e4 (2026-04-15). The agent file cme_final.py is unchanged since the initial code commit 2e80ceee (2025-02-16); summarize.py, which cme_final.py imports, was only committed at cebdd8e4 with a message saying it had never been committed, and its prompt differs from the paper's App. C.1 prompt, so the released summarizer is not necessarily the one behind the paper's numbers.\nRESULTS: Table 1 reports Context and Time as percentages of STANDARD, not absolute tokens or seconds. The Overall row averages the five tasks and is not kept as a results row.",
+ "mechanism": {
+  "sources": {
+   "paper": "ACL 2025 PDF (aclanthology 2025.acl-long.1575), read 2026-09-30",
+   "code": "https://github.com/HiAgent2024/HiAgent/tree/cebdd8e4eacec1a532ce2c0041db8902217b90ba/",
+   "code_note": "Latest commit. cme_final.py (the agent registered as ContextEfficientAgentV2, which evaluate_model.sh runs) dates from the initial code commit 2e80ceee (2025-02-16). summarize.py was added only at this commit (2026-04-15) as a missing file, so the summarizer prompt in code may not be the one the paper ran."
+  },
+  "headline": [
+   "The memory lives only inside one trial: it is the agent's own prompt, reorganized by subgoal.",
+   "A finished subgoal's action-observation pairs leave the prompt and are replaced by a short summary; the raw pairs are kept and can be re-expanded by id.",
+   "In the released code Blocksworld and Gripper never call the summarizer: a finished subgoal shows only its last observation."
+  ],
+  "sections": {
+   "Memory architecture": "§3",
+   "Results": "§4.2",
+   "Ablation": "§5.1, §5.3",
+   "Discussion": "§5, Limitation",
+   "Details": "§4.1, App. B, App. C"
+  },
+  "abstract": {
+   "text": "HiAgent targets the in-trial (working) memory of LLM agents on long tasks, where the usual practice feeds every past action and observation back into the prompt. The agent is prompted to write a subgoal before acting and to treat each subgoal as a memory chunk. When it moves to a new subgoal, the finished chunk is shown only as the subgoal and a summarized observation, and the agent can ask to see a past chunk's full trajectory again. On five long-horizon AgentBoard tasks with GPT-4 the authors report twice the success rate of the standard full-history prompt, 3.8 fewer steps and about a third less context.",
+   "note": "Summary in our words; the original abstract is on the ACL Anthology page.",
+   "url": "https://aclanthology.org/2025.acl-long.1575/"
+  },
+  "units": [
+   {
+    "name": "Subgoal chunk",
+    "role": "one milestone of the task and the steps taken for it",
+    "made_by": "agent LLM (subgoal) + environment (observations) + summarizer LLM (summary)",
+    "fields": [
+     {
+      "name": "subgoal",
+      "what": "one line of text the LLM writes before its first action for that milestone",
+      "kept_as": "rewritten",
+      "used_for": [
+       "answer"
+      ],
+      "src": "paper §3.2; code cme_final.py L303-L314",
+      "url": "https://github.com/HiAgent2024/HiAgent/blob/cebdd8e4eacec1a532ce2c0041db8902217b90ba/agentboard/agents/cme_final.py#L303-L314"
+     },
+     {
+      "name": "action-observation pairs",
+      "what": "the actions taken for the subgoal and the environment's replies",
+      "kept_as": "verbatim",
+      "used_for": [
+       "answer"
+      ],
+      "src": "code cme_final.py L99-L104; shown in full only for the current or a retrieved subgoal",
+      "url": "https://github.com/HiAgent2024/HiAgent/blob/cebdd8e4eacec1a532ce2c0041db8902217b90ba/agentboard/agents/cme_final.py#L99-L104"
+     },
+     {
+      "name": "summarized observation",
+      "what": "LLM summary of a finished chunk that also says whether the subgoal was met; recomputed each time the prompt is built",
+      "kept_as": "summarized",
+      "used_for": [
+       "answer"
+      ],
+      "src": "paper §3.3, App. C.1; code cme_final.py L146-L164",
+      "url": "https://github.com/HiAgent2024/HiAgent/blob/cebdd8e4eacec1a532ce2c0041db8902217b90ba/agentboard/agents/cme_final.py#L146-L164"
+     },
+     {
+      "name": "last observation",
+      "what": "used instead of the summary for Blocksworld and Gripper in the released code",
+      "kept_as": "verbatim",
+      "used_for": [
+       "answer"
+      ],
+      "src": "code cme_final.py L117-L120, L140-L145",
+      "url": "https://github.com/HiAgent2024/HiAgent/blob/cebdd8e4eacec1a532ce2c0041db8902217b90ba/agentboard/agents/cme_final.py#L117-L145"
+     }
+    ]
+   }
+  ],
+  "write": [
+   {
+    "step": "Write a subgoal",
+    "how": "the LLM outputs 'Subgoal: ...' followed by its first action when it judges the previous subgoal done",
+    "src": "paper §3.1-3.2, App. B.2; code cme_final.py L190-L199, L303-L314",
+    "url": "https://github.com/HiAgent2024/HiAgent/blob/cebdd8e4eacec1a532ce2c0041db8902217b90ba/agentboard/agents/cme_final.py#L190-L199"
+   },
+   {
+    "step": "Log steps",
+    "how": "each action and its observation are appended to the history under the current subgoal",
+    "src": "code cme_final.py L99-L104",
+    "url": "https://github.com/HiAgent2024/HiAgent/blob/cebdd8e4eacec1a532ce2c0041db8902217b90ba/agentboard/agents/cme_final.py#L99-L104"
+   },
+   {
+    "step": "Fold finished subgoals",
+    "how": "when the prompt is built, every past subgoal except the current one is rendered as 'n Subgoal' + one observation; 'check valid actions' steps are dropped before summarizing",
+    "params": {
+     "summarizer": "gpt-4-turbo (paper), same model as the agent"
+    },
+    "src": "paper §3.3, §4.1; code cme_final.py L132-L164",
+    "url": "https://github.com/HiAgent2024/HiAgent/blob/cebdd8e4eacec1a532ce2c0041db8902217b90ba/agentboard/agents/cme_final.py#L132-L164"
+   },
+   {
+    "step": "No summarizer for Blocksworld and Gripper",
+    "how": "for these two tasks the folded chunk shows the last observation of the subgoal instead of a summary",
+    "note": "the paper states no such exception; this is the same heuristic as its 'w/o OS' ablation",
+    "src": "code cme_final.py L117-L120, L140-L145",
+    "url": "https://github.com/HiAgent2024/HiAgent/blob/cebdd8e4eacec1a532ce2c0041db8902217b90ba/agentboard/agents/cme_final.py#L117-L145"
+   }
+  ],
+  "read": [
+   {
+    "step": "Build prompt",
+    "round": 1,
+    "input": "task instruction + goal",
+    "scores": "nothing is scored: the whole working memory is shown",
+    "how": "instruction with the subgoal rules, one in-context example, the goal, then the folded history and the current subgoal's pairs",
+    "params": {
+     "history window": "last 100 entries",
+     "context": "8,192 tokens; oldest entries dropped above it"
+    },
+    "src": "code cme_final.py L190-L242; tyreworld.yaml L12, L20",
+    "url": "https://github.com/HiAgent2024/HiAgent/blob/cebdd8e4eacec1a532ce2c0041db8902217b90ba/agentboard/agents/cme_final.py#L190-L242"
+   },
+   {
+    "step": "Act or retrieve",
+    "round": 1,
+    "how": "one LLM call (temperature 0) returns an action, a new subgoal with its first action, or retrieve(ids)",
+    "params": {
+     "max steps": "30 (paper; evaluate_model.sh sets 50)"
+    },
+    "src": "paper §4.1; code cme_final.py L299-L326",
+    "url": "https://github.com/HiAgent2024/HiAgent/blob/cebdd8e4eacec1a532ce2c0041db8902217b90ba/agentboard/agents/cme_final.py#L299-L326"
+   },
+   {
+    "step": "Expand past subgoals",
+    "round": 2,
+    "input": "retrieve(id, ...)",
+    "how": "the named subgoals' raw pairs replace their summaries and the LLM is called again with the rebuilt prompt; the ids are cleared when the next subgoal is written",
+    "src": "paper §3.4; code cme_final.py L125, L135-L137, L312, L321-L326",
+    "url": "https://github.com/HiAgent2024/HiAgent/blob/cebdd8e4eacec1a532ce2c0041db8902217b90ba/agentboard/agents/cme_final.py#L321-L326"
+   }
+  ],
+  "answer_context": {
+   "sees": "the agent's own prompt: rules, one example, the goal and the working memory",
+   "format": "\"n Subgoal: ...\" / \"Observation: <summary>\" per past subgoal, then \"n Subgoal: ...\" and \"Action: ...\" / \"Observation: ...\" lines for the current one",
+   "includes": [
+    "summaries (or last observations) of finished subgoals",
+    "all pairs of the current subgoal",
+    "all pairs of any subgoal named in retrieve(...)"
+   ],
+   "excludes": [
+    "raw pairs of other finished subgoals",
+    "anything from earlier trials"
+   ],
+   "src": "code cme_final.py L107-L174",
+   "url": "https://github.com/HiAgent2024/HiAgent/blob/cebdd8e4eacec1a532ce2c0041db8902217b90ba/agentboard/agents/cme_final.py#L107-L174"
+  },
+  "compression": [
+   {
+    "what": "mean in-trial context vs STANDARD (full history), average of five tasks",
+    "kept": 64.98,
+    "of": 100,
+    "unit": "% of STANDARD tokens",
+    "basis": "Table 1 Context column (Overall); per task 49.99% (Gripper) to 73.58% (Tyreworld)",
+    "src": "paper Table 1",
+    "url": "https://aclanthology.org/2025.acl-long.1575.pdf"
+   },
+   {
+    "what": "summary vs the pairs it replaces",
+    "kept": null,
+    "of": null,
+    "unit": null,
+    "basis": "Not reported. The App. C.1 prompt asks for one line; the released summarize.py asks for 1-2 sentences.",
+    "src": "paper App. C.1; code summarize.py L39-L43",
+    "url": "https://github.com/HiAgent2024/HiAgent/blob/cebdd8e4eacec1a532ce2c0041db8902217b90ba/agentboard/agents/summarize.py#L39-L43"
+   }
+  ],
+  "numbers": [
+   {
+    "label": "Success rate, average of five tasks",
+    "value": "42.00 vs 21.00 (STANDARD)",
+    "src": "paper Table 1"
+   },
+   {
+    "label": "Progress rate, average",
+    "value": "62.55 vs 38.61",
+    "src": "paper Table 1"
+   },
+   {
+    "label": "Steps, average",
+    "value": "22.61 vs 26.41",
+    "src": "paper Table 1"
+   },
+   {
+    "label": "Run time vs STANDARD",
+    "value": "80.58%",
+    "src": "paper Table 1"
+   },
+   {
+    "label": "Wilcoxon test, progress rate",
+    "value": "statistic 144.0, p = 2.38e-5",
+    "src": "paper §5.5"
+   }
+  ],
+  "paper_vs_code": [
+   {
+    "topic": "Observation summarization",
+    "paper": "an LLM summarizes each finished subgoal (gpt-4-turbo serves as agent and summarizer)",
+    "code": "summarizer is switched off for Blocksworld and Gripper; the last observation is shown instead",
+    "src": "cme_final.py L117-L120",
+    "url": "https://github.com/HiAgent2024/HiAgent/blob/cebdd8e4eacec1a532ce2c0041db8902217b90ba/agentboard/agents/cme_final.py#L117-L120"
+   },
+   {
+    "topic": "Summarizer prompt",
+    "paper": "App. C.1: one line with the summary and whether the subgoal is met",
+    "code": "summarize.py (added 2026-04-15) asks for a 1-2 sentence summary of what happened and does not ask whether the subgoal was met",
+    "src": "summarize.py L33-L44",
+    "url": "https://github.com/HiAgent2024/HiAgent/blob/cebdd8e4eacec1a532ce2c0041db8902217b90ba/agentboard/agents/summarize.py#L33-L44"
+   },
+   {
+    "topic": "Trajectory retrieval",
+    "paper": "the LLM recalls a past subgoal's pairs when needed, analogous to generating an action",
+    "code": "after retrieve(...) the LLM is called again, but that call's action is discarded: the step returns the retrieve string, which is sent to the environment as the action",
+    "src": "cme_final.py L321-L331",
+    "url": "https://github.com/HiAgent2024/HiAgent/blob/cebdd8e4eacec1a532ce2c0041db8902217b90ba/agentboard/agents/cme_final.py#L321-L331"
+   },
+   {
+    "topic": "Step limit",
+    "paper": "at most 30 steps (§4.1)",
+    "code": "configs set 30; evaluate_model.sh passes --max_num_steps 50",
+    "src": "evaluate_model.sh; tyreworld.yaml L2",
+    "url": "https://github.com/HiAgent2024/HiAgent/blob/cebdd8e4eacec1a532ce2c0041db8902217b90ba/evaluate_model.sh"
+   }
+  ],
+  "open_questions": [
+   "If the released code matches the paper runs, Blocksworld and Gripper results are the 'w/o OS' configuration, so the Table 2 ablation (run on Tyreworld only) does not describe those two tasks.",
+   "Summaries are recomputed for every past subgoal each time the prompt is built, but the run-time comparison (80.58%) does not separate agent calls from summarizer calls.",
+   "How often the agent calls retrieve(...) is not reported."
+  ],
+  "figures": [
+   {
+    "id": "build",
+    "title": "Memory construction",
+    "viewBox": "0 0 560 252",
+    "body": "<rect class=\"gi-f\" x=\"262\" y=\"10\" width=\"292\" height=\"216\" rx=\"10\"/><text class=\"fig-t\" x=\"408\" y=\"26\" text-anchor=\"middle\">Working memory (one trial)</text><rect class=\"gi-ev\" x=\"272\" y=\"34\" width=\"272\" height=\"24\" rx=\"6\"/><text class=\"fig-t\" x=\"280\" y=\"50\" text-anchor=\"start\">1 Open the boot</text><text class=\"fig-s\" x=\"536\" y=\"50\" text-anchor=\"end\">summary: boot is open</text><rect class=\"gi-ev\" x=\"272\" y=\"64\" width=\"272\" height=\"24\" rx=\"6\"/><text class=\"fig-t\" x=\"280\" y=\"80\" text-anchor=\"start\">2 Fetch the wrench</text><text class=\"fig-s\" x=\"536\" y=\"80\" text-anchor=\"end\">summary: you have wrench</text><rect class=\"gi-hi\" x=\"272\" y=\"96\" width=\"272\" height=\"76\" rx=\"6\"/><text class=\"fig-t\" x=\"280\" y=\"112\" text-anchor=\"start\">3 Loosen the nut</text><text class=\"fig-s\" x=\"536\" y=\"112\" text-anchor=\"end\">current: all pairs, verbatim</text><line class=\"gi-t\" x1=\"282\" y1=\"124\" x2=\"282\" y2=\"162\"/><text class=\"fig-s\" x=\"290\" y=\"132\" text-anchor=\"start\">Action: loosen the nut nuts1</text><text class=\"fig-s\" x=\"290\" y=\"146\" text-anchor=\"start\">Observation: action is not valid</text><text class=\"fig-s\" x=\"290\" y=\"160\" text-anchor=\"start\">Action: check valid actions</text><rect class=\"gi-ev d\" x=\"272\" y=\"180\" width=\"272\" height=\"38\" rx=\"6\"/><text class=\"fig-s\" x=\"280\" y=\"196\" text-anchor=\"start\">raw pairs of subgoals 1-2: hidden, not deleted</text><text class=\"fig-s\" x=\"280\" y=\"210\" text-anchor=\"start\">retrieve(id) shows them again</text><rect class=\"gi-llm\" x=\"10\" y=\"32\" width=\"128\" height=\"42\" rx=\"8\"/><text class=\"fig-t\" x=\"74\" y=\"50\" text-anchor=\"middle\">Summarizer LLM</text><text class=\"fig-s\" x=\"74\" y=\"64\" text-anchor=\"middle\">one finished subgoal</text><path class=\"gi-a\" d=\"M138 61 L261 61\"/><polygon class=\"gi-ah\" points=\"268,61 261,57 261,65\"/><text class=\"fig-s\" x=\"200\" y=\"55\" text-anchor=\"middle\">summary</text><rect class=\"gi-llm\" x=\"10\" y=\"102\" width=\"128\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"74\" y=\"121\" text-anchor=\"middle\">Agent LLM</text><text class=\"fig-s\" x=\"74\" y=\"135\" text-anchor=\"middle\">gpt-4-turbo</text><path class=\"gi-a\" d=\"M138 112 L261 112\"/><polygon class=\"gi-ah\" points=\"268,112 261,108 261,116\"/><text class=\"fig-s\" x=\"200\" y=\"106\" text-anchor=\"middle\">Subgoal + Action</text><path class=\"gi-a d\" d=\"M262 136 L145 136\"/><polygon class=\"gi-ah\" points=\"138,136 145,132 145,140\"/><text class=\"fig-s\" x=\"200\" y=\"150\" text-anchor=\"middle\">prompt each step</text><rect class=\"gi-f\" x=\"10\" y=\"182\" width=\"128\" height=\"36\" rx=\"8\"/><text class=\"fig-t\" x=\"74\" y=\"204\" text-anchor=\"middle\">Environment</text><path class=\"gi-a\" d=\"M74 146 L74 175\"/><polygon class=\"gi-ah\" points=\"74,182 70,175 78,175\"/><text class=\"fig-s\" x=\"80\" y=\"168\" text-anchor=\"start\">action</text><path class=\"gi-a\" d=\"M138 200 L240 200 L240 166 L265 166\"/><polygon class=\"gi-ah\" points=\"272,166 265,162 265,170\"/><text class=\"fig-s\" x=\"190\" y=\"194\" text-anchor=\"middle\">observation</text><text class=\"fig-s\" x=\"280\" y=\"244\" text-anchor=\"middle\">Released code: Blocksworld and Gripper keep the last observation instead of a summary</text>",
+    "text": [
+     "The agent LLM writes a subgoal before acting, and each action and observation is logged under it; the current subgoal keeps every pair.",
+     "Finished subgoals are shown only as the subgoal plus a summary from a second LLM call; their raw pairs are hidden but kept."
+    ],
+    "src": "paper §3.2-3.3, Fig. 2; code cme_final.py L99-L174",
+    "url": "https://github.com/HiAgent2024/HiAgent/blob/cebdd8e4eacec1a532ce2c0041db8902217b90ba/agentboard/agents/cme_final.py#L99-L174"
+   },
+   {
+    "id": "read",
+    "title": "Memory retrieval",
+    "viewBox": "0 0 560 240",
+    "body": "<rect class=\"gi-f\" x=\"6\" y=\"22\" width=\"156\" height=\"76\" rx=\"8\"/><text class=\"fig-t\" x=\"84\" y=\"40\" text-anchor=\"middle\">Prompt, every step</text><text class=\"fig-s\" x=\"14\" y=\"56\" text-anchor=\"start\">instruction + 1 example</text><text class=\"fig-s\" x=\"14\" y=\"70\" text-anchor=\"start\">past: subgoal + summary</text><text class=\"fig-s\" x=\"14\" y=\"84\" text-anchor=\"start\">current: all pairs</text><path class=\"gi-a\" d=\"M162 60 L177 60\"/><polygon class=\"gi-ah\" points=\"184,60 177,56 177,64\"/><rect class=\"gi-llm\" x=\"184\" y=\"38\" width=\"92\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"230\" y=\"57\" text-anchor=\"middle\">Agent LLM</text><text class=\"fig-s\" x=\"230\" y=\"71\" text-anchor=\"middle\">one call</text><path class=\"gi-a\" d=\"M276 60 L291 60\"/><polygon class=\"gi-ah\" points=\"298,60 291,56 291,64\"/><polygon class=\"gi-llm\" points=\"352,30 406,60 352,90 298,60\"/><text class=\"fig-t\" x=\"352\" y=\"58\" text-anchor=\"middle\">retrieve(id)?</text><text class=\"fig-s\" x=\"352\" y=\"72\" text-anchor=\"middle\">LLM output</text><path class=\"gi-a\" d=\"M406 60 L429 60\"/><polygon class=\"gi-ah\" points=\"436,60 429,56 429,64\"/><text class=\"fig-yes\" x=\"412\" y=\"52\" text-anchor=\"start\">No</text><rect class=\"gi-hi\" x=\"436\" y=\"38\" width=\"118\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"495\" y=\"57\" text-anchor=\"middle\">Act</text><text class=\"fig-s\" x=\"495\" y=\"71\" text-anchor=\"middle\">1 of max 30 steps</text><text class=\"fig-s\" x=\"495\" y=\"98\" text-anchor=\"middle\">observation joins the</text><text class=\"fig-s\" x=\"495\" y=\"110\" text-anchor=\"middle\">current subgoal</text><path class=\"gi-a\" d=\"M352 90 L352 121\"/><polygon class=\"gi-ah\" points=\"352,128 348,121 356,121\"/><text class=\"fig-no\" x=\"360\" y=\"112\" text-anchor=\"start\">Yes</text><rect class=\"gi-f\" x=\"286\" y=\"128\" width=\"132\" height=\"50\" rx=\"8\"/><text class=\"fig-t\" x=\"352\" y=\"148\" text-anchor=\"middle\">Expand subgoal id</text><text class=\"fig-s\" x=\"352\" y=\"163\" text-anchor=\"middle\">raw pairs replace summary</text><path class=\"gi-a\" d=\"M286 153 L84 153 L84 105\"/><polygon class=\"gi-ah\" points=\"84,98 80,105 88,105\"/><text class=\"fig-s\" x=\"186\" y=\"147\" text-anchor=\"middle\">prompt rebuilt, LLM called again</text><text class=\"fig-s\" x=\"352\" y=\"194\" text-anchor=\"middle\">stays expanded until the next subgoal</text><text class=\"fig-s\" x=\"6\" y=\"216\" text-anchor=\"start\">If the prompt exceeds 8,192 tokens, the oldest</text><text class=\"fig-s\" x=\"6\" y=\"229\" text-anchor=\"start\">entries are dropped (code)</text><text class=\"fig-s\" x=\"554\" y=\"216\" text-anchor=\"end\">Code: the retrieve string itself is sent</text><text class=\"fig-s\" x=\"554\" y=\"229\" text-anchor=\"end\">as that step's action</text>",
+    "text": [
+     "Every step the whole working memory is the prompt; nothing is searched.",
+     "The agent can output retrieve(id) to swap a past subgoal's summary for its raw pairs, which stay visible until it writes the next subgoal."
+    ],
+    "src": "paper §3.4, App. B.2; code cme_final.py L125-L137, L222-L242, L299-L331",
+    "url": "https://github.com/HiAgent2024/HiAgent/blob/cebdd8e4eacec1a532ce2c0041db8902217b90ba/agentboard/agents/cme_final.py#L299-L331"
+   }
+  ],
+  "key_numbers": [
+   {
+    "label": "Subgoal pairs kept in full",
+    "value": "current subgoal only (+ retrieved ones)",
+    "src": "paper §3.2",
+    "section": "construction"
+   },
+   {
+    "label": "Summarizer",
+    "value": "gpt-4-turbo, same as the agent; off for Blocksworld and Gripper in code",
+    "src": "paper §4.1; code cme_final.py L117-L120",
+    "section": "construction"
+   },
+   {
+    "label": "Step limit",
+    "value": "30 steps, 1 in-context example",
+    "src": "paper §4.1",
+    "section": "method"
+   },
+   {
+    "label": "Prompt window",
+    "value": "8,192 tokens, last 100 entries (code)",
+    "src": "code tyreworld.yaml L20; cme_final.py L222",
+    "section": "method"
+   },
+   {
+    "label": "Context vs full history",
+    "value": "64.98% (average of five tasks)",
+    "src": "paper Table 1",
+    "section": "results"
+   },
+   {
+    "label": "Run time vs full history",
+    "value": "80.58%",
+    "src": "paper Table 1",
+    "section": "results"
+   }
+  ],
+  "components": [
+   {
+    "role": "Writes subgoals, acts, asks to retrieve",
+    "model": "gpt-4-turbo, temperature 0, top-p 1",
+    "kind": "llm",
+    "src": "paper §4.1"
+   },
+   {
+    "role": "Summarizes a finished subgoal",
+    "model": "gpt-4-turbo",
+    "kind": "llm",
+    "src": "paper §4.1, App. C.1; code summarize.py",
+    "url": "https://github.com/HiAgent2024/HiAgent/blob/cebdd8e4eacec1a532ce2c0041db8902217b90ba/agentboard/agents/summarize.py"
+   },
+   {
+    "role": "Folds and expands chunks",
+    "model": "rule on subgoal ids",
+    "kind": "rule",
+    "src": "code cme_final.py L114-L174",
+    "url": "https://github.com/HiAgent2024/HiAgent/blob/cebdd8e4eacec1a532ce2c0041db8902217b90ba/agentboard/agents/cme_final.py#L114-L174"
+   }
+  ],
+  "ablation": {
+   "cols": [
+    "SR",
+    "PR",
+    "Steps",
+    "Context",
+    "Time"
+   ],
+   "rows": [
+    [
+     "HiAgent",
+     "60.0",
+     "75.8",
+     "19.0",
+     "100.0%",
+     "100.0%"
+    ],
+    [
+     "w/o observation summarization",
+     "30.0",
+     "68.2",
+     "24.2",
+     "110.8%",
+     "122.5%"
+    ],
+    [
+     "w/o trajectory retrieval",
+     "50.0",
+     "76.9",
+     "21.2",
+     "105.0%",
+     "107.5%"
+    ],
+    [
+     "w/o both",
+     "30.0",
+     "62.4",
+     "26.2",
+     "107.2%",
+     "121.2%"
+    ],
+    [
+     "subgoals only, nothing hidden (w. TD)",
+     "40.0",
+     "67.4",
+     "22.8",
+     "112.8%*",
+     "105.7%*"
+    ],
+    [
+     "STANDARD",
+     "10.0",
+     "39.3",
+     "28.4",
+     "100%*",
+     "100%*"
+    ]
+   ],
+   "src": "paper Table 2 and Table 3, Tyreworld only (gpt-4-turbo). *Table 3 gives Context and Time relative to STANDARD, Table 2 relative to HiAgent."
+  },
+  "discussion": {
+   "takeaway": "Treating subgoals as memory chunks, and showing only a summary of each finished one, lets a GPT-4 agent finish long planning tasks more often, in fewer steps and with less context, than feeding it the full history.",
+   "claims": [
+    {
+     "claim": "HiAgent doubles the success rate of the full-history STANDARD prompt.",
+     "evidence": "Average success 42.00 vs 21.00 and progress 62.55 vs 38.61 over five tasks; Table 1, §4.2"
+    },
+    {
+     "claim": "It is also more efficient.",
+     "evidence": "3.80 fewer steps, context 64.98% and run time 80.58% of STANDARD; Table 1"
+    },
+    {
+     "claim": "Both summarization and retrieval help.",
+     "evidence": "Tyreworld success 60.0 vs 30.0 without summarization and 50.0 without retrieval; Table 2, §5.1"
+    },
+    {
+     "claim": "The gain is not only from task decomposition.",
+     "evidence": "Subgoals without hiding past pairs reach 40.0 success on Tyreworld vs 60.0 for HiAgent, with 112.8% context; Table 3, §5.3"
+    },
+    {
+     "claim": "The improvement is statistically significant.",
+     "evidence": "Wilcoxon signed-rank: progress rate p = 2.38e-5, steps p = 0.0016; §5.5"
+    }
+   ],
+   "limits": [
+    "Very long tasks may still exceed memory limits despite the shorter context.",
+    "Better retrieval strategies are left to future work.",
+    "Experiments cover benchmark tasks only, not real-world applications."
+   ],
+   "limits_src": "paper, Limitation",
+   "reading": [
+    "Only one backbone (gpt-4-turbo) and one baseline family are tested; the only other memory-style comparison is STANDARD, which keeps everything.",
+    "All ablations are on Tyreworld alone, and §5.1 says removing both modules cuts success by 20 while Table 2 shows 30.0 (-30.0).",
+    "In the released code Blocksworld and Gripper skip the summarizer and show the last observation, which is the paper's 'w/o OS' heuristic; the paper does not mention this.",
+    "In code, a retrieve(...) output is itself sent to the environment as that step's action, so it uses one of the step budget and the follow-up LLM action is discarded.",
+    "The number of problems per task is not stated in the paper; the released configs list 20 Jericho games, up to 20 Gripper and Barman problems, and Tyreworld problem indices 2-9 (8 of 10).",
+    "Context and time are reported only as percentages of STANDARD, so absolute token or summarizer cost is not given."
+   ]
+  }
+ }
+}

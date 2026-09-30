@@ -1,0 +1,438 @@
+{
+  "id": "memsearcher",
+  "name": "MemSearcher",
+  "paper": {
+    "title": "MemSearcher: Training LLMs to Reason, Search and Manage Memory via End-to-End Reinforcement Learning",
+    "arxiv": "2511.02805",
+    "url": "https://arxiv.org/abs/2511.02805",
+    "venue": "Findings of ACL 2026",
+    "venue_short": "ACL",
+    "track": "findings",
+    "year": 2026,
+    "code": "https://github.com/icip-cas/MemSearcher"
+  },
+  "design": {
+    "construction": {
+      "unit": "one natural-language memory passage per question",
+      "kept_as": "LLM rewrite of the previous memory plus the new search results",
+      "processing": "after each search, the same LLM reads question, memory, its thought, the call and the passages, and writes a new memory",
+      "trigger": "other",
+      "writer": "the policy LLM itself (Qwen2.5-3B/7B/14B-Instruct, RL-trained)"
+    },
+    "organization": {
+      "structure": "single text buffer",
+      "stores": "one memory string, overwritten every turn",
+      "index": null
+    },
+    "management": {
+      "operations": "overwrite the whole memory each turn (keep relevant details, add new ones)",
+      "conflicts": null,
+      "forgetting": "thoughts, calls and passages leave the context after each turn; only what the model writes into memory survives",
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": null,
+      "candidates": "none: the whole memory is in every turn's prompt (the search tool retrieves Wikipedia passages, not memory)",
+      "selection": null,
+      "budget": "memory up to 1,024 tokens (paper); each memory write is capped at 512 new tokens in the code"
+    },
+    "use": {
+      "context": "system prompt + question + memory; no earlier turns",
+      "reasoning": "multi-turn: think, then answer in \\boxed{} or search; one memory update per search"
+    },
+    "control": {
+      "construction": "learned-rl",
+      "management": "learned-rl",
+      "retrieval": "none"
+    }
+  },
+  "classify": {
+    "structure": "flat",
+    "index": "none",
+    "management": "update in place",
+    "candidates": "read everything",
+    "decides": "reads everything",
+    "note": "A single rewritten memory string replaces the growing ReAct history; what to keep is learned by RL, and the memory is always read whole."
+  },
+  "tags": {
+    "fidelity": "rewritten",
+    "structure": [
+      "flat"
+    ],
+    "write_time": [
+      "summarize",
+      "learned"
+    ],
+    "selection": [
+      "full-context"
+    ],
+    "memory_type": [
+      "working"
+    ],
+    "learning": "rl",
+    "domain": [
+      "web"
+    ]
+  },
+  "stages": {
+    "ingestion": "Each turn the search tool returns Wikipedia passages (2018 dump, E5 retriever) for the model's query.",
+    "construction": "In a second generation call the same LLM reads the question, previous memory, its thought, the call and the passages, and writes an updated memory inside <memory> tags.",
+    "organization": "One plain-text memory; no structure or index.",
+    "update": "The new memory overwrites the old one; the prompt asks to keep relevant earlier details and add new ones. The paper caps memory at 1,024 tokens; in training a trajectory ends if the cap is exceeded.",
+    "retrieval": "None for memory: the next turn's prompt is the system prompt, the question and the whole memory.",
+    "answer": "When the memory suffices, the model answers in \\boxed{}; otherwise it searches again, up to the turn limit.",
+    "learning": "Multi-context GRPO: each trajectory's reward (format check plus answer F1) gives one group-normalised advantage that is copied to every turn, and each turn is optimised as a separate sample. Trained on NQ + HotpotQA, 5 rollouts per question."
+  },
+  "summary": "A search agent that keeps a compact, LLM-rewritten memory instead of the growing ReAct history, so each turn sees only the question and the memory; the policy learns what to keep through multi-context GRPO.",
+  "verified": false,
+  "notes": "Venue checked on the ACL Anthology: Findings of ACL 2026, 2026.findings-acl.736, under the title 'MemSearcher: Iterative Memory Integration for Search Agent via End-to-End Reinforcement Learning'. The arXiv comment says 'Accepted to ACL 2026', but the proceedings list it in Findings. Main-table numbers in the Anthology PDF match arXiv v2 (8 May 2026), which was read in full. Memory is per question (a working buffer), not kept across questions.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2511.02805v2 (PDF read 2026-09-30); ACL Anthology 2026.findings-acl.736 checked for Table 2",
+      "code": "https://github.com/icip-cas/MemSearcher/tree/83a3bea2ced35faeb63748272c8b98b6e55399e6/",
+      "code_note": "Commit 83a3bea ('release code', 2026-06-29) is the first commit with code; earlier commits hold only the README. It came after the paper's v2, so it may differ from the exact training runs. It has the verl training rollout (vllm_rollout_spmd.py) and a separate inference class used by eval.sh."
+    },
+    "headline": [
+      "Each turn the model sees only the question and one memory it wrote itself; all earlier thoughts and passages are gone.",
+      "The memory is rewritten, not appended: facts can enter from the model's own knowledge (the paper's case study stores a fact the passage does not contain).",
+      "Retrieval here is Wikipedia search; the memory itself is never searched."
+    ],
+    "units": [
+      {
+        "name": "Memory",
+        "role": "the only carrier of information between turns",
+        "made_by": "the policy LLM, in a second generation call after each search",
+        "fields": [
+          {
+            "name": "memory text",
+            "what": "free-text notes relevant to the question, inside <memory> tags",
+            "kept_as": "rewritten",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §2.2; code memsearcher.py L245-L257, L309-L310",
+            "url": "https://github.com/icip-cas/MemSearcher/blob/83a3bea2ced35faeb63748272c8b98b6e55399e6/memsearcher/inference/memsearcher.py#L301-L310"
+          }
+        ]
+      },
+      {
+        "name": "Turn record",
+        "role": "thought, tool call and retrieved passages of one turn",
+        "made_by": "policy LLM and the retriever",
+        "fields": [
+          {
+            "name": "thought, call, passages",
+            "what": "seen once while writing the memory, then dropped from the context",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "code memsearcher.py L286-L310",
+            "url": "https://github.com/icip-cas/MemSearcher/blob/83a3bea2ced35faeb63748272c8b98b6e55399e6/memsearcher/inference/memsearcher.py#L286-L310"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Search",
+        "how": "the model writes <think> and a wikipedia_search call; the retriever returns passages",
+        "params": {
+          "retriever": "E5 (e5-base-v2 in the config)",
+          "top_n": "model may set it; tool schema says 5, server default 10"
+        },
+        "src": "paper §4.1; code memsearcher.py L44-L90, retriever_serving.py L42-L50",
+        "url": "https://github.com/icip-cas/MemSearcher/blob/83a3bea2ced35faeb63748272c8b98b6e55399e6/scripts/serving/retriever_serving.py#L42-L50"
+      },
+      {
+        "step": "Integrate",
+        "how": "the passages are appended with an instruction to update the memory while keeping relevant earlier details; the same model generates the new memory in <memory> tags",
+        "params": {
+          "max new tokens": "512"
+        },
+        "src": "paper §2.2; code memsearcher.py L112-L118, L289-L310",
+        "url": "https://github.com/icip-cas/MemSearcher/blob/83a3bea2ced35faeb63748272c8b98b6e55399e6/memsearcher/inference/memsearcher.py#L112-L118"
+      },
+      {
+        "step": "Overwrite",
+        "how": "the next prompt is rebuilt from the system prompt, the question and the new memory only",
+        "src": "code memsearcher.py L309-L310",
+        "url": "https://github.com/icip-cas/MemSearcher/blob/83a3bea2ced35faeb63748272c8b98b6e55399e6/memsearcher/inference/memsearcher.py#L309-L310"
+      },
+      {
+        "step": "Enforce the cap (training)",
+        "how": "if the memory exceeds 1,024 tokens, or no memory tag is produced, the trajectory stops there",
+        "params": {
+          "max memory": "1,024 tokens"
+        },
+        "src": "paper §4.1; code vllm_rollout_spmd.py L720-L757, ppo_trainer.yaml L9",
+        "url": "https://github.com/icip-cas/MemSearcher/blob/83a3bea2ced35faeb63748272c8b98b6e55399e6/verl/workers/rollout/vllm_rollout/vllm_rollout_spmd.py#L720-L757"
+      }
+    ],
+    "read": [
+      {
+        "step": "Read memory",
+        "round": 0,
+        "input": "none (no query)",
+        "scores": "nothing is scored",
+        "how": "the memory is placed in the user message as <memory> ... </memory> next to the question",
+        "src": "paper Eq. 2; code memsearcher.py L92-L107",
+        "url": "https://github.com/icip-cas/MemSearcher/blob/83a3bea2ced35faeb63748272c8b98b6e55399e6/memsearcher/inference/memsearcher.py#L92-L107"
+      }
+    ],
+    "answer_context": {
+      "sees": "system prompt, the question and the latest memory",
+      "format": "\"<question> {question} </question>\\n\\n<memory> {memory} </memory>\" as the user message, then \"<think>\"",
+      "excludes": [
+        "earlier thoughts",
+        "earlier tool calls",
+        "retrieved passages from earlier turns"
+      ],
+      "includes": [
+        "the memory the model wrote after its last search"
+      ],
+      "src": "code memsearcher.py L92-L107",
+      "url": "https://github.com/icip-cas/MemSearcher/blob/83a3bea2ced35faeb63748272c8b98b6e55399e6/memsearcher/inference/memsearcher.py#L92-L107"
+    },
+    "compression": [
+      {
+        "what": "turn-10 context vs ReAct-style ReSearch 3B",
+        "kept": 3,
+        "of": 16,
+        "unit": "k tokens (approx.)",
+        "basis": "Read off Fig. 4: MemSearcher 3B stays near 2-3k tokens at turn 10 while ReSearch 3B reaches about 16k; the paper gives no table of these values.",
+        "src": "paper Fig. 4, §4.2.2",
+        "url": "https://arxiv.org/pdf/2511.02805"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Average EM over 7 datasets, 3B / 7B / 14B",
+        "value": "43.8 / 48.9 / 51.7",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "Same models inside MemSearcher without RL",
+        "value": "14.4 / 25.8 / 27.7",
+        "src": "paper Table 3"
+      },
+      {
+        "label": "3B trained by SFT (distilled from Qwen2.5-72B) vs RL",
+        "value": "28.5 vs 43.8",
+        "src": "paper Table 4"
+      },
+      {
+        "label": "Context length throughout",
+        "value": "under 4K tokens",
+        "src": "paper §4.2.2"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Memory length",
+        "paper": "maximum 1,024 tokens",
+        "code": "each memory write is generated with max_new_tokens 512 (inference) / max_tokens 512 (training), so a memory longer than ~512 tokens cannot be written in one turn; 1,024 is only checked in training",
+        "src": "memsearcher.py L289-L298; vllm_rollout_spmd.py L696, L751",
+        "url": "https://github.com/icip-cas/MemSearcher/blob/83a3bea2ced35faeb63748272c8b98b6e55399e6/memsearcher/inference/memsearcher.py#L289-L298"
+      },
+      {
+        "topic": "Missing memory tag",
+        "paper": "not discussed",
+        "code": "inference: memory becomes empty and the run continues; training: the trajectory ends",
+        "src": "memsearcher.py L245-L257; vllm_rollout_spmd.py L723-L727",
+        "url": "https://github.com/icip-cas/MemSearcher/blob/83a3bea2ced35faeb63748272c8b98b6e55399e6/memsearcher/inference/memsearcher.py#L245-L257"
+      },
+      {
+        "topic": "Passages per search",
+        "paper": "not stated",
+        "code": "tool schema tells the model the default is 5, but if it omits top_n the retrieval server returns 10",
+        "src": "memsearcher.py L62-L66; retriever_serving.py L42-L50",
+        "url": "https://github.com/icip-cas/MemSearcher/blob/83a3bea2ced35faeb63748272c8b98b6e55399e6/scripts/serving/retriever_serving.py#L42-L50"
+      },
+      {
+        "topic": "Turn limit",
+        "paper": "not stated",
+        "code": "5 turns in training (train.sh), 20 in eval.sh",
+        "src": "train.sh L22; eval.sh L8",
+        "url": "https://github.com/icip-cas/MemSearcher/blob/83a3bea2ced35faeb63748272c8b98b6e55399e6/eval.sh#L8"
+      }
+    ],
+    "open_questions": [
+      "Figure 4 plots up to 10 turns while training allows 5; the paper gives no turn counts per dataset.",
+      "There is no run with the same trained model and a ReAct-style full history, so the gain from memory versus from RL on this policy is not separated; Table 3 only removes RL."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 220",
+        "body": "<text class=\"fig-s\" x=\"280\" y=\"20\" text-anchor=\"middle\">one turn</text><rect class=\"gi-f\" x=\"6\" y=\"40\" width=\"110\" height=\"70\" rx=\"8\"/><text class=\"fig-t\" x=\"61\" y=\"58\" text-anchor=\"middle\">Context</text><text class=\"fig-s\" x=\"61\" y=\"73\" text-anchor=\"middle\">question</text><text class=\"fig-s\" x=\"61\" y=\"86\" text-anchor=\"middle\">memory m(i-1)</text><text class=\"fig-s\" x=\"61\" y=\"99\" text-anchor=\"middle\">no past turns</text><path class=\"gi-a\" d=\"M116 75 L129 75\"/><polygon class=\"gi-ah\" points=\"136,75 129,71 129,79\"/><rect class=\"gi-llm\" x=\"136\" y=\"45\" width=\"86\" height=\"60\" rx=\"8\"/><text class=\"fig-t\" x=\"179\" y=\"65\" text-anchor=\"middle\">Policy LLM</text><text class=\"fig-s\" x=\"179\" y=\"79\" text-anchor=\"middle\">think +</text><text class=\"fig-s\" x=\"179\" y=\"92\" text-anchor=\"middle\">search call</text><path class=\"gi-a\" d=\"M222 75 L235 75\"/><polygon class=\"gi-ah\" points=\"242,75 235,71 235,79\"/><rect class=\"gi-v fig-soft\" x=\"242\" y=\"45\" width=\"92\" height=\"60\" rx=\"8\"/><text class=\"fig-t\" x=\"288\" y=\"65\" text-anchor=\"middle\">Wikipedia</text><text class=\"fig-s\" x=\"288\" y=\"79\" text-anchor=\"middle\">E5 retriever</text><text class=\"fig-s\" x=\"288\" y=\"92\" text-anchor=\"middle\">→ passages</text><path class=\"gi-a\" d=\"M334 75 L347 75\"/><polygon class=\"gi-ah\" points=\"354,75 347,71 347,79\"/><rect class=\"gi-llm\" x=\"354\" y=\"45\" width=\"92\" height=\"60\" rx=\"8\"/><text class=\"fig-t\" x=\"400\" y=\"65\" text-anchor=\"middle\">Same LLM</text><text class=\"fig-s\" x=\"400\" y=\"79\" text-anchor=\"middle\">reads all of it,</text><text class=\"fig-s\" x=\"400\" y=\"92\" text-anchor=\"middle\">writes memory</text><path class=\"gi-a\" d=\"M446 75 L459 75\"/><polygon class=\"gi-ah\" points=\"466,75 459,71 459,79\"/><rect class=\"gi-hi\" x=\"466\" y=\"45\" width=\"88\" height=\"60\" rx=\"8\"/><text class=\"fig-t\" x=\"510\" y=\"65\" text-anchor=\"middle\">memory m(i)</text><text class=\"fig-s\" x=\"510\" y=\"79\" text-anchor=\"middle\">rewritten,</text><text class=\"fig-s\" x=\"510\" y=\"92\" text-anchor=\"middle\">overwrites m(i-1)</text><text class=\"fig-s\" x=\"288\" y=\"122\" text-anchor=\"middle\">top 10 by default</text><text class=\"fig-s\" x=\"400\" y=\"122\" text-anchor=\"middle\">≤ 512 new tokens</text><path class=\"gi-a d\" d=\"M510 105 L510 150 L61 150 L61 117\"/><polygon class=\"gi-ah\" points=\"61,110 57,117 65,117\"/><text class=\"fig-s\" x=\"286\" y=\"166\" text-anchor=\"middle\">next turn sees only the question and m(i); thoughts and passages are dropped</text><text class=\"fig-s\" x=\"280\" y=\"196\" text-anchor=\"middle\">Training: memory capped at 1,024 tokens; a trajectory ends if it is exceeded or no &lt;memory&gt; tag.</text><text class=\"fig-s\" x=\"280\" y=\"210\" text-anchor=\"middle\">Inference script: a missing &lt;memory&gt; tag leaves the memory empty.</text>",
+        "text": [
+          "Each turn the LLM searches Wikipedia, then in a second call reads its thought, the call and the passages and writes a new memory.",
+          "The new memory overwrites the old one; the next turn starts from the question and this memory only."
+        ],
+        "src": "paper §2.2, §4.1; code memsearcher.py L259-L318, vllm_rollout_spmd.py L560-L757",
+        "url": "https://github.com/icip-cas/MemSearcher/blob/83a3bea2ced35faeb63748272c8b98b6e55399e6/memsearcher/inference/memsearcher.py#L259-L318"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 240",
+        "body": "<rect class=\"gi-f\" x=\"6\" y=\"30\" width=\"130\" height=\"74\" rx=\"8\"/><text class=\"fig-t\" x=\"71\" y=\"48\" text-anchor=\"middle\">Turn i input</text><text class=\"fig-s\" x=\"71\" y=\"63\" text-anchor=\"middle\">system prompt</text><text class=\"fig-s\" x=\"71\" y=\"76\" text-anchor=\"middle\">&lt;question&gt;</text><text class=\"fig-s\" x=\"71\" y=\"89\" text-anchor=\"middle\">&lt;memory&gt; m(i-1)</text><path class=\"gi-a\" d=\"M136 67 L149 67\"/><polygon class=\"gi-ah\" points=\"156,67 149,63 149,71\"/><rect class=\"gi-llm\" x=\"156\" y=\"42\" width=\"90\" height=\"50\" rx=\"8\"/><text class=\"fig-t\" x=\"201\" y=\"63\" text-anchor=\"middle\">Policy LLM</text><text class=\"fig-s\" x=\"201\" y=\"77\" text-anchor=\"middle\">&lt;think&gt;</text><path class=\"gi-a\" d=\"M246 67 L259 67\"/><polygon class=\"gi-ah\" points=\"266,67 259,63 259,71\"/><polygon class=\"gi-llm\" points=\"266,67 310,39 354,67 310,95\"/><text class=\"fig-t\" x=\"310\" y=\"71\" text-anchor=\"middle\">Answer?</text><path class=\"gi-a\" d=\"M354 67 L383 67\"/><polygon class=\"gi-ah\" points=\"390,67 383,63 383,71\"/><text class=\"fig-no\" x=\"372\" y=\"60\" text-anchor=\"middle\">No</text><rect class=\"gi-v fig-soft\" x=\"390\" y=\"45\" width=\"110\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"445\" y=\"63\" text-anchor=\"middle\">Search</text><text class=\"fig-s\" x=\"445\" y=\"77\" text-anchor=\"middle\">wikipedia_search</text><path class=\"gi-a\" d=\"M445 89 L445 113\"/><polygon class=\"gi-ah\" points=\"445,120 441,113 449,113\"/><rect class=\"gi-llm\" x=\"390\" y=\"120\" width=\"110\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"445\" y=\"138\" text-anchor=\"middle\">Update memory</text><text class=\"fig-s\" x=\"445\" y=\"152\" text-anchor=\"middle\">same LLM, 2nd call</text><path class=\"gi-a\" d=\"M310 95 L310 143\"/><polygon class=\"gi-ah\" points=\"310,150 306,143 314,143\"/><text class=\"fig-yes\" x=\"318\" y=\"126\" text-anchor=\"start\">Yes</text><rect class=\"gi-hi\" x=\"250\" y=\"150\" width=\"120\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"310\" y=\"167\" text-anchor=\"middle\">\\boxed{answer}</text><text class=\"fig-s\" x=\"310\" y=\"181\" text-anchor=\"middle\">from the memory</text><path class=\"gi-a d\" d=\"M445 164 L445 212 L30 212 L30 111\"/><polygon class=\"gi-ah\" points=\"30,104 26,111 34,111\"/><text class=\"fig-s\" x=\"258\" y=\"228\" text-anchor=\"middle\">new turn, fresh context with m(i): up to 5 turns in training, 20 in the eval script</text><text class=\"fig-s\" x=\"42\" y=\"124\" text-anchor=\"start\">memory is not searched:</text><text class=\"fig-s\" x=\"42\" y=\"137\" text-anchor=\"start\">it is read in full</text>",
+        "text": [
+          "Memory is not searched: it is placed whole in the prompt next to the question.",
+          "The model answers from it or searches again; each search is followed by a memory update and a fresh context."
+        ],
+        "src": "paper §2.2, Eq. 2; code memsearcher.py L92-L118, L259-L318",
+        "url": "https://github.com/icip-cas/MemSearcher/blob/83a3bea2ced35faeb63748272c8b98b6e55399e6/memsearcher/inference/memsearcher.py#L259-L318"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Memory cap",
+        "value": "1,024 tokens (paper); 512 new tokens per write (code)",
+        "src": "paper §4.1; code memsearcher.py L271, L295",
+        "section": "construction"
+      },
+      {
+        "label": "Memories kept",
+        "value": "1, overwritten each turn",
+        "src": "paper §2.2",
+        "section": "construction"
+      },
+      {
+        "label": "Turns",
+        "value": "5 in training, 20 in the eval script",
+        "src": "code train.sh L22, eval.sh L8",
+        "section": "method"
+      },
+      {
+        "label": "Rollouts per question",
+        "value": "5",
+        "src": "paper §4.1, Table 5",
+        "section": "method"
+      },
+      {
+        "label": "Context per turn",
+        "value": "under 4K tokens; ReSearch reaches ~16k by turn 10",
+        "src": "paper §4.2.2, Fig. 4",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Reasons, searches, writes memory, answers",
+        "model": "Qwen2.5-3B/7B/14B-Instruct trained with multi-context GRPO",
+        "kind": "llm",
+        "src": "paper §4.1"
+      },
+      {
+        "role": "Wikipedia search",
+        "model": "E5 over the 2018 Wikipedia dump (e5-base-v2 in the config)",
+        "kind": "retriever",
+        "src": "paper §4.1; code retriever_config.yaml",
+        "url": "https://github.com/icip-cas/MemSearcher/blob/83a3bea2ced35faeb63748272c8b98b6e55399e6/scripts/serving/retriever_config.yaml"
+      },
+      {
+        "role": "Memory cap and stop rule (training)",
+        "model": "code rule, 1,024 tokens",
+        "kind": "rule",
+        "src": "code vllm_rollout_spmd.py L745-L757",
+        "url": "https://github.com/icip-cas/MemSearcher/blob/83a3bea2ced35faeb63748272c8b98b6e55399e6/verl/workers/rollout/vllm_rollout/vllm_rollout_spmd.py#L745-L757"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "HotpotQA",
+        "2wiki",
+        "Musique",
+        "Bamboogle"
+      ],
+      "rows": [
+        [
+          "7B, memory cap 256 tokens",
+          "≈50.0",
+          "≈48.0",
+          "≈25.1",
+          "≈48.6"
+        ],
+        [
+          "7B, cap 512",
+          "≈50.8",
+          "≈48.0",
+          "≈25.5",
+          "≈48.8"
+        ],
+        [
+          "7B, cap 1,024 (default)",
+          "50.8",
+          "48.6",
+          "25.8",
+          "48.8"
+        ],
+        [
+          "7B, cap 2,048",
+          "≈50.8",
+          "≈48.6",
+          "≈25.8",
+          "≈48.8"
+        ],
+        [
+          "7B without RL (same framework)",
+          "27.4",
+          "27.8",
+          "11.6",
+          "27.2"
+        ]
+      ],
+      "src": "paper Fig. 6 (values read off the plot, approx.; the 1,024 row equals Table 2) and Table 3"
+    },
+    "discussion": {
+      "takeaway": "Replacing the growing ReAct history with one memory the model rewrites every turn keeps the context small and, after RL training, gives higher EM than ReAct-style search agents of the same or larger size.",
+      "claims": [
+        {
+          "claim": "MemSearcher beats search-agent baselines at every size.",
+          "evidence": "Average EM 43.8 (3B), 48.9 (7B), 51.7 (14B) vs best baselines 40.5, 43.6, 48.3 (Table 2, §4.2.1)."
+        },
+        {
+          "claim": "Smaller MemSearcher models beat larger baselines.",
+          "evidence": "7B at 48.9 above ReSearch 32B at 48.3 (Table 2)."
+        },
+        {
+          "claim": "Context stays nearly constant across turns.",
+          "evidence": "Under 4K tokens vs a linear rise for ReSearch (Fig. 4, §4.2.2)."
+        },
+        {
+          "claim": "RL is needed, and beats SFT.",
+          "evidence": "3B: 14.4 without RL, 28.5 with SFT, 43.8 with RL (Tables 3-4)."
+        },
+        {
+          "claim": "A middle memory size is best.",
+          "evidence": "256 to 2,048 tokens; gains up to 1,024 on Musique, saturated at 256 on Bamboogle (Fig. 6, §4.3.3)."
+        }
+      ],
+      "limits": [
+        "Only a simple memory design is studied; RAG-like or structured memories for RL search agents are left open.",
+        "Multi-context GRPO may carry length bias, and more RL techniques remain to be explored."
+      ],
+      "limits_src": "paper, Limitations",
+      "reading": [
+        "The memory is per question and lives for at most a handful of turns; it is context compression for multi-hop QA, not long-term memory.",
+        "Caps of 1,024 and 2,048 give the same scores on all eight curves of Fig. 6, which fits the code writing each memory with at most 512 new tokens.",
+        "Baselines are listed with sizes but no statement of who ran them or with which retriever; the paper notes ZeroSearch and R1-Searcher used Google search in their own evaluation, so those rows at least are not under the same retrieval setup.",
+        "The case study (Table 6) writes 'Sylvester comes from Latin' into memory after a passage about a singer, so the rewrite can add unsourced facts.",
+        "Table 3's 'without training' baseline is the untrained model inside the MemSearcher loop, not a ReAct agent, so it measures RL rather than memory."
+      ]
+    },
+    "abstract": {
+      "text": "Search agents in the ReAct style append every thought, call and retrieved passage to their context, which grows long and noisy. MemSearcher instead keeps one compact memory: each turn the model sees the question and the memory, searches, and then rewrites the memory from the new passages, so context length stays nearly flat. Because each turn has its own context, the authors train it with multi-context GRPO, which gives every turn the trajectory's advantage. On seven QA datasets MemSearcher models from 3B to 14B beat RL-trained ReAct-style search agents while keeping contexts under 4K tokens.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2511.02805"
+    },
+    "sections": {
+      "Memory architecture": "§2.2",
+      "Results": "§4.2",
+      "Ablation": "§4.3",
+      "Discussion": "§6, Limitations",
+      "Details": "§3, §4.1, App. A.2"
+    }
+  }
+}

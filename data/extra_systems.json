@@ -30,12 +30,6 @@
   "note": "Tree-structured dynamic memory; re-run by H-Mem."
  },
  {
-  "id": "memorybank",
-  "name": "MemoryBank",
-  "url": "https://arxiv.org/abs/2305.10250",
-  "note": "Ebbinghaus-style forgetting memory (AAAI 2024)."
- },
- {
   "id": "tim",
   "name": "Think-in-Memory (TiM)",
   "url": "https://arxiv.org/abs/2311.08719",
@@ -108,12 +102,6 @@
   "note": "Human-written gold output; a reference point, not a system."
  },
  {
-  "id": "hipporag-v2",
-  "name": "HippoRAG 2",
-  "url": "https://arxiv.org/abs/2502.14802",
-  "note": ""
- },
- {
   "id": "engram",
   "name": "Engram",
   "url": null,
@@ -178,5 +166,1389 @@
   "name": "MemoChat",
   "url": "https://arxiv.org/abs/2308.08239",
   "note": ""
+ },
+ {
+  "id": "graphrag",
+  "name": "GraphRAG",
+  "url": "https://arxiv.org/abs/2404.16130",
+  "note": "LLM-extracted knowledge graph split into communities (Leiden) with LLM community summaries."
+ },
+ {
+  "id": "gemini-1.5-pro",
+  "name": "Gemini 1.5 Pro",
+  "url": "https://arxiv.org/abs/2403.05530",
+  "note": "Proprietary MLLM (video baseline in EventMemAgent)."
+ },
+ {
+  "id": "gpt-4o",
+  "name": "GPT-4o",
+  "url": "https://arxiv.org/abs/2410.21276",
+  "note": "Proprietary MLLM (video baseline in EventMemAgent)."
+ },
+ {
+  "id": "claude-3.5-sonnet",
+  "name": "Claude 3.5 Sonnet",
+  "url": "https://www-cdn.anthropic.com/fed9cc193a14b84131812372d8d5857f8f304c52/Model_Card_Claude_3_Addendum.pdf",
+  "note": "Proprietary MLLM (video baseline in EventMemAgent)."
+ },
+ {
+  "id": "qwen2-vl",
+  "name": "Qwen2-VL",
+  "url": "https://arxiv.org/abs/2409.12191",
+  "note": "Open-source offline video MLLM; 7B and 72B rows."
+ },
+ {
+  "id": "qwen3-vl",
+  "name": "Qwen3-VL",
+  "url": "https://arxiv.org/abs/2511.21631",
+  "note": "Open-source offline MLLM; the 8B model is EventMemAgent's backbone."
+ },
+ {
+  "id": "llava-video",
+  "name": "LLaVA-Video",
+  "url": null,
+  "note": "Open-source offline video MLLM (7B); EventMemAgent cites Video-LLaVA for this row."
+ },
+ {
+  "id": "llava-onevision",
+  "name": "LLaVA-OneVision",
+  "url": "https://arxiv.org/abs/2408.03326",
+  "note": "Open-source offline MLLM (7B)."
+ },
+ {
+  "id": "internvl2",
+  "name": "InternVL-V2",
+  "url": null,
+  "note": "Open-source offline MLLM (8B); cited to Science China Information Sciences 2024."
+ },
+ {
+  "id": "longvu",
+  "name": "LongVU",
+  "url": "https://arxiv.org/abs/2410.17434",
+  "note": "Offline long-video MLLM with spatiotemporal token compression (7B)."
+ },
+ {
+  "id": "flash-vstream",
+  "name": "Flash-VStream",
+  "url": "https://arxiv.org/abs/2406.08085",
+  "note": "Online video MLLM with a compressed visual memory (7B); EventMemAgent also cites the 2025 version, arXiv 2506.23825."
+ },
+ {
+  "id": "videollm-online",
+  "name": "VideoLLM-online",
+  "url": null,
+  "note": "Online streaming video LLM (8B), CVPR 2024."
+ },
+ {
+  "id": "dispider",
+  "name": "Dispider",
+  "url": null,
+  "note": "Online video MLLM with disentangled perception, decision and reaction (7B), CVPR 2025."
+ },
+ {
+  "id": "streamforest",
+  "name": "StreamForest",
+  "url": "https://arxiv.org/abs/2509.24871",
+  "note": "Online video MLLM with persistent event memory (7B)."
+ },
+ {
+  "id": "streamagent",
+  "name": "StreamAgent",
+  "url": "https://arxiv.org/abs/2508.01875",
+  "note": "Prompted online video agent (7B)."
+ },
+ {
+  "id": "timechat-online",
+  "name": "TimeChat-Online",
+  "url": null,
+  "note": "Online video MLLM that drops redundant visual tokens (7B), ACM MM 2025."
+ },
+ {
+  "id": "video-llama2",
+  "name": "VideoLLaMA 2",
+  "url": "https://arxiv.org/abs/2406.07476",
+  "note": "Open-source offline video MLLM (7B)."
+ },
+ {
+  "id": "vila-1.5",
+  "name": "VILA-1.5",
+  "url": null,
+  "note": "Open-source offline MLLM (8B); EventMemAgent cites NVILA (CVPR 2025) for this row."
+ },
+ {
+  "id": "video-ccam",
+  "name": "Video-CCAM",
+  "url": "https://arxiv.org/abs/2408.14023",
+  "note": "Open-source offline video MLLM (14B)."
+ },
+ {
+  "id": "longva",
+  "name": "LongVA",
+  "url": "https://arxiv.org/abs/2406.16852",
+  "note": "Long-context offline video MLLM (7B)."
+ },
+ {
+  "id": "kangaroo",
+  "name": "Kangaroo",
+  "url": "https://arxiv.org/abs/2408.15542",
+  "note": "Long-context offline video MLLM (7B)."
+ },
+ {
+  "id": "llava-next-video",
+  "name": "LLaVA-NeXT-Video",
+  "url": "https://llava-vl.github.io/blog/2024-04-30-llava-next-video/",
+  "note": "Offline video MLLM (32B row)."
+ },
+ {
+  "id": "minicpm-v-2.6",
+  "name": "MiniCPM-V 2.6",
+  "url": "https://arxiv.org/abs/2408.01800",
+  "note": "Open-source offline MLLM (8B)."
+ },
+ {
+  "id": "mem1",
+  "name": "MEM1",
+  "url": "https://arxiv.org/abs/2506.15841",
+  "note": "RL-trained agent that keeps one compact internal state paragraph while it reads and retrieves."
+ },
+ {
+  "id": "ld-agent",
+  "name": "LD-Agent",
+  "url": "https://aclanthology.org/2025.naacl-long.272/",
+  "note": "Hello Again! LLM-powered personalized agent for long-term dialogue (NAACL 2025; arXiv 2406.05925): long/short-term memory banks with keyword-based retrieval."
+ },
+ {
+  "id": "g-memory",
+  "name": "G-Memory",
+  "url": "https://arxiv.org/abs/2506.07398",
+  "note": "G-Memory: Tracing Hierarchical Memory for Multi-Agent Systems; SEDM describes it as hierarchical tracing over a global pool searched by similarity."
+ },
+ {
+  "id": "webshaper",
+  "name": "WebShaper",
+  "url": "https://arxiv.org/abs/2507.15061",
+  "note": "Information-seeking web agent trained on formalization-driven synthesized data (32B model)."
+ },
+ {
+  "id": "langchain-open-deep-research",
+  "name": "LangChain Open Deep Research",
+  "url": "https://github.com/langchain-ai/open_deep_research",
+  "note": "Open-source deep-research agent from LangChain."
+ },
+ {
+  "id": "doubao-research",
+  "name": "Doubao Deep Research",
+  "url": "https://www.doubao.com/chat/",
+  "note": "Proprietary deep-research product (ByteDance)."
+ },
+ {
+  "id": "kimi-research",
+  "name": "Kimi Deep Research",
+  "url": "https://www.kimi.com/",
+  "note": "Proprietary deep-research product (Moonshot AI)."
+ },
+ {
+  "id": "claude-research",
+  "name": "Claude Research",
+  "url": "https://www.anthropic.com/claude",
+  "note": "Proprietary deep-research feature of Claude (Anthropic)."
+ },
+ {
+  "id": "openai-deepresearch",
+  "name": "OpenAI Deep Research",
+  "url": "https://cdn.openai.com/deep-research-system-card.pdf",
+  "note": "Proprietary deep-research agent (OpenAI)."
+ },
+ {
+  "id": "gemini-deepresearch",
+  "name": "Gemini 2.5 Pro Deep Research",
+  "url": "https://gemini.google/overview/deep-research/",
+  "note": "Proprietary deep-research agent (Google)."
+ },
+ {
+  "id": "moom",
+  "name": "MOOM",
+  "url": "https://arxiv.org/abs/2509.11860",
+  "note": "Memory system for ultra-long role-play dialogues, from the authors of the ZH-4O benchmark."
+ },
+ {
+  "id": "fifo",
+  "name": "FIFO truncation",
+  "url": null,
+  "note": "Keeps only the most recent k interaction turns and drops older ones; variant names k."
+ },
+ {
+  "id": "turn-retrieval",
+  "name": "Turn retrieval",
+  "url": null,
+  "note": "Keeps the k past interaction turns most similar (by embedding) to the latest turn, plus the latest turn; ACON baseline."
+ },
+ {
+  "id": "llmlingua",
+  "name": "LLMLingua",
+  "url": "https://arxiv.org/abs/2310.05736",
+  "note": "Extractive prompt compression with a small LM that drops low-information tokens (LLMLingua-2: arXiv 2403.12968); variant names keep rate."
+ },
+ {
+  "id": "prompted-compression",
+  "name": "Prompted LLM compression",
+  "url": null,
+  "note": "An LLM summarizes the agent's history or observation with a general hand-written instruction; ACON's naive-prompting baseline."
+ },
+ {
+  "id": "ft",
+  "name": "FT (constrained fine-tuning)",
+  "url": "https://arxiv.org/abs/2012.00363",
+  "note": "Fine-tuning with a norm constraint (Zhu et al. 2020), as run in AlphaEdit; distinct from WISE's FT-L runs."
+ },
+ {
+  "id": "instructedit",
+  "name": "InstructEdit",
+  "url": "https://arxiv.org/abs/2402.16123",
+  "note": "MEND-style meta-learned editor trained with task instructions."
+ },
+ {
+  "id": "prune",
+  "name": "PRUNE",
+  "url": "https://arxiv.org/abs/2405.16821",
+  "note": "Restrains the condition number of the edited matrix during sequential editing (reimplemented by AlphaEdit)."
+ },
+ {
+  "id": "rect",
+  "name": "RECT",
+  "url": "https://arxiv.org/abs/2401.04700",
+  "note": "Regularises MEMIT-style weight updates to protect general abilities."
+ },
+ {
+  "id": "serac",
+  "name": "SERAC",
+  "url": "https://arxiv.org/abs/2206.06520",
+  "note": "Memory-based editor: stores edits explicitly, a scope classifier routes in-scope inputs to a counterfactual model."
+ },
+ {
+  "id": "melo",
+  "name": "MELO",
+  "url": "https://arxiv.org/abs/2312.11795",
+  "note": "Neuron-indexed dynamic LoRA blocks activated per edit."
+ },
+ {
+  "id": "step",
+  "name": "SteP",
+  "url": "https://arxiv.org/abs/2310.03720",
+  "note": "Stacked LLM policies for web actions, with human-written per-website policies."
+ },
+ {
+  "id": "webarena-baseline",
+  "name": "WebArena baseline agent",
+  "url": "https://arxiv.org/abs/2307.13854",
+  "note": "The prompted LLM agent reported with the WebArena benchmark."
+ },
+ {
+  "id": "autoeval",
+  "name": "AutoEval",
+  "url": "https://arxiv.org/abs/2404.06474",
+  "note": "Autonomous evaluation and refinement of digital agents with a model-based evaluator."
+ },
+ {
+  "id": "browsergym",
+  "name": "BrowserGym agent",
+  "url": "https://arxiv.org/abs/2412.05467",
+  "note": "Generic prompted web agent in the BrowserGym environment (here with GPT-4o)."
+ },
+ {
+  "id": "visualwebarena-baseline",
+  "name": "VisualWebArena baseline agent",
+  "url": "https://arxiv.org/abs/2401.13649",
+  "note": "The prompted multimodal agent reported with the VisualWebArena benchmark."
+ },
+ {
+  "id": "tree-search",
+  "name": "Tree Search (Koh et al.)",
+  "url": "https://arxiv.org/abs/2407.01476",
+  "note": "Best-first tree search over web actions with an LLM value function."
+ },
+ {
+  "id": "self-rag",
+  "name": "Self-RAG",
+  "url": "https://arxiv.org/abs/2310.11511",
+  "note": "LM trained to decide when to retrieve and to critique retrieved passages with reflection tokens."
+ },
+ {
+  "id": "ircot",
+  "name": "IRCoT",
+  "url": "https://arxiv.org/abs/2212.10509",
+  "note": "Interleaves chain-of-thought steps with retrieval, using each new thought as the next query; variant names the index it runs on."
+ },
+ {
+  "id": "react",
+  "name": "ReAct",
+  "url": "https://arxiv.org/abs/2210.03629",
+  "note": "Prompted agent loop that alternates reasoning, action and observation, appending the full history.",
+  "versions": {},
+  "pitfalls": []
+ },
+ {
+  "id": "codeact",
+  "name": "CodeAct",
+  "url": "https://arxiv.org/abs/2402.01030",
+  "note": "Agent that writes its actions as executable Python code."
+ },
+ {
+  "id": "plan-and-solve",
+  "name": "Plan-and-Solve",
+  "url": "https://arxiv.org/abs/2305.04091",
+  "note": "Prompting that writes a plan first and then executes it step by step."
+ },
+ {
+  "id": "agentlm",
+  "name": "AgentLM",
+  "url": "https://arxiv.org/abs/2310.12823",
+  "note": "Llama-2 instruction-tuned on agent trajectories (AgentTuning)."
+ },
+ {
+  "id": "webthinker",
+  "name": "WebThinker",
+  "url": "https://arxiv.org/abs/2504.21776",
+  "note": "Reasoning model that interleaves thinking with web search and page exploration.",
+  "versions": {},
+  "pitfalls": []
+ },
+ {
+  "id": "hira",
+  "name": "HiRA",
+  "url": "https://arxiv.org/abs/2507.02652",
+  "note": "Hierarchical deep-search agent: planner, coordinator and specialised executors with dual-channel memory."
+ },
+ {
+  "id": "dfsdt",
+  "name": "DFSDT",
+  "url": "https://arxiv.org/abs/2307.16789",
+  "note": "Depth-first search decision tree for tool use, from ToolLLM."
+ },
+ {
+  "id": "easytool",
+  "name": "EasyTool",
+  "url": "https://arxiv.org/abs/2401.06201",
+  "note": "Rewrites tool documentation once into concise tool instructions with an LLM."
+ },
+ {
+  "id": "infllm",
+  "name": "InfLLM",
+  "url": null,
+  "note": "Training-free KV-cache memory: past tokens in fixed-size blocks, each with representative tokens, retrieved by k-NN into the context window (Xiao et al., NeurIPS 2024). EM-LLM builds on its code."
+ },
+ {
+  "id": "nest",
+  "name": "Nest",
+  "url": "https://arxiv.org/abs/2405.19325",
+  "note": "Semi-parametric, retrieval-based decoding (nearest-neighbour speculative decoding); EWE runs it with 100 retrieved candidate passages."
+ },
+ {
+  "id": "dragin",
+  "name": "DRAGIN",
+  "url": "https://arxiv.org/abs/2403.10081",
+  "note": "Iterative RAG that pauses when a confidence score mixing attention and entropy drops and builds a keyword query from attended tokens."
+ },
+ {
+  "id": "cove",
+  "name": "Chain-of-Verification (CoVe)",
+  "url": "https://arxiv.org/abs/2309.11495",
+  "note": "Prompting method in which the LLM verifies and revises its own draft without retrieval; EWE uses the factor+revise variant."
+ },
+ {
+  "id": "act",
+  "name": "Act",
+  "url": "https://arxiv.org/abs/2210.03629",
+  "note": "ReAct without the reasoning (thought) steps; actions only."
+ },
+ {
+  "id": "imitation-learning",
+  "name": "Imitation learning (BUTLER / WebShop IL)",
+  "url": "https://arxiv.org/abs/2210.03629",
+  "note": "Trained imitation-learning agents whose numbers ExpeL copies from the ReAct paper (BUTLER on ALFWorld, the WebShop IL model)."
+ },
+ {
+  "id": "least-to-most",
+  "name": "Least-to-Most (agent adaptation)",
+  "url": "https://arxiv.org/abs/2205.10625",
+  "note": "Decompose into subquestions (subgoals) and solve them in order; HiAgent's 'w. TD' baseline keeps the full history."
+ },
+ {
+  "id": "tree-planner",
+  "name": "Tree-Planner",
+  "url": "https://arxiv.org/abs/2310.08582",
+  "note": "Closed-loop LLM task planner that samples plans into an action tree; compared by HiAgent on Tyreworld."
+ },
+ {
+  "id": "gpt-4.1",
+  "name": "GPT-4.1",
+  "url": null,
+  "note": "OpenAI LLM, direct-inference baseline without tools (IterResearch Table 1)."
+ },
+ {
+  "id": "o4-mini",
+  "name": "o4-mini",
+  "url": "https://openai.com/index/introducing-o3-and-o4-mini/",
+  "note": "OpenAI reasoning model, direct-inference baseline."
+ },
+ {
+  "id": "deepseek-r1",
+  "name": "DeepSeek-R1",
+  "url": "https://arxiv.org/abs/2501.12948",
+  "note": "Reasoning LLM; variant names the checkpoint (e.g. 0528)."
+ },
+ {
+  "id": "perplexity-research",
+  "name": "Perplexity Deep Research",
+  "url": "https://www.perplexity.ai/hub/blog/introducing-perplexity-deep-research",
+  "note": "Proprietary deep-research product (Perplexity)."
+ },
+ {
+  "id": "grok3-research",
+  "name": "Grok 3 Research (DeepSearch)",
+  "url": "https://x.ai/news/grok-3",
+  "note": "Proprietary deep-research mode of Grok 3 (xAI)."
+ },
+ {
+  "id": "search-o1",
+  "name": "Search-o1",
+  "url": "https://arxiv.org/abs/2501.05366",
+  "note": "Agentic search-enhanced large reasoning model; variant names the backbone.",
+  "versions": {},
+  "pitfalls": []
+ },
+ {
+  "id": "webdancer",
+  "name": "WebDancer",
+  "url": "https://arxiv.org/abs/2505.22648",
+  "note": "Autonomous information-seeking web agent."
+ },
+ {
+  "id": "asearcher",
+  "name": "ASearcher",
+  "url": "https://arxiv.org/abs/2508.07976",
+  "note": "Long-horizon agentic search trained with large-scale asynchronous RL."
+ },
+ {
+  "id": "websailor",
+  "name": "WebSailor",
+  "url": "https://arxiv.org/abs/2507.02592",
+  "note": "Web agent trained for super-human-level information seeking; variant names model size."
+ },
+ {
+  "id": "mirothinker",
+  "name": "MiroThinker",
+  "url": "https://github.com/MiroMindAI/MiroThinker",
+  "note": "Open-source deep-research agent from MiroMind; variant names size and version."
+ },
+ {
+  "id": "fine-tuning",
+  "name": "Fine-tuning (edit baseline)",
+  "url": null,
+  "note": "Gradient steps on the one fact to change, all layers or a chosen layer; knowledge-editing baseline."
+ },
+ {
+  "id": "zhu-constrained-ft",
+  "name": "Constrained fine-tuning (Zhu et al. 2020)",
+  "url": "https://arxiv.org/abs/2012.00363",
+  "note": "Modifying Memories in Transformer Models: fine-tuning with a norm constraint between original and edited parameters."
+ },
+ {
+  "id": "transformer",
+  "name": "Transformer (no memory)",
+  "url": null,
+  "note": "Plain segment-by-segment Transformer with no memory across segments; baseline in Memoria."
+ },
+ {
+  "id": "transformer-xl",
+  "name": "Transformer-XL",
+  "url": "https://arxiv.org/abs/1901.02860",
+  "note": "Segment-level recurrence: caches the previous segment's hidden states as extra keys and values."
+ },
+ {
+  "id": "compressive-transformer",
+  "name": "Compressive Transformer",
+  "url": "https://openreview.net/forum?id=SylKikSYDH",
+  "note": "Transformer-XL plus a compressed memory of older activations."
+ },
+ {
+  "id": "infinite-former",
+  "name": "∞-former",
+  "url": "https://arxiv.org/abs/2109.00301",
+  "note": "Long-term memory as a continuous-space attention over past hidden states."
+ },
+ {
+  "id": "bert",
+  "name": "BERT",
+  "url": null,
+  "note": "Pre-trained encoder (bert-base-uncased in Memoria), 512-token input."
+ },
+ {
+  "id": "roberta",
+  "name": "RoBERTa",
+  "url": null,
+  "note": "Pre-trained encoder (base), 512-token input."
+ },
+ {
+  "id": "bigbird",
+  "name": "BigBird",
+  "url": "https://proceedings.neurips.cc/paper_files/paper/2020/file/c8512d142a2d849725f31a9a7a361ab9-Paper.pdf",
+  "note": "Sparse-attention encoder, 4,096-token input."
+ },
+ {
+  "id": "longformer",
+  "name": "Longformer",
+  "url": "https://arxiv.org/abs/2004.05150",
+  "note": "Sliding-window plus global attention encoder, 4,096-token input."
+ },
+ {
+  "id": "gpt-2",
+  "name": "GPT-2",
+  "url": null,
+  "note": "Pre-trained decoder (small, large, XL) fine-tuned without memory; baseline in Memoria Table 8."
+ },
+ {
+  "id": "search-r1",
+  "name": "Search-R1",
+  "url": "https://arxiv.org/abs/2503.09516",
+  "note": "LLM trained with RL to interleave reasoning and search calls, ReAct-style history."
+ },
+ {
+  "id": "autorefine",
+  "name": "AutoRefine",
+  "url": "https://arxiv.org/abs/2505.11277",
+  "note": "RL-trained search agent that refines retrieved evidence during thinking."
+ },
+ {
+  "id": "research",
+  "name": "ReSearch",
+  "url": "https://arxiv.org/abs/2503.19470",
+  "note": "RL-trained model that reasons with search, keeping the full interaction history."
+ },
+ {
+  "id": "zerosearch",
+  "name": "ZeroSearch",
+  "url": "https://arxiv.org/abs/2505.04588",
+  "note": "RL training of search agents with a simulated search engine."
+ },
+ {
+  "id": "o2-searcher",
+  "name": "O2-Searcher",
+  "url": "https://arxiv.org/abs/2505.16582",
+  "note": "Search-based agent for open-domain open-ended QA."
+ },
+ {
+  "id": "r1-searcher",
+  "name": "R1-Searcher",
+  "url": "https://arxiv.org/abs/2503.05592",
+  "note": "Two-stage RL training that incentivises search during reasoning."
+ },
+ {
+  "id": "standard-agent",
+  "name": "Standard (no strategy planning)",
+  "url": null,
+  "note": "Dialogue agent LLM prompted to reply without any explicit strategy; the base row in PRINCIPLES Table 1."
+ },
+ {
+  "id": "proactive-prompting",
+  "name": "Proactive",
+  "url": "https://arxiv.org/abs/2305.13626",
+  "note": "Deng et al. 2023: prompt the LLM to pick the next strategy from a pre-defined set before replying."
+ },
+ {
+  "id": "procot",
+  "name": "ProCoT",
+  "url": "https://arxiv.org/abs/2305.13626",
+  "note": "Deng et al. 2023: chain-of-thought analysis of the dialogue, then a pre-defined strategy."
+ },
+ {
+  "id": "ppdpp",
+  "name": "PPDPP",
+  "url": "https://arxiv.org/abs/2311.00262",
+  "note": "Plug-and-play policy planner (Deng et al. 2024): small LM planner trained by SFT on labelled strategies and RL from self-play AI feedback."
+ },
+ {
+  "id": "ask-an-expert",
+  "name": "Ask-an-Expert (AnE)",
+  "url": "https://arxiv.org/abs/2305.17878",
+  "note": "Zhang et al. 2023: an LLM acting as expert infers the user's state and writes an open-ended strategy."
+ },
+ {
+  "id": "icl-aif",
+  "name": "ICL-AIF",
+  "url": "https://arxiv.org/abs/2305.10142",
+  "note": "Fu et al. 2023: open-ended strategy suggestions from iterative AI feedback in self-play."
+ },
+ {
+  "id": "dpdp",
+  "name": "DPDP",
+  "url": "https://arxiv.org/abs/2406.05374",
+  "note": "He et al. 2024: dual-process dialogue planning with MCTS-based strategy selection."
+ },
+ {
+  "id": "gpt-4",
+  "name": "GPT-4",
+  "url": "https://arxiv.org/abs/2303.08774",
+  "note": "The LLM used directly, one sample per problem, no memory or retries (code baseline in Reflexion)."
+ },
+ {
+  "id": "codet",
+  "name": "CodeT",
+  "url": "https://arxiv.org/abs/2207.10397",
+  "note": "Code generation that scores sampled programs with model-generated tests; no memory."
+ },
+ {
+  "id": "cot",
+  "name": "Chain-of-Thought",
+  "url": "https://arxiv.org/abs/2201.11903",
+  "note": "Step-by-step prompting without tools or memory; in Reflexion's CoT (GT) variant the gold context is given."
+ },
+ {
+  "id": "openclaw",
+  "name": "OpenClaw (vanilla)",
+  "url": null,
+  "note": "Open agent harness used as the unmanaged baseline in TokenPilot: built-in compaction only (500k window, trigger ratio 0.5)."
+ },
+ {
+  "id": "llmlingua-2",
+  "name": "LLMLingua-2",
+  "url": null,
+  "note": "Token-level prompt compression with a small model (Findings of ACL 2024); TokenPilot used compression ratio 0.6."
+ },
+ {
+  "id": "selective-context",
+  "name": "Selective Context",
+  "url": null,
+  "note": "Self-information-based pruning of low-information text (EMNLP 2023); TokenPilot used ratio 0.4."
+ },
+ {
+  "id": "lcm",
+  "name": "LCM (Lossless Context Management)",
+  "url": null,
+  "note": "Hierarchical-summary compaction with retained recent turns (Voltropy technical report, 2026)."
+ },
+ {
+  "id": "pichay",
+  "name": "Pichay",
+  "url": "https://arxiv.org/abs/2603.09023",
+  "note": "Demand paging for LLM context windows: utility-driven eviction of old tool results."
+ },
+ {
+  "id": "summary-compaction",
+  "name": "Summary (hierarchical compaction)",
+  "url": null,
+  "note": "Generic baseline in TokenPilot: history compressed into hierarchical summaries at 40% of a 500k window."
+ },
+ {
+  "id": "memobrain",
+  "name": "MemoBrain",
+  "url": "https://arxiv.org/abs/2601.08079",
+  "note": "Executive memory for agent reasoning with a memory budget and recall."
+ },
+ {
+  "id": "agentswing",
+  "name": "AgentSwing",
+  "url": "https://arxiv.org/abs/2603.27490",
+  "note": "Adaptive context-management routing (discard-all, keep-last-n, summary) for long-horizon web agents."
+ },
+ {
+  "id": "keep-last-n",
+  "name": "Keep-Last-N",
+  "url": null,
+  "note": "Generic baseline: keep only the most recent N turns once context passes a threshold (N = 5 in TokenPilot)."
+ },
+ {
+  "id": "ft-l",
+  "name": "FT-L",
+  "url": "https://arxiv.org/abs/2202.05262",
+  "note": "Fine-tuning one MLP layer with a norm constraint, in ROME's reimplementation (WISE adds a KL term)."
+ },
+ {
+  "id": "ft-ewc",
+  "name": "FT-EWC",
+  "url": "https://arxiv.org/abs/1612.00796",
+  "note": "Fine-tuning with Elastic Weight Consolidation, as reimplemented in GRACE."
+ },
+ {
+  "id": "mend",
+  "name": "MEND",
+  "url": "https://arxiv.org/abs/2110.11309",
+  "note": "Hypernetwork that turns fine-tuning gradients into low-rank weight edits."
+ },
+ {
+  "id": "rome",
+  "name": "ROME",
+  "url": "https://arxiv.org/abs/2202.05262",
+  "note": "Locate-then-edit: rank-one update to one mid-layer MLP found by causal tracing."
+ },
+ {
+  "id": "memit",
+  "name": "MEMIT",
+  "url": "https://arxiv.org/abs/2210.07229",
+  "note": "Locate-then-edit over several MLP layers with a least-squares update; MEMIT-MASS is its batch mode."
+ },
+ {
+  "id": "defer",
+  "name": "DEFER",
+  "url": "https://arxiv.org/abs/2211.11031",
+  "note": "GRACE's reimplementation of SERAC-style routing: a scope classifier plus a small linear counterfactual model."
+ },
+ {
+  "id": "grace",
+  "name": "GRACE",
+  "url": "https://arxiv.org/abs/2211.11031",
+  "note": "Lifelong editing with a discrete key-value codebook that replaces one layer's activation when a key is within its radius."
+ },
+ {
+  "id": "no-edit",
+  "name": "Unedited model",
+  "url": null,
+  "note": "The base model before any edit (reported as 'w/o Editing' or 'Pre-edited')."
+ },
+ {
+  "id": "generative-agents",
+  "name": "Generative Agents",
+  "url": "https://arxiv.org/abs/2304.03442",
+  "note": "Park et al. (2023): memory stream retrieved by a weighted sum of min-max-normalised recency, importance and relevance."
+ },
+ {
+  "id": "all-memories",
+  "name": "All memories in context",
+  "url": null,
+  "note": "Generic baseline: every stored memory is put in the context with no retrieval (EMG-RAG's NiaH, THEANINE's 'All Memories').",
+  "versions": {},
+  "pitfalls": []
+ },
+ {
+  "id": "m-rag",
+  "name": "M-RAG",
+  "url": "https://aclanthology.org/2024.acl-long.108/",
+  "note": "RAG over multiple database partitions with multi-agent RL (ACL 2024): Agent-S picks a partition, Agent-R refines memories."
+ },
+ {
+  "id": "keqing",
+  "name": "Keqing",
+  "url": "https://arxiv.org/abs/2401.00426",
+  "note": "Knowledge-graph QA that splits a question into sub-questions, retrieves candidate entities, answers each and merges the answers."
+ },
+ {
+  "id": "direct-inference",
+  "name": "Direct inference",
+  "url": null,
+  "note": "The LLM answers the question directly, with no retrieval, tools or memory; search-agent baseline as in Search-R1."
+ },
+ {
+  "id": "sft-qa",
+  "name": "SFT (search-agent baseline)",
+  "url": "https://arxiv.org/abs/2503.09516",
+  "note": "Supervised fine-tuning on question-answer data without search, as the SFT baseline in Search-R1's QA tables."
+ },
+ {
+  "id": "r1-no-search",
+  "name": "R1 (RL without search)",
+  "url": "https://arxiv.org/abs/2503.09516",
+  "note": "DeepSeek-R1-style RL on the QA training data, reasoning and answering without a search engine; variant names base or instruct start."
+ },
+ {
+  "id": "rejection-sampling",
+  "name": "Rejection sampling",
+  "url": "https://arxiv.org/abs/2503.09516",
+  "note": "Fine-tuning on the model's own sampled trajectories that reached the correct answer, with search; Search-R1 QA baseline."
+ },
+ {
+  "id": "contriever",
+  "name": "Contriever",
+  "url": "https://arxiv.org/abs/2112.09118",
+  "note": "Unsupervised dense bi-encoder retriever trained with contrastive learning; used as a plain passage retriever baseline."
+ },
+ {
+  "id": "gtr",
+  "name": "GTR",
+  "url": "https://arxiv.org/abs/2112.07899",
+  "note": "Generalizable T5-based dense bi-encoder retriever; plain passage retriever baseline."
+ },
+ {
+  "id": "colbertv2",
+  "name": "ColBERTv2",
+  "url": "https://arxiv.org/abs/2112.01488",
+  "note": "Late-interaction (token-level MaxSim) passage retriever; plain passage retriever baseline."
+ },
+ {
+  "id": "propositionizer",
+  "name": "Proposition (Dense X)",
+  "url": "https://arxiv.org/abs/2312.06648",
+  "note": "Passages rewritten by an LLM into atomic propositions that are indexed and retrieved instead of passages; variant names the retriever."
+ },
+ {
+  "id": "r1-distill",
+  "name": "DeepSeek-R1-Distill (generic reasoner)",
+  "url": "https://arxiv.org/abs/2501.12948",
+  "note": "DeepSeek-R1-distilled Llama/Qwen models used as a generic long-CoT reasoning baseline without user history."
+ },
+ {
+  "id": "oppu",
+  "name": "OPPU",
+  "url": "https://arxiv.org/abs/2402.04401",
+  "note": "One PEFT Per User (Tan et al., 2024): per-user LoRA personalization, trained on other users' history first."
+ },
+ {
+  "id": "kv-mem",
+  "name": "KV-Mem",
+  "url": "https://aclanthology.org/D16-1147",
+  "note": "Key-value memory networks (Miller et al., 2016); KGQA baseline."
+ },
+ {
+  "id": "embedkgqa",
+  "name": "EmbedKGQA",
+  "url": null,
+  "note": "KG-embedding-based multi-hop KGQA (Saxena et al., ACL 2020)."
+ },
+ {
+  "id": "nsm",
+  "name": "NSM",
+  "url": null,
+  "note": "Neural State Machine KGQA with teacher-student intermediate supervision (He et al., WSDM 2021)."
+ },
+ {
+  "id": "transfernet",
+  "name": "TransferNet",
+  "url": null,
+  "note": "Transparent multi-hop KGQA over relation graphs (Shi et al., EMNLP 2021)."
+ },
+ {
+  "id": "kgt5",
+  "name": "KGT5",
+  "url": null,
+  "note": "Sequence-to-sequence KG completion and QA (Saxena et al., ACL 2022)."
+ },
+ {
+  "id": "graftnet",
+  "name": "GraftNet",
+  "url": null,
+  "note": "Early fusion of KB and text with graph propagation (Sun et al., EMNLP 2018)."
+ },
+ {
+  "id": "pullnet",
+  "name": "PullNet",
+  "url": null,
+  "note": "Iterative question-specific subgraph retrieval with GCNs (Sun et al., EMNLP 2019)."
+ },
+ {
+  "id": "sr",
+  "name": "SR (Subgraph Retriever)",
+  "url": null,
+  "note": "Trainable subgraph retriever decoupled from the reasoner (Zhang et al., ACL 2022); reported as SR+NSM."
+ },
+ {
+  "id": "kd-cot",
+  "name": "KD-CoT",
+  "url": null,
+  "note": "Knowledge-driven chain-of-thought verified against a KG (Wang et al., arXiv preprint)."
+ },
+ {
+  "id": "unikgqa",
+  "name": "UniKGQA",
+  "url": "https://openreview.net/forum?id=Z63RvyAZ2Vh",
+  "note": "Unified retrieval and reasoning for multi-hop KGQA (Jiang et al., ICLR 2023)."
+ },
+ {
+  "id": "kg-cot",
+  "name": "KG-CoT",
+  "url": "https://doi.org/10.24963/ijcai.2024/734",
+  "note": "Chain-of-thought over KGs with a small graph reasoning model (Zhao et al., IJCAI 2024)."
+ },
+ {
+  "id": "subgraphrag",
+  "name": "SubgraphRAG",
+  "url": null,
+  "note": "Lightweight MLP with parallel triple scoring for subgraph retrieval, then an LLM reasons (Li et al., ICLR 2025)."
+ },
+ {
+  "id": "awm",
+  "name": "AWM (Agent Workflow Memory)",
+  "url": "https://arxiv.org/abs/2409.07429",
+  "note": "Induces reusable workflows from past trajectories and adds them to the agent's memory (as described in Skill-Pro §5.1)."
+ },
+ {
+  "id": "mindact",
+  "name": "MindAct",
+  "url": "https://arxiv.org/abs/2306.06070",
+  "note": "Mind2Web's baseline agent: element ranker top-50 then LLM multi-choice action selection."
+ },
+ {
+  "id": "rci",
+  "name": "RCI",
+  "url": "https://arxiv.org/abs/2303.17491",
+  "note": "Recursively Criticizes and Improves: LLM plan + self-correction on MiniWoB++ (Kim et al., NeurIPS 2023)."
+ },
+ {
+  "id": "adaplanner",
+  "name": "AdaPlanner",
+  "url": "https://arxiv.org/abs/2305.16653",
+  "note": "Adaptive planning from environment feedback (Sun et al., 2023)."
+ },
+ {
+  "id": "pix2act",
+  "name": "Pix2Act",
+  "url": "https://arxiv.org/abs/2306.00245",
+  "note": "Pixel-based agent trained with BC and tree search (Shaw et al., 2023)."
+ },
+ {
+  "id": "cc-net",
+  "name": "CC-Net",
+  "url": "https://proceedings.mlr.press/v162/humphreys22a.html",
+  "note": "BC + RL on 2.4M MiniWoB++ demonstrations (Humphreys et al., ICML 2022)."
+ },
+ {
+  "id": "webgum",
+  "name": "WebGUM",
+  "url": "https://arxiv.org/abs/2305.11854",
+  "note": "Multimodal fine-tuned web agent (Furuta et al., 2023)."
+ },
+ {
+  "id": "webn-t5",
+  "name": "WebN-T5",
+  "url": "https://arxiv.org/abs/2210.03945",
+  "note": "T5 fine-tuned on 12k MiniWoB++ demonstrations (Gur et al., 2023)."
+ },
+ {
+  "id": "miniwob-prior",
+  "name": "Prior MiniWoB++ methods (aggregate)",
+  "url": "https://arxiv.org/abs/2306.07863",
+  "note": "'Others' column of Synapse Table 3: aggregated baselines before CC-Net (Shi et al. 2017; Liu et al. 2018; Gur et al. 2018; Jia et al. 2018)."
+ },
+ {
+  "id": "memory-retrieval",
+  "name": "Memory Retrieval (MSC)",
+  "url": "https://aclanthology.org/2022.acl-long.356/",
+  "note": "Retrieval of the k most similar summarized memory sentences for response generation (Xu et al., 2022, Beyond Goldfish Memory); k=6 in THEANINE."
+ },
+ {
+  "id": "comedy",
+  "name": "COMEDY",
+  "url": "https://arxiv.org/abs/2402.11975",
+  "note": "Compress to Impress: LLM summarizes sessions and compresses them into events, user portrait and user-bot relation for response generation."
+ },
+ {
+  "id": "icl",
+  "name": "In-context learning (many-shot)",
+  "url": "https://arxiv.org/abs/2404.11018",
+  "note": "Task demonstrations from the training split placed in the prompt, all of them or as many as fit the context window (ACE §4.2)."
+ },
+ {
+  "id": "gepa",
+  "name": "GEPA",
+  "url": "https://arxiv.org/abs/2507.19457",
+  "note": "Reflective prompt optimiser: collects execution traces, reflects in natural language and evolves prompts with a genetic Pareto search; run via DSPy with auto=\"heavy\" in ACE."
+ },
+ {
+  "id": "miprov2",
+  "name": "MIPROv2",
+  "url": "https://arxiv.org/abs/2406.11695",
+  "note": "DSPy prompt optimiser that jointly tunes instructions and few-shot demonstrations by Bayesian optimisation."
+ },
+ {
+  "id": "dynamic-cheatsheet",
+  "name": "Dynamic Cheatsheet (DC)",
+  "url": "https://arxiv.org/abs/2504.07952",
+  "note": "Test-time memory of reusable strategies and code snippets that an LLM rewrites after each input; ACE runs the cumulative mode (DC-CU)."
+ },
+ {
+  "id": "lightrag",
+  "name": "LightRAG",
+  "url": "https://arxiv.org/abs/2410.05779",
+  "note": "Graph-based RAG with LLM-extracted entities and relations and dual-level (entity and relation) retrieval combined with chunks."
+ },
+ {
+  "id": "pathrag",
+  "name": "PathRAG",
+  "url": "https://arxiv.org/abs/2502.14902",
+  "note": "Graph RAG on the same entity-relation graph as LightRAG that retrieves relational paths and prunes them (as summarised in HyperGraphRAG Table 1 and App. F)."
+ },
+ {
+  "id": "stella",
+  "name": "Stella (stella_en_1.5B_v5)",
+  "url": "https://arxiv.org/abs/2412.19048",
+  "note": "Dense text embedding model distilled from larger embedders (Jasper and Stella)."
+ },
+ {
+  "id": "bge-m3",
+  "name": "BGE-M3",
+  "url": "https://arxiv.org/abs/2402.03216",
+  "note": "Multilingual, multi-granularity dense embedding model (Chen et al., 2024)."
+ },
+ {
+  "id": "longmemeval-rag",
+  "name": "LongMemEval RAG pipeline",
+  "url": "https://arxiv.org/abs/2410.10813",
+  "note": "Retrieval-augmented memory design from the LongMemEval paper, as used by Associa: Stella retriever with user facts concatenated to keys (UF), optional LLM time filtering (TF), and Chain-of-Note reading in JSON format."
+ },
+ {
+  "id": "buy-and-hold",
+  "name": "Buy and hold",
+  "url": null,
+  "note": "Passive trading baseline: buy the stock at the start of the test period and keep it."
+ },
+ {
+  "id": "fingpt",
+  "name": "FinGPT",
+  "url": "https://arxiv.org/abs/2306.06031",
+  "note": "Open-source financial LLM framework (Yang et al., 2023) used as an LLM trading-agent baseline."
+ },
+ {
+  "id": "a2c",
+  "name": "A2C (DRL trading agent)",
+  "url": "https://arxiv.org/abs/1602.01783",
+  "note": "Advantage actor-critic deep-RL trading agent on numeric market features (Stable-Baselines3)."
+ },
+ {
+  "id": "ppo",
+  "name": "PPO (DRL trading agent)",
+  "url": "https://arxiv.org/abs/1707.06347",
+  "note": "Proximal policy optimization deep-RL trading agent on numeric market features (Stable-Baselines3)."
+ },
+ {
+  "id": "dqn",
+  "name": "DQN (DRL trading agent)",
+  "url": "https://arxiv.org/abs/1312.5602",
+  "note": "Deep Q-network trading agent on numeric market features (Stable-Baselines3)."
+ },
+ {
+  "id": "router-knn",
+  "name": "Router-KNN",
+  "url": "https://arxiv.org/abs/2309.15789",
+  "note": "LLM router that assigns a query to the LLM favoured by its nearest neighbours in embedding space (Shnitzer et al., 2023)."
+ },
+ {
+  "id": "router-mlp",
+  "name": "Router-MLP",
+  "url": "https://arxiv.org/abs/2309.15789",
+  "note": "MLP router over query embeddings (Shnitzer et al., 2023)."
+ },
+ {
+  "id": "router-svm",
+  "name": "Router-SVM",
+  "url": "https://arxiv.org/abs/2403.12031",
+  "note": "SVM router over query features, from RouterBench (Hu et al., 2024)."
+ },
+ {
+  "id": "routerdc",
+  "name": "RouterDC",
+  "url": null,
+  "note": "Query-based LLM router trained with dual contrastive learning (Chen et al., NeurIPS 2024)."
+ },
+ {
+  "id": "graphrouter",
+  "name": "GraphRouter",
+  "url": "https://arxiv.org/abs/2410.03834",
+  "note": "Single-round LLM router posed as edge prediction on a query-task-LLM graph (Feng et al., 2024)."
+ },
+ {
+  "id": "prompt-llm-router",
+  "name": "Prompt LLM (router)",
+  "url": "https://arxiv.org/abs/2506.09033",
+  "note": "Baseline from Router-R1: an LLM prompted to pick LLMs over several rounds, no routing module."
+ },
+ {
+  "id": "router-knn-mr",
+  "name": "Router-KNN-MR",
+  "url": "https://arxiv.org/abs/2506.09033",
+  "note": "Multi-round extension of Router-KNN, from Router-R1."
+ },
+ {
+  "id": "r2-reasoner",
+  "name": "R2-Reasoner",
+  "url": "https://arxiv.org/abs/2506.05901",
+  "note": "Route-and-Reason: a reinforced model router that decomposes a task and routes sub-tasks (Shao et al., 2025)."
+ },
+ {
+  "id": "router-r1",
+  "name": "Router-R1",
+  "url": "https://arxiv.org/abs/2506.09033",
+  "note": "LLM router trained with RL to interleave thinking and routing over several rounds (Zhang, Feng, You, 2025)."
+ },
+ {
+  "id": "albert",
+  "name": "ALBERT",
+  "url": "https://arxiv.org/abs/1909.11942",
+  "note": "'A lite BERT' encoder; fine-tuned PLM baseline for temporal KGQA (MemoTime ref [21])."
+ },
+ {
+  "id": "cronkgqa",
+  "name": "CronKGQA",
+  "url": "https://arxiv.org/abs/2106.01515",
+  "note": "Embedding-based temporal KGQA that aligns question embeddings with time-stamped triples (Saxena et al., ACL 2021; MemoTime ref [36])."
+ },
+ {
+  "id": "multiqa",
+  "name": "MultiQA",
+  "url": "https://doi.org/10.18653/v1/2023.acl-long.637",
+  "note": "Embedding-based multi-granularity temporal KGQA from the MultiTQ paper (Chen et al., ACL 2023; MemoTime ref [5])."
+ },
+ {
+  "id": "chatgpt",
+  "name": "ChatGPT (GPT-3.5-Turbo)",
+  "url": null,
+  "note": "GPT-3.5-Turbo prompted directly, as reported in temporal KGQA papers."
+ },
+ {
+  "id": "kg-rag",
+  "name": "KG-RAG (temporal KGQA baseline)",
+  "url": "https://arxiv.org/abs/2311.09149",
+  "note": "LLM in-context baseline combining a temporal KG with GPT-3.5-Turbo, as reported in the ARI paper (MemoTime ref [4])."
+ },
+ {
+  "id": "react-kb",
+  "name": "ReAct KB",
+  "url": "https://arxiv.org/abs/2311.09149",
+  "note": "ReAct-style agent over a temporal KG with GPT-3.5-Turbo, as reported in the ARI paper (MemoTime ref [4])."
+ },
+ {
+  "id": "ari",
+  "name": "ARI",
+  "url": "https://arxiv.org/abs/2311.09149",
+  "note": "Abstract reasoning induction for temporal KGQA with GPT-3.5-Turbo (Chen et al., ACL 2024; MemoTime ref [4])."
+ },
+ {
+  "id": "tempagent",
+  "name": "TempAgent",
+  "url": "https://doi.org/10.18653/v1/2025.findings-naacl.334",
+  "note": "Time-aware ReAct agent for temporal KGQA with GPT-3.5-Turbo (Hu et al., Findings of NAACL 2025; MemoTime ref [13])."
+ },
+ {
+  "id": "uniqorn",
+  "name": "UNIQORN",
+  "url": "https://arxiv.org/abs/2108.08614",
+  "note": "Unified QA over RDF knowledge graphs and text (Pramanik et al., Journal of Web Semantics 2024; MemoTime ref [34])."
+ },
+ {
+  "id": "tempoqr",
+  "name": "TempoQR",
+  "url": "https://arxiv.org/abs/2112.05785",
+  "note": "Temporal question reasoning over KGs with embeddings (Mavromatis et al., AAAI 2022; MemoTime ref [28])."
+ },
+ {
+  "id": "exaqt",
+  "name": "EXAQT",
+  "url": "https://arxiv.org/abs/2109.08935",
+  "note": "Complex temporal QA on KGs; the paper that introduced TimeQuestions (Jia et al., CIKM 2021; MemoTime ref [18])."
+ },
+ {
+  "id": "twirgcn",
+  "name": "TwiRGCN",
+  "url": "https://arxiv.org/abs/2210.06281",
+  "note": "Temporally weighted graph convolution for temporal KGQA (Sharma et al.; MemoTime ref [38])."
+ },
+ {
+  "id": "lgqa",
+  "name": "LGQA",
+  "url": "https://doi.org/10.24963/ijcai.2023/571",
+  "note": "Local and global information fusion for temporal QA (Liu et al., IJCAI 2023; MemoTime ref [25])."
+ },
+ {
+  "id": "gentkgqa",
+  "name": "GenTKGQA",
+  "url": "https://arxiv.org/abs/2402.16568",
+  "note": "Two-stage generative temporal KGQA that fine-tunes LLaMA2-7B (Gao et al., ACL 2024; MemoTime ref [11])."
+ },
+ {
+  "id": "timer4",
+  "name": "TimeR4",
+  "url": "https://doi.org/10.18653/v1/2024.emnlp-main.394",
+  "note": "Time-aware RAG for temporal KGQA: a jointly fine-tuned retriever feeding ChatGPT (Qian et al., EMNLP 2024; MemoTime ref [35])."
+ },
+ {
+  "id": "random-history",
+  "name": "Random history items",
+  "url": null,
+  "note": "Personalization baseline that puts k randomly chosen documents from the user's history into the prompt."
+ },
+ {
+  "id": "recency-history",
+  "name": "Most recent history items",
+  "url": null,
+  "note": "Personalization baseline that puts the user's k most recent documents into the prompt."
+ },
+ {
+  "id": "ropg",
+  "name": "ROPG",
+  "url": "https://arxiv.org/abs/2404.05970",
+  "note": "Retrieval optimization for personalized generation (Salemi et al., SIGIR 2024): retriever trained from feedback on LLM generations."
+ },
+ {
+  "id": "cfrag",
+  "name": "CFRAG",
+  "url": "https://arxiv.org/abs/2504.05731",
+  "note": "RAG with collaborative filtering for personalized text generation (Shi et al., SIGIR 2025): also retrieves from similar users' histories."
+ },
+ {
+  "id": "memory-r1",
+  "name": "Memory-R1",
+  "url": "https://arxiv.org/abs/2508.19828",
+  "note": "LLM agents trained with reinforcement learning to manage and use an external memory (arXiv 2508.19828)."
+ },
+ {
+  "id": "sparqa",
+  "name": "SPARQA",
+  "url": null,
+  "note": "Skeleton-based semantic parsing for complex KBQA (Sun et al., AAAI 2020); listed as 'SPARQL' in RoG Table 1."
+ },
+ {
+  "id": "qgg",
+  "name": "QGG",
+  "url": null,
+  "note": "Query graph generation for multi-hop complex KBQA (Lan & Jiang, ACL 2020)."
+ },
+ {
+  "id": "arcaneqa",
+  "name": "ArcaneQA",
+  "url": null,
+  "note": "Dynamic program induction and contextualized encoding for KBQA (Gu & Su, COLING 2022)."
+ },
+ {
+  "id": "rng-kbqa",
+  "name": "RnG-KBQA",
+  "url": null,
+  "note": "Generation-augmented iterative ranking of logical forms for KBQA (Ye et al., ACL 2022)."
+ },
+ {
+  "id": "decaf",
+  "name": "DECAF",
+  "url": null,
+  "note": "Joint decoding of answers and logical forms for KBQA (Yu et al., ICLR 2023); RoG reports the DPR+FiD-3B variant.",
+  "versions": {},
+  "pitfalls": []
+ },
+ {
+  "id": "oracle-message",
+  "name": "Oracle messages",
+  "url": null,
+  "note": "Reference, not a system: the gold evidence messages are given to the answer model, so only generation is tested."
+ },
+ {
+  "id": "self-consistency",
+  "name": "Self-Consistency (CoT-SC)",
+  "url": null,
+  "note": "Sample several chain-of-thought answers and take the majority (Wang et al., ICLR 2023); no external knowledge."
+ },
+ {
+  "id": "prior-ft-sota",
+  "name": "Prior fine-tuned SOTA",
+  "url": null,
+  "note": "Placeholder for the best previously published fine-tuned result on each dataset as cited by Think-on-Graph Table 1; a different system per dataset (named in the row variant)."
+ },
+ {
+  "id": "kb-binder",
+  "name": "KB-BINDER",
+  "url": "https://doi.org/10.18653/v1/2023.acl-long.385",
+  "note": "Few-shot in-context KBQA: Codex drafts logical forms that are bound to the KB (Li et al., ACL 2023)."
+ },
+ {
+  "id": "cbr-kbqa",
+  "name": "CBR-KBQA",
+  "url": null,
+  "note": "Case-based reasoning for KBQA: retrieves similar solved questions and adapts their logical forms (Das et al., 2021)."
+ },
+ {
+  "id": "tiara",
+  "name": "TIARA",
+  "url": "https://aclanthology.org/2022.emnlp-main.555",
+  "note": "Multi-grained retrieval of KB items to guide logical-form generation (Shu et al., EMNLP 2022)."
+ },
+ {
+  "id": "structgpt",
+  "name": "StructGPT",
+  "url": null,
+  "note": "Prompting framework in which the LLM reads structured data through interface calls (Jiang et al., 2023)."
+ },
+ {
+  "id": "stm",
+  "name": "STM",
+  "url": null,
+  "note": "Space-Time Memory network for video object segmentation: every memory frame is kept and read by attention (Oh et al., ICCV 2019)."
+ },
+ {
+  "id": "stcn",
+  "name": "STCN",
+  "url": null,
+  "note": "Space-time correspondence network with L2 similarity and shared keys (Cheng et al., NeurIPS 2021); XMem's working-memory baseline."
+ },
+ {
+  "id": "aot",
+  "name": "AOT",
+  "url": null,
+  "note": "Associating Objects with Transformers for VOS (Yang et al., NeurIPS 2021); XMem compares the R50 variant."
+ },
+ {
+  "id": "cfbi",
+  "name": "CFBI",
+  "url": null,
+  "note": "Collaborative foreground-background integration VOS (Yang et al., ECCV 2020); temporally local memory."
+ },
+ {
+  "id": "cfbi-plus",
+  "name": "CFBI+",
+  "url": null,
+  "note": "Multi-scale CFBI (Yang et al., TPAMI 2021)."
+ },
+ {
+  "id": "rmnet",
+  "name": "RMNet",
+  "url": null,
+  "note": "Efficient regional memory network for VOS (Xie et al., CVPR 2021)."
+ },
+ {
+  "id": "hmmn",
+  "name": "HMMN",
+  "url": null,
+  "note": "Hierarchical memory matching network for VOS (Seong et al., ICCV 2021)."
+ },
+ {
+  "id": "mivos",
+  "name": "MiVOS",
+  "url": null,
+  "note": "Modular interactive VOS with propagation and fusion modules (Cheng et al., CVPR 2021); evaluated with BL30K pretraining."
+ },
+ {
+  "id": "joint",
+  "name": "JOINT",
+  "url": null,
+  "note": "Joint inductive and transductive learning for VOS with a local memory window (Mao et al., ICCV 2021)."
+ },
+ {
+  "id": "afb-urr",
+  "name": "AFB-URR",
+  "url": "https://arxiv.org/abs/2010.07958",
+  "note": "Adaptive feature bank that merges similar features and evicts least-used ones, for long videos (Liang et al., NeurIPS 2020)."
+ },
+ {
+  "id": "gear",
+  "name": "GEAR",
+  "url": "https://arxiv.org/abs/1908.01843",
+  "note": "Graph-based evidence aggregating and reasoning for fact verification (Zhou et al., 2019); SimGRAG uses its KG version trained on FactKG."
+ },
+ {
+  "id": "kelp",
+  "name": "KELP",
+  "url": "https://arxiv.org/abs/2406.13862",
+  "note": "KG-enhanced LLMs via a trained path-selection model (Liu et al., 2024); 1- or 2-hop paths from oracle entities."
+ },
+ {
+  "id": "g-retriever",
+  "name": "G-Retriever",
+  "url": "https://arxiv.org/abs/2402.07630",
+  "note": "Retrieves similar nodes and relations, builds a prize-collecting Steiner tree subgraph and encodes it with a GNN for a frozen LLM (He et al., 2024)."
+ },
+ {
+  "id": "kaping",
+  "name": "KAPING",
+  "url": null,
+  "note": "Knowledge-augmented LM prompting: retrieves KG triples by embedding similarity to the question and prompts zero-shot (Baek et al., NLRSE workshop 2023)."
+ },
+ {
+  "id": "kg-gpt",
+  "name": "KG-GPT",
+  "url": "https://arxiv.org/abs/2310.11220",
+  "note": "Segments the query and lets an LLM pick matching KG relations per segment, starting from given entities (Kim et al., 2023)."
  }
 ]

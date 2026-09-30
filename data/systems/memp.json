@@ -1,0 +1,504 @@
+{
+ "id": "memp",
+ "name": "Memp",
+ "paper": {
+  "title": "Memp: Exploring Agent Procedural Memory",
+  "arxiv": "2508.06433",
+  "url": "https://arxiv.org/abs/2508.06433",
+  "venue": "ACL 2026 Findings",
+  "venue_short": "ACL",
+  "track": "findings",
+  "year": 2026,
+  "code": "https://github.com/zjunlp/MemP"
+ },
+ "design": {
+  "construction": {
+   "unit": "procedural memory entry: task description (key) + LLM-distilled workflow script (+ full gold trajectory in the Trajectory / Proceduralization settings)",
+   "kept_as": "LLM-written workflow paragraph; gold trajectories verbatim (paper settings only)",
+   "processing": "LLM distils a successful trajectory into a workflow ('direct') or into state/action events and keeps the critical steps ('round')",
+   "trigger": "offline-batch",
+   "writer": "backbone LLM (MODEL_NAME in the code; the paper does not name the builder model)"
+  },
+  "organization": {
+   "structure": "flat list of entries",
+   "stores": "one FAISS vector store keyed by task text",
+   "index": "dense embeddings of the task text (text-embedding-3-small in the code); per-keyword embeddings for AveFact"
+  },
+  "management": {
+   "operations": "after every t tasks: add distilled runs (Vanilla), add only solved runs (Validation), or add solved runs and LLM-revise the retrieved workflow on failure (Adjustment)",
+   "conflicts": "Adjustment rewrites the workflow in place using the failed trajectory",
+   "forgetting": "code: delete an entry used at least 3 times with success rate below 0.5 (not described in the paper)",
+   "timing": "online"
+  },
+  "retrieval": {
+   "query": "new task description (Query key) or LLM-extracted keywords of it (AveFact)",
+   "candidates": "cosine similarity of task embeddings; AveFact averages similarity over matched keywords",
+   "selection": "top-k by similarity (k = 10 in the code; paper sweeps 0-20)",
+   "budget": "k = 10 entries in the code, FAISS score threshold 0.5"
+  },
+  "use": {
+   "context": "retrieved task names and workflows appended to the task as 'guidelines' (paper's best setting also adds the retrieved gold trajectories)",
+   "reasoning": "ReAct loop in the environment, up to 30 steps (code default)"
+  },
+  "control": {
+   "construction": "prompted-llm",
+   "management": "feedback-optimized",
+   "retrieval": "fixed-rule"
+  }
+ },
+ "classify": {
+  "structure": "flat",
+  "index": "vector",
+  "management": "update in place",
+  "candidates": "dense",
+  "decides": "top-k rule",
+  "note": "The best update policy (Adjustment) rewrites a retrieved workflow in place after a failure; the code also deletes rarely successful entries."
+ },
+ "tags": {
+  "fidelity": "mixed",
+  "structure": [
+   "flat"
+  ],
+  "write_time": [
+   "summarize",
+   "consolidate"
+  ],
+  "selection": [
+   "dense"
+  ],
+  "memory_type": [
+   "procedural"
+  ],
+  "learning": "training-free",
+  "domain": [
+   "embodied",
+   "general"
+  ]
+ },
+ "stages": {
+  "ingestion": "Completed agent trajectories (gold training trajectories offline; the agent's own test runs online) together with the environment's 0/1 reward.",
+  "construction": "An LLM turns each trajectory into procedural memory: a script-like workflow paragraph, or (paper) the verbatim trajectory, or both (Proceduralization). The entry is keyed by the task description.",
+  "organization": "A flat store of entries keyed by task text and embedded for vector search; no links or hierarchy.",
+  "update": "After every t tasks the store is refreshed: Vanilla adds all runs, Validation only successful ones, Adjustment adds successes and has an LLM revise a retrieved workflow that led to failure. The code additionally deletes entries used at least 3 times with a success rate below 0.5.",
+  "retrieval": "The new task is embedded and the most similar stored tasks are returned by cosine similarity (Query key) or by averaged keyword similarity (AveFact); the code keeps the top 10.",
+  "answer": "Retrieved workflows are appended to the task prompt as guidelines and the agent acts ReAct-style in the environment.",
+  "learning": ""
+ },
+ "summary": "Treats procedural memory as an object to optimise: agent trajectories are distilled into task-keyed workflow scripts (optionally with the raw trajectory), retrieved by task similarity, and revised after failures, compared across build, retrieve and update strategies on ALFWorld and TravelPlanner.",
+ "verified": false,
+ "notes": "Venue: ACL 2026 Findings (arXiv comment; ACL Anthology 2026.findings-acl.866, pages 17490-17502). PDF read: arXiv v4 (15 Apr 2026). Code: zjunlp/MemP at 3066a1b2 (2026-01-30), linked from the paper; it contains only the ALFWorld runner, memory class and prompts, not the TravelPlanner pipeline, the keyword extractor for AveFact, the config.yaml used by the online script, or the trajectory-in-context (Proceduralization) setting.\nDESIGN: paper §3.1, §4.2-4.3, Fig. 2, App. C; code memory.py, run_memp_offline.py, run_memp_online.py, memory_adjust.py, prompt_generator.py, llm_api.py. The paper is an empirical study of strategies rather than one fixed system: design fields describe the best-scoring choices (Proceduralization build, AveFact or Query retrieval, Adjustment update) and note where the code differs. fidelity 'mixed' because the paper's best setting stores verbatim trajectories plus LLM scripts; the released code stores scripts only.",
+ "mechanism": {
+  "sources": {
+   "paper": "arXiv 2508.06433v4 (PDF read 2026-09-30)",
+   "code": "https://github.com/zjunlp/MemP/tree/3066a1b280a39c7433ae37d9a745861903a5d3c4/",
+   "code_note": "Official repository linked on the first page of the paper. Pinned at the latest commit 3066a1b2 (2026-01-30), which predates v4 of the PDF. It covers ALFWorld only (offline and online runners over one Memory class); TravelPlanner code, the AveFact keyword extractor, ProcedureMem/config.yaml (read by the online runner) and the Proceduralization setting are not in the repository."
+  },
+  "headline": [
+   "One memory entry = a stored task description (the key) plus an LLM-written workflow for it; retrieval compares only task descriptions.",
+   "The best build setting (Proceduralization) puts both the retrieved script and the retrieved gold trajectory in the prompt; the released code passes scripts only.",
+   "Updates use the environment's success signal: keep successful runs, and on failure let an LLM rewrite the workflow that was retrieved."
+  ],
+  "units": [
+   {
+    "name": "Procedural memory entry",
+    "role": "one past task and how to solve it",
+    "made_by": "backbone LLM from a trajectory (distillation prompt)",
+    "fields": [
+     {
+      "name": "query (key)",
+      "what": "the task description, e.g. 'put a toiletpaper in toiletpaperhanger'; stored as the document text and embedded",
+      "kept_as": "verbatim",
+      "used_for": [
+       "index",
+       "answer"
+      ],
+      "src": "code memory.py L97-L130",
+      "url": "https://github.com/zjunlp/MemP/blob/3066a1b280a39c7433ae37d9a745861903a5d3c4/ProcedureMem/memory.py#L97-L130"
+     },
+     {
+      "name": "workflow",
+      "what": "'direct': one natural-language paragraph of the critical steps; 'round': the actions of the steps an LLM marks as critical after converting the trajectory to state/action events",
+      "kept_as": "summarized",
+      "used_for": [
+       "answer"
+      ],
+      "src": "code memory.py L214-L226; prompt_generator.py L2-L72",
+      "url": "https://github.com/zjunlp/MemP/blob/3066a1b280a39c7433ae37d9a745861903a5d3c4/ProcedureMem/memory.py#L214-L226"
+     },
+     {
+      "name": "gold trajectory",
+      "what": "the full round-by-round trajectory, used in the Trajectory and Proceduralization settings",
+      "kept_as": "verbatim",
+      "used_for": [
+       "answer"
+      ],
+      "src": "paper §4.2 (not stored by the released code)",
+      "url": "https://arxiv.org/pdf/2508.06433"
+     },
+     {
+      "name": "facts",
+      "what": "task keywords, one embedding per keyword, for the AveFact key; supplied in the trajectory file (null for ALFWorld)",
+      "kept_as": "extracted",
+      "used_for": [
+       "index"
+      ],
+      "src": "paper §4.2; code memory_utils.py L6-L42",
+      "url": "https://github.com/zjunlp/MemP/blob/3066a1b280a39c7433ae37d9a745861903a5d3c4/ProcedureMem/memory_utils.py#L6-L42"
+     },
+     {
+      "name": "hit / success counts",
+      "what": "how often the entry was the top retrieval and how often that run succeeded; read only by the deletion rule",
+      "kept_as": "derived",
+      "used_for": [],
+      "src": "code memory.py L276-L292",
+      "url": "https://github.com/zjunlp/MemP/blob/3066a1b280a39c7433ae37d9a745861903a5d3c4/ProcedureMem/memory.py#L276-L292"
+     }
+    ]
+   }
+  ],
+  "write": [
+   {
+    "step": "Collect trajectories",
+    "how": "gold trajectories from the training set (offline); the agent's own test runs with their 0/1 reward (online)",
+    "out": "offline code builds from the first 300 of 3,119 formatted ALFWorld trajectories",
+    "src": "paper §4.2; code run_memp_offline.py L171-L181",
+    "url": "https://github.com/zjunlp/MemP/blob/3066a1b280a39c7433ae37d9a745861903a5d3c4/ProcedureMem/run_memp_offline.py#L171-L181"
+   },
+   {
+    "step": "Distil",
+    "how": "LLM writes a workflow paragraph from the query and trajectory ('direct'), or lists events and picks critical step ids ('round')",
+    "params": {
+     "temperature": "0.2"
+    },
+    "src": "code memory.py L214-L226; llm_api.py L12-L14",
+    "url": "https://github.com/zjunlp/MemP/blob/3066a1b280a39c7433ae37d9a745861903a5d3c4/ProcedureMem/memory.py#L214-L226"
+   },
+   {
+    "step": "Store",
+    "how": "document text = task description; metadata holds workflow, facts and counters; skipped if the same task is already stored",
+    "src": "code memory.py L97-L130",
+    "url": "https://github.com/zjunlp/MemP/blob/3066a1b280a39c7433ae37d9a745861903a5d3c4/ProcedureMem/memory.py#L97-L130"
+   },
+   {
+    "step": "Update every t tasks",
+    "how": "Vanilla: distil and add every run; Validation: only successful runs; Adjustment (code 'reflect'): add successful runs and let an LLM rewrite the top retrieved workflow of each failed run",
+    "params": {
+     "t": "10 (batch size in the code)"
+    },
+    "src": "paper §4.3; code memory.py L294-L365, memory_adjust.py L6-L62",
+    "url": "https://github.com/zjunlp/MemP/blob/3066a1b280a39c7433ae37d9a745861903a5d3c4/ProcedureMem/memory.py#L294-L365"
+   },
+   {
+    "step": "Delete",
+    "how": "before any update policy, drop entries that were the top retrieval at least 3 times with success rate below 0.5",
+    "note": "code only; the paper mentions deprecating memories but gives no rule",
+    "src": "code memory.py L280-L292",
+    "url": "https://github.com/zjunlp/MemP/blob/3066a1b280a39c7433ae37d9a745861903a5d3c4/ProcedureMem/memory.py#L280-L292"
+   }
+  ],
+  "read": [
+   {
+    "step": "Embed the task",
+    "round": 1,
+    "input": "task description",
+    "scores": "stored task descriptions (Query key) or keyword embeddings (AveFact)",
+    "how": "cosine similarity (paper eq. 5); FAISS similarity search in the code, embedding model text-embedding-3-small",
+    "src": "paper §3.1, §4.2; code memory.py L228-L271, llm_api.py L42-L49",
+    "url": "https://github.com/zjunlp/MemP/blob/3066a1b280a39c7433ae37d9a745861903a5d3c4/ProcedureMem/memory.py#L228-L271"
+   },
+   {
+    "step": "Keep top-k",
+    "round": 1,
+    "how": "k most similar entries; FAISS score threshold 0.5 on the Query key",
+    "params": {
+     "k": "10 (code)",
+     "threshold": "0.5"
+    },
+    "out": "Fig. 5(b): ALFWorld score peaks at k = 10 (82.5)",
+    "src": "code memory.py L232-L234; paper Fig. 5(b)",
+    "url": "https://github.com/zjunlp/MemP/blob/3066a1b280a39c7433ae37d9a745861903a5d3c4/ProcedureMem/memory.py#L232-L234"
+   },
+   {
+    "step": "Append guidelines",
+    "round": 1,
+    "how": "the retrieved entries are dumped as JSON {task_name, guidelines} and appended to the first observation under 'Here are some guidelines of how to solve the similar task'",
+    "src": "code run_memp_online.py L215-L225",
+    "url": "https://github.com/zjunlp/MemP/blob/3066a1b280a39c7433ae37d9a745861903a5d3c4/ProcedureMem/run_memp_online.py#L215-L225"
+   },
+   {
+    "step": "Act",
+    "round": 1,
+    "how": "ReAct agent with one in-context example per task type acts until done or 30 steps",
+    "params": {
+     "max steps": "30",
+     "temperature": "1"
+    },
+    "src": "code run_memp_online.py L26-L44, L83-L150, L262",
+    "url": "https://github.com/zjunlp/MemP/blob/3066a1b280a39c7433ae37d9a745861903a5d3c4/ProcedureMem/run_memp_online.py#L83-L150"
+   }
+  ],
+  "answer_context": {
+   "sees": "the task and its first observation, followed by up to 10 retrieved (task name, workflow) pairs",
+   "format": "\"Here are some guidelines of how to solve the similar task:\" + JSON list of {task_name, guidelines}",
+   "excludes": [
+    "retrieved trajectories (in the released code)",
+    "keywords",
+    "counters"
+   ],
+   "includes": [
+    "task names of similar past tasks",
+    "their LLM-written workflows"
+   ],
+   "note": "In the paper's Trajectory and Proceduralization settings the retrieved gold trajectories are also given; that path is not in the code.",
+   "src": "code run_memp_online.py L215-L225",
+   "url": "https://github.com/zjunlp/MemP/blob/3066a1b280a39c7433ae37d9a745861903a5d3c4/ProcedureMem/run_memp_online.py#L215-L225"
+  },
+  "compression": [
+   {
+    "what": "stored workflow vs its source trajectory",
+    "kept": null,
+    "of": null,
+    "unit": null,
+    "basis": "Not reported. The prompt asks for a concise paragraph of critical steps.",
+    "src": "code prompt_generator.py L2-L18",
+    "url": "https://github.com/zjunlp/MemP/blob/3066a1b280a39c7433ae37d9a745861903a5d3c4/ProcedureMem/prompt_generator.py#L2-L18"
+   }
+  ],
+  "paper_vs_code": [
+   {
+    "topic": "Best build setting",
+    "paper": "Proceduralization gives retrieved gold trajectories plus the script",
+    "code": "only workflows are stored and appended; no trajectory is passed",
+    "src": "run_memp_online.py L215-L225",
+    "url": "https://github.com/zjunlp/MemP/blob/3066a1b280a39c7433ae37d9a745861903a5d3c4/ProcedureMem/run_memp_online.py#L215-L225"
+   },
+   {
+    "topic": "Forgetting",
+    "paper": "update formula includes deletion, but no rule is given",
+    "code": "entries used ≥ 3 times with success < 0.5 are deleted before every update",
+    "src": "memory.py L280-L292",
+    "url": "https://github.com/zjunlp/MemP/blob/3066a1b280a39c7433ae37d9a745861903a5d3c4/ProcedureMem/memory.py#L280-L292"
+   },
+   {
+    "topic": "Distillation prompt",
+    "paper": "task-agnostic script distillation",
+    "code": "the 'direct' workflow prompt lists TravelPlanner tools (FlightSearch, ...) as critical actions, and the ALFWorld offline runner uses 'direct'",
+    "src": "prompt_generator.py L7; run_memp_offline.py L174",
+    "url": "https://github.com/zjunlp/MemP/blob/3066a1b280a39c7433ae37d9a745861903a5d3c4/ProcedureMem/prompt_generator.py#L2-L18"
+   },
+   {
+    "topic": "Offline query",
+    "paper": "the new task is compared with stored tasks",
+    "code": "offline runner uses the whole first observation (room description + task) as the query against stored task sentences; online runner uses the task sentence only",
+    "src": "run_memp_offline.py L217-L222; run_memp_online.py L213",
+    "url": "https://github.com/zjunlp/MemP/blob/3066a1b280a39c7433ae37d9a745861903a5d3c4/ProcedureMem/run_memp_offline.py#L217-L228"
+   }
+  ],
+  "open_questions": [
+   "Table 2's Key=AveFact rows equal Table 1's Trajectory rows, so the retrieval study appears to use trajectory memory; how Proceduralization would rank the keys is not shown.",
+   "Figure 4 compares with ReAct, ExpeL and AWM without numbers or a stated Memp setting; the Memp bars look like Table 1's Proceduralization row.",
+   "No run separates the gain of the script from that of simply showing more tokens of related solved tasks."
+  ],
+  "figures": [
+   {
+    "id": "build",
+    "title": "Memory construction",
+    "viewBox": "0 0 560 242",
+    "body": "<text class=\"fig-t\" x=\"54\" y=\"16\" text-anchor=\"middle\">Past tasks</text><rect class=\"gi-ev\" x=\"10\" y=\"26\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"18\" y1=\"35\" x2=\"66\" y2=\"35\"/><rect class=\"gi-ev\" x=\"26\" y=\"50\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"34\" y1=\"59\" x2=\"82\" y2=\"59\"/><rect class=\"gi-ev\" x=\"10\" y=\"74\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"18\" y1=\"83\" x2=\"66\" y2=\"83\"/><rect class=\"gi-ev\" x=\"26\" y=\"98\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"34\" y1=\"107\" x2=\"82\" y2=\"107\"/><rect class=\"gi-ev\" x=\"10\" y=\"122\" width=\"72\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"18\" y1=\"131\" x2=\"66\" y2=\"131\"/><text class=\"fig-s\" x=\"54\" y=\"160\" text-anchor=\"middle\">gold trajectories</text><text class=\"fig-s\" x=\"54\" y=\"173\" text-anchor=\"middle\">300 in the code</text><path class=\"gi-a\" d=\"M104 90 L141 90\"/><polygon class=\"gi-ah\" points=\"148,90 141,86 141,94\"/><rect class=\"gi-llm\" x=\"110\" y=\"70\" width=\"32\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"126\" y=\"80\" text-anchor=\"middle\">LLM</text><text class=\"fig-s\" x=\"126\" y=\"104\" text-anchor=\"middle\">distil</text><rect class=\"gi-ev\" x=\"152\" y=\"22\" width=\"178\" height=\"176\" rx=\"10\"/><text class=\"fig-t\" x=\"241\" y=\"40\" text-anchor=\"middle\">Memory entry</text><rect class=\"gi-f\" x=\"162\" y=\"50\" width=\"158\" height=\"32\" rx=\"6\"/><text class=\"fig-t\" x=\"170\" y=\"63\" text-anchor=\"start\">key: task text</text><text class=\"fig-s\" x=\"170\" y=\"76\" text-anchor=\"start\">embedded, matched</text><rect class=\"gi-hi\" x=\"162\" y=\"88\" width=\"158\" height=\"32\" rx=\"6\"/><text class=\"fig-t\" x=\"170\" y=\"101\" text-anchor=\"start\">workflow script</text><text class=\"fig-s\" x=\"170\" y=\"114\" text-anchor=\"start\">LLM paragraph</text><text class=\"fig-s\" x=\"312\" y=\"114\" text-anchor=\"end\">→ read</text><rect class=\"gi-f\" x=\"162\" y=\"126\" width=\"158\" height=\"32\" rx=\"6\"/><text class=\"fig-t\" x=\"170\" y=\"139\" text-anchor=\"start\">keywords</text><text class=\"fig-s\" x=\"170\" y=\"152\" text-anchor=\"start\">AveFact key only</text><rect class=\"gi-ev d\" x=\"162\" y=\"164\" width=\"158\" height=\"26\" rx=\"6\"/><text class=\"fig-s\" x=\"170\" y=\"181\" text-anchor=\"start\">use / success counts</text><text class=\"fig-t\" x=\"456\" y=\"16\" text-anchor=\"middle\">Update, online</text><path class=\"gi-a\" d=\"M330 44 L351 44\"/><polygon class=\"gi-ah\" points=\"358,44 351,40 351,48\"/><rect class=\"gi-f\" x=\"358\" y=\"24\" width=\"94\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"405.0\" y=\"42.0\" text-anchor=\"middle\">Run 10 tasks</text><text class=\"fig-s\" x=\"405.0\" y=\"55.0\" text-anchor=\"middle\">with memory</text><path class=\"gi-a\" d=\"M405 64 L405 69\"/><polygon class=\"gi-ah\" points=\"405,76 401,69 409,69\"/><polygon class=\"gi-f\" points=\"405,76 447,100 405,124 363,100\"/><text class=\"fig-t\" x=\"405\" y=\"99\" text-anchor=\"middle\">Solved?</text><text class=\"fig-s\" x=\"405\" y=\"111\" text-anchor=\"middle\">env reward</text><path class=\"gi-a\" d=\"M447 100 L463 100\"/><polygon class=\"gi-ah\" points=\"470,100 463,96 463,104\"/><text class=\"fig-yes\" x=\"452\" y=\"94\" text-anchor=\"start\">yes</text><rect class=\"gi-v fig-soft\" x=\"470\" y=\"80\" width=\"86\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"513.0\" y=\"98.0\" text-anchor=\"middle\">Add entry</text><text class=\"fig-s\" x=\"513.0\" y=\"111.0\" text-anchor=\"middle\">distil the run</text><path class=\"gi-a\" d=\"M405 124 L405 143\"/><polygon class=\"gi-ah\" points=\"405,150 401,143 409,143\"/><text class=\"fig-no\" x=\"411\" y=\"141\" text-anchor=\"start\">no</text><rect class=\"gi-llm\" x=\"352\" y=\"150\" width=\"106\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"405.0\" y=\"168.0\" text-anchor=\"middle\">Revise</text><text class=\"fig-s\" x=\"405.0\" y=\"181.0\" text-anchor=\"middle\">retrieved workflow</text><rect class=\"gi-ev d\" x=\"466\" y=\"134\" width=\"90\" height=\"56\" rx=\"6\"/><text class=\"fig-s\" x=\"511\" y=\"150\" text-anchor=\"middle\">delete entry</text><text class=\"fig-s\" x=\"511\" y=\"163\" text-anchor=\"middle\">used ≥ 3 times,</text><text class=\"fig-s\" x=\"511\" y=\"176\" text-anchor=\"middle\">success &lt; 50%</text><text class=\"fig-s\" x=\"280\" y=\"218\" text-anchor=\"middle\">Paper: Vanilla adds every run, Validation only solved runs, Adjustment also revises on failure</text><text class=\"fig-s\" x=\"280\" y=\"232\" text-anchor=\"middle\">Code: the delete rule runs before every update policy</text>",
+    "text": [
+     "An LLM distils each solved trajectory into a workflow script, stored under the task's description; the paper's best setting also keeps the trajectory itself.",
+     "After every batch of tasks, solved runs are added and a workflow that led to a failure is rewritten; the code also deletes entries that keep failing."
+    ],
+    "src": "paper §4.2-4.3, Fig. 2; code memory.py L97-L365, memory_adjust.py",
+    "url": "https://github.com/zjunlp/MemP/blob/3066a1b280a39c7433ae37d9a745861903a5d3c4/ProcedureMem/memory.py#L97-L365"
+   },
+   {
+    "id": "read",
+    "title": "Memory retrieval",
+    "viewBox": "0 0 560 238",
+    "body": "<rect class=\"gi-f\" x=\"4\" y=\"34\" width=\"64\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"36.0\" y=\"54.0\" text-anchor=\"middle\">New task</text><text class=\"fig-s\" x=\"36.0\" y=\"67.0\" text-anchor=\"middle\">task text</text><path class=\"gi-a\" d=\"M68 56 L75 56\"/><polygon class=\"gi-ah\" points=\"82,56 75,52 75,60\"/><rect class=\"gi-v fig-soft\" x=\"82\" y=\"34\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"130.0\" y=\"54.0\" text-anchor=\"middle\">Search keys</text><text class=\"fig-s\" x=\"130.0\" y=\"67.0\" text-anchor=\"middle\">cosine</text><text class=\"fig-s\" x=\"130\" y=\"90\" text-anchor=\"middle\">or AveFact:</text><text class=\"fig-s\" x=\"130\" y=\"102\" text-anchor=\"middle\">mean keyword similarity</text><path class=\"gi-a\" d=\"M178 56 L185 56\"/><polygon class=\"gi-ah\" points=\"192,56 185,52 185,60\"/><rect class=\"gi-f\" x=\"192\" y=\"34\" width=\"74\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"229.0\" y=\"54.0\" text-anchor=\"middle\">top-10</text><text class=\"fig-s\" x=\"229.0\" y=\"67.0\" text-anchor=\"middle\">code default</text><path class=\"gi-a\" d=\"M266 56 L273 56\"/><polygon class=\"gi-ah\" points=\"280,56 273,52 273,60\"/><rect class=\"gi-hi\" x=\"280\" y=\"34\" width=\"110\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"335.0\" y=\"54.0\" text-anchor=\"middle\">Guidelines</text><text class=\"fig-s\" x=\"335.0\" y=\"67.0\" text-anchor=\"middle\">task + workflow ×k</text><text class=\"fig-s\" x=\"335\" y=\"90\" text-anchor=\"middle\">appended to the task</text><path class=\"gi-a\" d=\"M390 56 L397 56\"/><polygon class=\"gi-ah\" points=\"404,56 397,52 397,60\"/><rect class=\"gi-llm\" x=\"404\" y=\"34\" width=\"84\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"446.0\" y=\"54.0\" text-anchor=\"middle\">ReAct agent</text><text class=\"fig-s\" x=\"446.0\" y=\"67.0\" text-anchor=\"middle\">≤ 30 steps</text><path class=\"gi-a\" d=\"M488 56 L495 56\"/><polygon class=\"gi-ah\" points=\"502,56 495,52 495,60\"/><rect class=\"gi-f\" x=\"502\" y=\"34\" width=\"54\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"529.0\" y=\"54.0\" text-anchor=\"middle\">Env</text><text class=\"fig-s\" x=\"529.0\" y=\"67.0\" text-anchor=\"middle\">reward 0/1</text><path class=\"gi-a d\" d=\"M529 78 L529 125\"/><polygon class=\"gi-ah\" points=\"529,132 525,125 533,125\"/><rect class=\"gi-ev d\" x=\"430\" y=\"132\" width=\"126\" height=\"40\" rx=\"6\"/><text class=\"fig-t\" x=\"493\" y=\"149\" text-anchor=\"middle\">Update memory</text><text class=\"fig-s\" x=\"493\" y=\"162\" text-anchor=\"middle\">after every 10 tasks</text><text class=\"fig-s\" x=\"554\" y=\"196\" text-anchor=\"end\">Code passes workflows only;</text><text class=\"fig-s\" x=\"554\" y=\"209\" text-anchor=\"end\">paper's best setting also</text><text class=\"fig-s\" x=\"554\" y=\"222\" text-anchor=\"end\">adds gold trajectories</text><text class=\"fig-s\" x=\"170\" y=\"124\" text-anchor=\"middle\">ALFWorld score vs k (GPT-4o)</text><line class=\"gi-e\" x1=\"36\" y1=\"218\" x2=\"304\" y2=\"218\"/><path class=\"gi-a\" d=\"M44.0 212.8 L69.0 161.8 L106.5 153.1 L144.0 149.1 L169.0 141.8 L231.5 143.4 L294.0 147.2\"/><circle class=\"gi-n\" cx=\"44.0\" cy=\"212.8\" r=\"4\"/><text class=\"fig-s\" x=\"36.0\" y=\"216.8\" text-anchor=\"end\">40.7</text><text class=\"fig-s\" x=\"44.0\" y=\"230\" text-anchor=\"middle\">0</text><circle class=\"gi-n\" cx=\"69.0\" cy=\"161.8\" r=\"4\"/><text class=\"fig-s\" x=\"69.0\" y=\"154.8\" text-anchor=\"middle\">70.7</text><text class=\"fig-s\" x=\"69.0\" y=\"230\" text-anchor=\"middle\">2</text><circle class=\"gi-n\" cx=\"106.5\" cy=\"153.1\" r=\"4\"/><text class=\"fig-s\" x=\"106.5\" y=\"146.1\" text-anchor=\"middle\">75.8</text><text class=\"fig-s\" x=\"106.5\" y=\"230\" text-anchor=\"middle\">5</text><circle class=\"gi-n\" cx=\"144.0\" cy=\"149.1\" r=\"4\"/><text class=\"fig-s\" x=\"144.0\" y=\"142.1\" text-anchor=\"middle\">78.2</text><text class=\"fig-s\" x=\"144.0\" y=\"230\" text-anchor=\"middle\">8</text><circle class=\"gi-hi\" cx=\"169.0\" cy=\"141.8\" r=\"4\"/><text class=\"fig-s\" x=\"169.0\" y=\"134.8\" text-anchor=\"middle\">82.5</text><text class=\"fig-s\" x=\"169.0\" y=\"230\" text-anchor=\"middle\">10</text><circle class=\"gi-n\" cx=\"231.5\" cy=\"143.4\" r=\"4\"/><text class=\"fig-s\" x=\"231.5\" y=\"136.4\" text-anchor=\"middle\">81.5</text><text class=\"fig-s\" x=\"231.5\" y=\"230\" text-anchor=\"middle\">15</text><circle class=\"gi-n\" cx=\"294.0\" cy=\"147.2\" r=\"4\"/><text class=\"fig-s\" x=\"294.0\" y=\"140.2\" text-anchor=\"middle\">79.3</text><text class=\"fig-s\" x=\"294.0\" y=\"230\" text-anchor=\"middle\">20</text><text class=\"fig-s\" x=\"318\" y=\"230\" text-anchor=\"start\">k</text>",
+    "text": [
+     "The new task is compared with stored task descriptions and the 10 most similar entries are appended to the prompt as guidelines.",
+     "The paper's sweep on ALFWorld peaks at 10 retrieved memories and declines slightly beyond that."
+    ],
+    "src": "code memory.py L228-L271, run_memp_online.py L215-L225; paper Fig. 5(b)",
+    "url": "https://github.com/zjunlp/MemP/blob/3066a1b280a39c7433ae37d9a745861903a5d3c4/ProcedureMem/memory.py#L228-L271"
+   }
+  ],
+  "key_numbers": [
+   {
+    "label": "Trajectories used to build memory (offline code)",
+    "value": "first 300 of 3,119 ALFWorld training trajectories",
+    "src": "code run_memp_offline.py L180",
+    "section": "construction"
+   },
+   {
+    "label": "Update interval",
+    "value": "every 10 tasks (batch size)",
+    "src": "code run_memp_online.py L261",
+    "section": "construction"
+   },
+   {
+    "label": "Delete rule (code)",
+    "value": "used ≥ 3 times and success < 50%",
+    "src": "code memory.py L290",
+    "section": "construction"
+   },
+   {
+    "label": "Memories retrieved",
+    "value": "10 (code default; best in Fig. 5b)",
+    "src": "code run_memp_offline.py L178; paper Fig. 5(b)",
+    "section": "method"
+   },
+   {
+    "label": "Agent step limit",
+    "value": "30",
+    "src": "code run_memp_online.py L262",
+    "section": "method"
+   },
+   {
+    "label": "Case study (egg task)",
+    "value": "14 steps / 2,589 tokens with memory vs 23 / 3,274 without",
+    "src": "paper Fig. 6",
+    "section": "results"
+   },
+   {
+    "label": "Steps on ALFWorld, GPT-4o",
+    "value": "15.01 with Proceduralization vs 23.76 without memory",
+    "src": "paper Table 1",
+    "section": "results"
+   }
+  ],
+  "ablation": {
+   "cols": [
+    "ALFWorld dev",
+    "ALFWorld test",
+    "TravelPlanner #CS"
+   ],
+   "rows": [
+    [
+     "No memory",
+     "39.28",
+     "42.14",
+     "71.93"
+    ],
+    [
+     "Script only",
+     "66.67",
+     "56.43",
+     "72.08"
+    ],
+    [
+     "Trajectory only",
+     "67.17",
+     "74.29",
+     "76.02"
+    ],
+    [
+     "Script + trajectory (Proceduralization)",
+     "87.14",
+     "77.86",
+     "79.94"
+    ]
+   ],
+   "src": "paper Table 1 (GPT-4o)"
+  },
+  "components": [
+   {
+    "role": "Distils trajectories into workflows",
+    "model": "backbone LLM (not named in the paper; MODEL_NAME in the code, temperature 0.2)",
+    "kind": "llm",
+    "src": "code llm_api.py L11-L14",
+    "url": "https://github.com/zjunlp/MemP/blob/3066a1b280a39c7433ae37d9a745861903a5d3c4/ProcedureMem/llm_api.py#L11-L14"
+   },
+   {
+    "role": "Task similarity search",
+    "model": "text-embedding-3-small + FAISS (code); cosine similarity (paper)",
+    "kind": "retriever",
+    "src": "code llm_api.py L42-L49; paper eq. 5",
+    "url": "https://github.com/zjunlp/MemP/blob/3066a1b280a39c7433ae37d9a745861903a5d3c4/ProcedureMem/llm_api.py#L42-L49"
+   },
+   {
+    "role": "Keyword extraction for AveFact",
+    "model": "an LLM (not named)",
+    "kind": "llm",
+    "src": "paper §4.2"
+   },
+   {
+    "role": "Revises a failed workflow (Adjustment)",
+    "model": "LLM via litellm, temperature 1 (model name left as a placeholder)",
+    "kind": "llm",
+    "src": "code memory_adjust.py L37-L62",
+    "url": "https://github.com/zjunlp/MemP/blob/3066a1b280a39c7433ae37d9a745861903a5d3c4/ProcedureMem/memory_adjust.py#L37-L62"
+   },
+   {
+    "role": "Acts in the environment",
+    "model": "GPT-4o, Claude-3.5-Sonnet or Qwen2.5-72B-Instruct",
+    "kind": "llm",
+    "src": "paper §4.1, Table 1"
+   },
+   {
+    "role": "Keep / delete decision",
+    "model": "environment reward and counters",
+    "kind": "rule",
+    "src": "code memory.py L276-L365",
+    "url": "https://github.com/zjunlp/MemP/blob/3066a1b280a39c7433ae37d9a745861903a5d3c4/ProcedureMem/memory.py#L276-L365"
+   }
+  ],
+  "discussion": {
+   "takeaway": "Giving an agent both an abstract script and a concrete solved trajectory of a similar past task raises success and cuts steps on ALFWorld and TravelPlanner, and revising scripts after failures keeps improving it over time.",
+   "claims": [
+    {
+     "claim": "All build strategies beat no memory; combining script and trajectory is best.",
+     "evidence": "GPT-4o ALFWorld dev/test 87.14/77.86 vs 39.28/42.14, steps 15.01 vs 23.76; TravelPlanner #CS 79.94 vs 71.93. Table 1"
+    },
+    {
+     "claim": "Scripts generalise better to unseen tasks, trajectories fit similar tasks.",
+     "evidence": "Script relatively better on the ALFWorld test split, Trajectory on dev. Table 1, §4.2"
+    },
+    {
+     "claim": "Similarity-based keys beat random sampling.",
+     "evidence": "Key=AveFact best #CS for all three models (76.02, 65.76, 63.41). Table 2"
+    },
+    {
+     "claim": "Error-driven revision (Adjustment) is the best update policy.",
+     "evidence": "Highest reward gain (about 0.7) and largest step reduction (about 14) by the fifth task group. Fig. 3, §4.3"
+    },
+    {
+     "claim": "Memory built by a strong model helps a weaker one.",
+     "evidence": "GPT-4o memory lifts Qwen2.5-14B on TravelPlanner: delivery 91.4 to 96.6, commonsense 59.3 to 65.5, steps 16.9 to 15.3. Fig. 5(a)"
+    },
+    {
+     "claim": "More retrieved memories help up to a point.",
+     "evidence": "ALFWorld score 40.7 (k=0) rising to 82.5 (k=10), then 79.3 (k=20). Fig. 5(b)"
+    }
+   ],
+   "limits": [
+    "Retrieval is vector similarity over hand-designed keys; BM25 and other methods were not tried.",
+    "Updates depend on the benchmark's explicit reward, so the method cannot yet judge success where rewards are missing."
+   ],
+   "limits_src": "paper, Limitations",
+   "reading": [
+    "Memory is keyed and matched only by the task description; environment state, room layout and the agent's progress play no part in retrieval.",
+    "Key=AveFact in Table 2 has exactly the numbers of Trajectory in Table 1, so the retrieval comparison is run on trajectory memory, not on the best (Proceduralization) setting.",
+    "Figure 4 (ReAct, ExpeL, AWM, Memp on ALFWorld) gives bars without values or settings; the Memp and ReAct bars match Table 1's Proceduralization and No Memory rows, so the baselines are presumably also GPT-4o, but the paper does not say how ExpeL and AWM were run.",
+    "The text says Adjustment beats the second-best policy by '+0.7 points'; Fig. 3 shows a reward gain of about 0.7 for Adjustment against about 0.55-0.6 for the others, so the margin is smaller than the phrase suggests.",
+    "The transfer experiment is described as Fig. 5(b) in the text but is Fig. 5(a); its ALFWorld gains are stated without numbers.",
+    "Figure 5(b)'s k = 0 score (40.7) sits between Table 1's no-memory dev (39.28) and test (42.14) values; the split is not stated.",
+    "The released code covers ALFWorld with scripts only: no TravelPlanner runner, no trajectory-in-context path, and no config for the online runs, so Table 1's best rows cannot be reproduced from it as released."
+   ]
+  },
+  "abstract": {
+   "text": "Memp studies how an LLM agent can keep procedural memory, knowledge of how to carry out tasks, outside its weights. Past trajectories are distilled into step-level instructions and higher-level scripts, stored under the task description and retrieved for similar new tasks. The paper compares strategies for building, retrieving and updating this memory, including revising entries after failures. On TravelPlanner and ALFWorld, agents succeed more often and use fewer steps as memory is refined, and memory built with GPT-4o also helps a smaller model.",
+   "note": "Summary in our words; the original abstract is on arXiv.",
+   "url": "https://arxiv.org/abs/2508.06433"
+  },
+  "sections": {
+   "Memory architecture": "§3.1, §4.2, Fig. 2",
+   "Results": "§4.2, §4.4",
+   "Ablation": "§4.2-4.3, §5",
+   "Discussion": "§5, §6, Limitations",
+   "Details": "§4.1, App. C"
+  }
+ }
+}

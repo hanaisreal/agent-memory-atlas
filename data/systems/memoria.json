@@ -1,0 +1,548 @@
+{
+  "id": "memoria",
+  "name": "Memoria",
+  "paper": {
+    "title": "Memoria: Resolving Fateful Forgetting Problem through Human-Inspired Memory Architecture",
+    "arxiv": "2310.03052",
+    "url": "https://arxiv.org/abs/2310.03052",
+    "venue": "ICML 2024",
+    "venue_short": "ICML",
+    "track": "main",
+    "year": 2024,
+    "code": "https://github.com/cosmoquester/memoria"
+  },
+  "design": {
+    "construction": {
+      "unit": "engram: one hidden-size vector (no text)",
+      "kept_as": "learned compression of the previous segment's final hidden states",
+      "processing": "a trained attention abstractor with N_wm learnable queries turns segment t-1's last hidden states into N_wm engrams (working memory)",
+      "trigger": "other",
+      "writer": "abstractor module inside the model, trained end to end with the task loss"
+    },
+    "organization": {
+      "structure": "three tiers (working, short-term queue, unbounded long-term) plus a directed weighted graph of co-retrieval counts over all engrams",
+      "stores": "working memory (this step's engrams), short-term memory (FIFO queue, fixed capacity), long-term memory (no size limit)",
+      "index": "squared L2 distance to working-memory engrams; co-retrieval count matrix as edge weights"
+    },
+    "management": {
+      "operations": "each step: co-retrieved pairs' counts +1; retrieved engrams gain lifespan in proportion to the memory attention they received; all engrams lose 1; WM moves to STM; STM overflow (oldest) moves to LTM",
+      "conflicts": null,
+      "forgetting": "lifespan decay: engrams whose lifespan reaches 0 are deleted permanently; only retrieval and use extend lifespan",
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "the current working-memory engrams (made from the previous segment)",
+      "candidates": "STM: top N_stm by mean exp(-L2^2) to WM; LTM: from each retrieved STM engram follow the strongest link into LTM, then walk the strongest unvisited links to depth 10",
+      "selection": "top N_ltm of the walked LTM engrams by similarity to WM",
+      "budget": "WM + STM + LTM engrams equal the segment length in sorting (1/8, 1/4, 5/8); 50/50/50 on Wikitext-103 and PG-19; 64/64/64 on Hyperpartisan"
+    },
+    "use": {
+      "context": "the model cross-attends to WM engrams and then to the retrieved STM/LTM engrams in every memory layer (same attention weights for both)",
+      "reasoning": "one forward pass per segment; the memory attention weights are fed back as the lifespan increment"
+    },
+    "control": {
+      "construction": "learned-sft",
+      "management": "fixed-rule",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "tiers",
+    "index": "vector",
+    "management": "evict",
+    "candidates": "graph walk",
+    "decides": "top-k rule",
+    "note": "STM candidates come from vector distance, but LTM is reached only by walking co-retrieval links from the retrieved STM engrams, which is the distinctive step."
+  },
+  "tags": {
+    "fidelity": "compressed",
+    "structure": [
+      "tiered",
+      "graph"
+    ],
+    "write_time": [
+      "learned",
+      "link"
+    ],
+    "selection": [
+      "dense",
+      "graph-expansion"
+    ],
+    "memory_type": [
+      "working",
+      "episodic"
+    ],
+    "learning": "sft",
+    "domain": [
+      "long-document",
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "The input is processed segment by segment (e.g. 150 tokens for Wikitext-103 and PG-19, 512 characters for enwik8, 256-1024 symbols for sorting).",
+    "construction": "A trained attention abstractor with N_wm learnable queries turns the previous segment's final hidden states (the current segment's layer-l states in the BERT variant) into N_wm engram vectors that form the working memory.",
+    "organization": "Engrams sit in working memory, a fixed-capacity short-term queue and an unbounded long-term store; every pair of engrams has a co-retrieval count, read as the directed edge weight Count_ij / Count_ii.",
+    "update": "After each step, co-retrieved engrams' pair counts rise by one (Hebbian), retrieved engrams gain lifespan proportional to the memory attention they received (scale α = 8), every engram loses 1, engrams at 0 are deleted, WM moves to STM and STM overflow moves to LTM.",
+    "retrieval": "Working memory is the cue: the N_stm STM engrams closest to it are retrieved; from each, the strongest link into LTM starts a greedy walk of depth 10 over unvisited LTM engrams, and the N_ltm walked engrams closest to WM are kept.",
+    "answer": "The model cross-attends to the WM engrams and then to the retrieved engrams inside its layers; the result is the next-token prediction (or class) for the current segment.",
+    "learning": "The abstractor and memory-attention layers are trained with the task loss (from scratch for language modeling and sorting, fine-tuned from BERT, RoBERTa or GPT-2 elsewhere); the memory rules themselves are fixed."
+  },
+  "summary": "Neural memory module with working, short-term and long-term stores of engram vectors, where Hebbian co-retrieval links guide search into long-term memory and a use-driven lifespan decides what is forgotten.",
+  "verified": false,
+  "notes": "Architecture-level memory for Transformers, not an agent memory: engrams are latent vectors that the model attends to; there is no text store and no LLM prompting. Evaluated on synthetic sorting, language modeling (Wikitext-103, PG-19, enwik8) and Hyperpartisan classification.\nVENUE: ICML 2024 (PMLR 235:39587-39615, proceedings.mlr.press/v235/park24a; OpenReview yTz0u4B8ug); the arXiv v3 PDF also carries the ICML 2024 footer.\nDESIGN: §3.1-3.4, §4, App. D, E, G; code memoria.py and modeling_gpt2_with_memoria.py at v1.0.0 (the version the experiment requirements pin).",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2310.03052v3 (PDF read 2026-09-30)",
+      "code": "https://github.com/cosmoquester/memoria/tree/d25ac6b4d7d424d9d177cf90236261cbbb397016/",
+      "code_note": "Tag v1.0.0 (2023-10-06). The repo's experiment/requirements.txt pins memoria-pytorch==1.0.0, so this is the library version behind the experiments. Later commits (2024-09, v1.1.0) replaced exp(-L2^2) with -L2^2 in the similarity (\"Prevent overflow of exp\"), which changes the STM ranking because scores are averaged over WM engrams; the figures follow v1.0.0, which matches the paper."
+    },
+    "sections": {
+      "Memory architecture": "§3 (3.1 components, 3.2 retrieve, 3.3 exploit, 3.4 memorize & forget), §4",
+      "Results": "§5.1-5.3, Tables 1-3, Fig. 4, App. D (Tables 7-8)",
+      "Ablation": "App. C (Tables 5-6)",
+      "Discussion": "§6, §7",
+      "Details": "App. D (hyperparameters), E (algorithms, complexity, Table 11), G (architectures)"
+    },
+    "abstract": {
+      "text": "Memoria is a memory module for neural networks that tries to keep important old information instead of always favouring the most recent input. It stores engram vectors in working, short-term and long-term memory, links engrams that are retrieved together (a Hebbian rule), searches long-term memory by following those links, and forgets engrams whose use-driven lifespan runs out. Plugged into GPT-2-style decoders and BERT/RoBERTa encoders, it beats Transformer-XL, Compressive Transformer and ∞-former on long sorting sequences and on language modeling, and improves long-document classification. An analysis of the surviving engrams shows primacy, recency and temporal-contiguity effects like those in human memory.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2310.03052"
+    },
+    "headline": [
+      "Memory holds vectors, not text: each engram is the abstractor's summary of a past segment, read through cross-attention.",
+      "Long-term memory is never searched by similarity alone: candidates are reached by walking co-retrieval links from the STM engrams, then ranked by distance to working memory.",
+      "Forgetting is driven by use: an engram lives only as long as it keeps receiving attention."
+    ],
+    "units": [
+      {
+        "name": "Engram",
+        "role": "the unit of memory; one vector per abstractor query",
+        "made_by": "trained abstractor over the previous segment's last hidden states",
+        "fields": [
+          {
+            "name": "vector",
+            "what": "hidden-size vector (768-d in the language-model runs, 512-d in sorting)",
+            "kept_as": "derived",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper §3.1, §4; code abstractor.py L25-L43",
+            "url": "https://github.com/cosmoquester/memoria/blob/d25ac6b4d7d424d9d177cf90236261cbbb397016/memoria/abstractor.py#L25-L43"
+          },
+          {
+            "name": "tier",
+            "what": "working, short-term or long-term",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code memoria.py L249-L265",
+            "url": "https://github.com/cosmoquester/memoria/blob/d25ac6b4d7d424d9d177cf90236261cbbb397016/memoria/memoria.py#L249-L265"
+          },
+          {
+            "name": "lifespan",
+            "what": "starts at the initial lifespan (5, 9 or 12); +α × attention share when retrieved; −1 per step; deleted at 0",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "paper §3.4, App. D; code engram.py L341-L359",
+            "url": "https://github.com/cosmoquester/memoria/blob/d25ac6b4d7d424d9d177cf90236261cbbb397016/memoria/engram.py#L341-L359"
+          }
+        ]
+      },
+      {
+        "name": "Memory graph",
+        "role": "directed weighted links between engrams",
+        "made_by": "rule: count pairs retrieved in the same step",
+        "fields": [
+          {
+            "name": "co-retrieval counts",
+            "what": "Count_ij over all engrams; edge weight E_ij = Count_ij / Count_ii (argmax over j is the same with raw counts, which the code uses)",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §3.1; code engram.py L265-L273, memoria.py L139-L169",
+            "url": "https://github.com/cosmoquester/memoria/blob/d25ac6b4d7d424d9d177cf90236261cbbb397016/memoria/engram.py#L265-L273"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Encode",
+        "how": "abstractor: learnable queries attend over the previous segment's last hidden states, then a feed-forward layer",
+        "params": {
+          "N_wm": "50 (LM), 1/8 of segment (sorting), 64 (Hyperpartisan)"
+        },
+        "out": "N_wm new working-memory engrams",
+        "src": "paper §4, App. D; code GPT-2 model L581-L589, abstractor.py L25-L43",
+        "url": "https://github.com/cosmoquester/memoria/blob/d25ac6b4d7d424d9d177cf90236261cbbb397016/experiment/longseq_formers/model/gpt2_with_memoria/modeling_gpt2_with_memoria.py#L581-L589"
+      },
+      {
+        "step": "Link",
+        "how": "count +1 for every pair among WM and retrieved engrams",
+        "src": "paper §3.4 step 1; code memoria.py L75-L76, engram.py L265-L273",
+        "url": "https://github.com/cosmoquester/memoria/blob/d25ac6b4d7d424d9d177cf90236261cbbb397016/memoria/memoria.py#L75-L76"
+      },
+      {
+        "step": "Extend lifespan",
+        "how": "memory attention averaged over layers, heads and query tokens, times the number retrieved × α",
+        "params": {
+          "α": "8"
+        },
+        "out": "average gain α per retrieved engram",
+        "src": "paper §3.4 step 2; code GPT-2 model L670-L677",
+        "url": "https://github.com/cosmoquester/memoria/blob/d25ac6b4d7d424d9d177cf90236261cbbb397016/experiment/longseq_formers/model/gpt2_with_memoria/modeling_gpt2_with_memoria.py#L670-L677"
+      },
+      {
+        "step": "Decay and delete",
+        "how": "every engram loses 1; lifespan ≤ 0 is removed",
+        "src": "paper §3.4 steps 3-4; code memoria.py L86-L103",
+        "url": "https://github.com/cosmoquester/memoria/blob/d25ac6b4d7d424d9d177cf90236261cbbb397016/memoria/memoria.py#L86-L103"
+      },
+      {
+        "step": "Move tiers",
+        "how": "WM becomes STM; STM beyond capacity (oldest first) becomes LTM",
+        "params": {
+          "STM capacity": "400 (Wikitext/PG-19), 1360 (enwik8), 1/2 of segment (sorting), 128 (Hyperpartisan)"
+        },
+        "src": "paper §3.4 steps 5-6, App. D; code memoria.py L249-L265",
+        "url": "https://github.com/cosmoquester/memoria/blob/d25ac6b4d7d424d9d177cf90236261cbbb397016/memoria/memoria.py#L249-L265"
+      }
+    ],
+    "read": [
+      {
+        "step": "Rank STM",
+        "round": 1,
+        "input": "WM engrams",
+        "scores": "every STM engram",
+        "how": "mean over WM engrams of exp(-squared L2 distance); keep top N_stm",
+        "params": {
+          "N_stm": "50 (LM)"
+        },
+        "src": "paper §3.2 steps 2-3; code memoria.py L106-L136",
+        "url": "https://github.com/cosmoquester/memoria/blob/d25ac6b4d7d424d9d177cf90236261cbbb397016/memoria/memoria.py#L106-L136"
+      },
+      {
+        "step": "Enter LTM",
+        "round": 1,
+        "how": "for each retrieved STM engram, the LTM engram with the highest co-retrieval count (random tie-break)",
+        "src": "paper §3.2 step 4; code memoria.py L139-L169",
+        "url": "https://github.com/cosmoquester/memoria/blob/d25ac6b4d7d424d9d177cf90236261cbbb397016/memoria/memoria.py#L139-L169"
+      },
+      {
+        "step": "Walk links",
+        "round": 1,
+        "how": "from each entry point repeatedly move to the strongest-linked unvisited LTM engram",
+        "params": {
+          "depth": "10"
+        },
+        "out": "up to N_stm × 11 LTM engrams",
+        "src": "paper §3.2 step 5, App. E.1; code memoria.py L172-L222",
+        "url": "https://github.com/cosmoquester/memoria/blob/d25ac6b4d7d424d9d177cf90236261cbbb397016/memoria/memoria.py#L172-L222"
+      },
+      {
+        "step": "Rank LTM",
+        "round": 1,
+        "input": "WM engrams",
+        "scores": "walked LTM engrams",
+        "how": "sum over WM of exp(-squared L2); keep top N_ltm",
+        "params": {
+          "N_ltm": "50 (LM)"
+        },
+        "src": "paper §3.2 step 6; code memoria.py L225-L246",
+        "url": "https://github.com/cosmoquester/memoria/blob/d25ac6b4d7d424d9d177cf90236261cbbb397016/memoria/memoria.py#L225-L246"
+      }
+    ],
+    "answer_context": {
+      "sees": "N_wm working-memory engrams plus up to N_stm + N_ltm retrieved engrams (50 + 100 in the LM runs), as cross-attention keys and values",
+      "format": "vectors; each block attends to WM first, then to the retrieved engrams, with one shared cross-attention layer",
+      "excludes": [
+        "tokens of earlier segments",
+        "the co-retrieval graph",
+        "lifespans"
+      ],
+      "includes": [
+        "current segment tokens (self-attention)",
+        "WM engrams",
+        "retrieved STM and LTM engrams"
+      ],
+      "note": "The GPT-2 variant adds memory attention to every layer; Memoria BERT only to layers after the memory layer (index 9, so the last 2 of 12).",
+      "src": "paper §4, App. G; code GPT-2 model L310-L341",
+      "url": "https://github.com/cosmoquester/memoria/blob/d25ac6b4d7d424d9d177cf90236261cbbb397016/experiment/longseq_formers/model/gpt2_with_memoria/modeling_gpt2_with_memoria.py#L310-L341"
+    },
+    "compression": [
+      {
+        "what": "memory read per step vs the segment",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not a text compression: engrams are vectors. The paper sets the number of engrams read equal to the segment length in sorting and 150 engrams for 150-token segments on Wikitext-103 (App. D).",
+        "src": "paper App. D.1-D.2, App. E.1",
+        "url": "https://arxiv.org/pdf/2310.03052"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Sorting 48K, full Memoria",
+        "value": "63.26",
+        "src": "paper Table 5-6"
+      },
+      {
+        "label": "without long-term memory",
+        "value": "54.87",
+        "src": "paper Table 5"
+      },
+      {
+        "label": "Hebbian links replaced by random wiring",
+        "value": "56.13",
+        "src": "paper Table 6"
+      },
+      {
+        "label": "LTM searched exhaustively instead of by links",
+        "value": "65.84",
+        "src": "paper Table 6"
+      },
+      {
+        "label": "Wikitext-103 test inference",
+        "value": "44.21 s, 612.94 MB (Transformer-XL 21.23 s, 525.74 MB)",
+        "src": "paper Table 11"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Sorting model depth",
+        "paper": "5 layers, 4 heads, 512-d (App. D.1)",
+        "code": "memoria-gpt2-sort.json and the baseline sort configs set n_layer 4",
+        "src": "experiment/configs/memoria-gpt2-sort.json",
+        "url": "https://github.com/cosmoquester/memoria/blob/d25ac6b4d7d424d9d177cf90236261cbbb397016/experiment/configs/memoria-gpt2-sort.json"
+      },
+      {
+        "topic": "Similarity function",
+        "paper": "exp(-L2^2), averaged over WM",
+        "code": "same in v1.0.0; later library versions (2024-09) drop the exp, which changes the averaged STM ranking",
+        "src": "memoria.py L106-L113",
+        "url": "https://github.com/cosmoquester/memoria/blob/d25ac6b4d7d424d9d177cf90236261cbbb397016/memoria/memoria.py#L106-L113"
+      },
+      {
+        "topic": "Memory search",
+        "paper": "depth-first search toward the highest edge weight",
+        "code": "one greedy path per entry point (argmax over unvisited LTM at each depth), no backtracking",
+        "src": "memoria.py L211-L222",
+        "url": "https://github.com/cosmoquester/memoria/blob/d25ac6b4d7d424d9d177cf90236261cbbb397016/memoria/memoria.py#L211-L222"
+      }
+    ],
+    "open_questions": [
+      "The Full LTM Search variant (65.84) beats link-guided search (63.26) on 48K sorting, so the links trade accuracy for compute; no run isolates how much each saves in time.",
+      "Language-modeling gains over ∞-former are small on PG-19 (29.149 vs 29.154) and Memoria ties Compressive Transformer on enwik8 (1.16), and no variance is reported for these single runs."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 240",
+        "body": "<text class=\"fig-t\" x=\"48\" y=\"16\" text-anchor=\"middle\">Segment t−1</text><rect class=\"gi-f\" x=\"6\" y=\"26\" width=\"84\" height=\"118\" rx=\"8\"/><rect class=\"gi-v\" x=\"13\" y=\"34\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"28\" y=\"34\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"43\" y=\"34\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"58\" y=\"34\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"73\" y=\"34\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"13\" y=\"52\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"28\" y=\"52\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"43\" y=\"52\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"58\" y=\"52\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"73\" y=\"52\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"13\" y=\"70\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"28\" y=\"70\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"43\" y=\"70\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"58\" y=\"70\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"73\" y=\"70\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"13\" y=\"88\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"28\" y=\"88\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"43\" y=\"88\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"58\" y=\"88\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"73\" y=\"88\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"13\" y=\"106\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"28\" y=\"106\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"43\" y=\"106\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"58\" y=\"106\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"73\" y=\"106\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"13\" y=\"124\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"28\" y=\"124\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"43\" y=\"124\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"58\" y=\"124\" width=\"11\" height=\"12\" rx=\"2\"/><rect class=\"gi-v\" x=\"73\" y=\"124\" width=\"11\" height=\"12\" rx=\"2\"/><text class=\"fig-s\" x=\"48\" y=\"158\" text-anchor=\"middle\">last hidden states</text><path class=\"gi-a\" d=\"M90.0 85.0 L99.0 85.0\"/><polygon class=\"gi-ah\" points=\"106.0,85.0 99.0,89.0 99.0,81.0\"/><rect class=\"gi-w\" x=\"106\" y=\"56\" width=\"90\" height=\"58\" rx=\"8\"/><text class=\"fig-t\" x=\"151\" y=\"80\" text-anchor=\"middle\">Abstractor</text><text class=\"fig-s\" x=\"151\" y=\"93\" text-anchor=\"middle\">learned queries</text><text class=\"fig-s\" x=\"151\" y=\"105\" text-anchor=\"middle\">(trained)</text><path class=\"gi-a\" d=\"M196.0 85.0 L205.0 85.0\"/><polygon class=\"gi-ah\" points=\"212.0,85.0 205.0,89.0 205.0,81.0\"/><text class=\"fig-t\" x=\"238\" y=\"16\" text-anchor=\"middle\">Working</text><rect class=\"gi-ev\" x=\"212\" y=\"26\" width=\"52\" height=\"118\" rx=\"10\"/><circle class=\"gi-n\" cx=\"238\" cy=\"44\" r=\"6\"/><circle class=\"gi-n\" cx=\"238\" cy=\"70\" r=\"6\"/><circle class=\"gi-n\" cx=\"238\" cy=\"96\" r=\"6\"/><circle class=\"gi-n\" cx=\"238\" cy=\"122\" r=\"6\"/><text class=\"fig-s\" x=\"238\" y=\"158\" text-anchor=\"middle\">N_wm engrams</text><path class=\"gi-a\" d=\"M264.0 85.0 L289.0 85.0\"/><polygon class=\"gi-ah\" points=\"296.0,85.0 289.0,89.0 289.0,81.0\"/><text class=\"fig-s\" x=\"280\" y=\"78\" text-anchor=\"middle\">next</text><text class=\"fig-t\" x=\"338\" y=\"16\" text-anchor=\"middle\">Short-term</text><rect class=\"gi-f\" x=\"296\" y=\"26\" width=\"84\" height=\"118\" rx=\"10\"/><circle class=\"gi-n\" cx=\"314\" cy=\"44\" r=\"6\"/><circle class=\"gi-n\" cx=\"338\" cy=\"44\" r=\"6\"/><circle class=\"gi-n\" cx=\"362\" cy=\"44\" r=\"6\"/><circle class=\"gi-n\" cx=\"314\" cy=\"70\" r=\"6\"/><circle class=\"gi-n\" cx=\"338\" cy=\"70\" r=\"6\"/><circle class=\"gi-n\" cx=\"362\" cy=\"70\" r=\"6\"/><circle class=\"gi-n\" cx=\"314\" cy=\"96\" r=\"6\"/><circle class=\"gi-n\" cx=\"338\" cy=\"96\" r=\"6\"/><circle class=\"gi-n\" cx=\"362\" cy=\"96\" r=\"6\"/><circle class=\"gi-n\" cx=\"314\" cy=\"122\" r=\"6\"/><circle class=\"gi-n\" cx=\"338\" cy=\"122\" r=\"6\"/><circle class=\"gi-n\" cx=\"362\" cy=\"122\" r=\"6\"/><text class=\"fig-s\" x=\"338\" y=\"158\" text-anchor=\"middle\">queue, capacity 400</text><path class=\"gi-a\" d=\"M380.0 85.0 L413.0 85.0\"/><polygon class=\"gi-ah\" points=\"420.0,85.0 413.0,89.0 413.0,81.0\"/><text class=\"fig-s\" x=\"400\" y=\"78\" text-anchor=\"middle\">oldest</text><text class=\"fig-t\" x=\"487\" y=\"16\" text-anchor=\"middle\">Long-term</text><rect class=\"gi-l\" x=\"420\" y=\"26\" width=\"134\" height=\"118\" rx=\"10\"/><line class=\"gi-e\" x1=\"442\" y1=\"46\" x2=\"476\" y2=\"40\"/><line class=\"gi-e\" x1=\"476\" y1=\"40\" x2=\"512\" y2=\"50\"/><line class=\"gi-e\" x1=\"512\" y1=\"50\" x2=\"540\" y2=\"72\"/><line class=\"gi-e\" x1=\"442\" y1=\"46\" x2=\"456\" y2=\"78\"/><line class=\"gi-e\" x1=\"456\" y1=\"78\" x2=\"494\" y2=\"90\"/><line class=\"gi-e\" x1=\"494\" y1=\"90\" x2=\"530\" y2=\"112\"/><line class=\"gi-e\" x1=\"494\" y1=\"90\" x2=\"512\" y2=\"50\"/><line class=\"gi-e\" x1=\"456\" y1=\"78\" x2=\"446\" y2=\"118\"/><line class=\"gi-e\" x1=\"446\" y1=\"118\" x2=\"484\" y2=\"128\"/><line class=\"gi-e\" x1=\"484\" y1=\"128\" x2=\"494\" y2=\"90\"/><line class=\"gi-e\" x1=\"476\" y1=\"40\" x2=\"456\" y2=\"78\"/><circle class=\"gi-n\" cx=\"442\" cy=\"46\" r=\"6\"/><circle class=\"gi-n\" cx=\"476\" cy=\"40\" r=\"6\"/><circle class=\"gi-n\" cx=\"512\" cy=\"50\" r=\"6\"/><circle class=\"gi-n\" cx=\"540\" cy=\"72\" r=\"6\"/><circle class=\"gi-n\" cx=\"456\" cy=\"78\" r=\"6\"/><circle class=\"gi-n\" cx=\"494\" cy=\"90\" r=\"6\"/><circle class=\"gi-n d\" cx=\"530\" cy=\"112\" r=\"6\"/><circle class=\"gi-n\" cx=\"446\" cy=\"118\" r=\"6\"/><circle class=\"gi-n\" cx=\"484\" cy=\"128\" r=\"6\"/><path class=\"gi-bad\" d=\"M524 106 L536 118 M536 106 L524 118\"/><text class=\"fig-s\" x=\"487\" y=\"158\" text-anchor=\"middle\">no size limit</text><rect class=\"gi-ev d\" x=\"212\" y=\"172\" width=\"342\" height=\"62\" rx=\"8\"/><text class=\"fig-s\" x=\"222\" y=\"188\" text-anchor=\"start\">every step: lifespan −1 for all; lifespan 0 → deleted</text><text class=\"fig-s\" x=\"222\" y=\"203\" text-anchor=\"start\">retrieved: + α × its share of memory attention (α = 8)</text><text class=\"fig-s\" x=\"222\" y=\"218\" text-anchor=\"start\">retrieved together: link count +1 (fire together, wire)</text><rect class=\"gi-hi\" x=\"6\" y=\"178\" width=\"190\" height=\"50\" rx=\"8\"/><text class=\"fig-s\" x=\"16\" y=\"197\" text-anchor=\"start\">engram = one vector (768-d in LM),</text><text class=\"fig-s\" x=\"16\" y=\"211\" text-anchor=\"start\">not text; initial lifespan 9</text>",
+        "text": [
+          "A trained abstractor turns the previous segment's hidden states into a few engram vectors; they pass from working memory into a short-term queue and then into long-term memory.",
+          "Every step all engrams lose lifespan, those used by the model regain it, and engrams retrieved together are linked more strongly."
+        ],
+        "src": "paper §3.1, §3.4, §4, App. D.2; code memoria.py L86-L103, engram.py L265-L273, GPT-2 model L581-L589 and L670-L677 (LM settings)",
+        "url": "https://github.com/cosmoquester/memoria/blob/d25ac6b4d7d424d9d177cf90236261cbbb397016/memoria/memoria.py#L86-L103"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 254",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"34\" width=\"70\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"39.0\" y=\"56.0\" text-anchor=\"middle\">WM</text><text class=\"fig-s\" x=\"39.0\" y=\"69.0\" text-anchor=\"middle\">cue</text><path class=\"gi-a\" d=\"M74.0 58.0 L79.0 58.0\"/><polygon class=\"gi-ah\" points=\"86.0,58.0 79.0,62.0 79.0,54.0\"/><rect class=\"gi-v fig-soft\" x=\"86\" y=\"34\" width=\"100\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"136.0\" y=\"56.0\" text-anchor=\"middle\">Top 50 STM</text><text class=\"fig-s\" x=\"136.0\" y=\"69.0\" text-anchor=\"middle\">closest to WM</text><text class=\"fig-s\" x=\"136\" y=\"96\" text-anchor=\"middle\">exp(−L2²), averaged</text><path class=\"gi-a\" d=\"M186.0 58.0 L191.0 58.0\"/><polygon class=\"gi-ah\" points=\"198.0,58.0 191.0,62.0 191.0,54.0\"/><rect class=\"gi-f\" x=\"198\" y=\"34\" width=\"104\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"250.0\" y=\"50.0\" text-anchor=\"middle\">Enter LTM</text><text class=\"fig-s\" x=\"250.0\" y=\"63.0\" text-anchor=\"middle\">strongest link</text><text class=\"fig-s\" x=\"250.0\" y=\"75.0\" text-anchor=\"middle\">per STM engram</text><path class=\"gi-a\" d=\"M302.0 58.0 L307.0 58.0\"/><polygon class=\"gi-ah\" points=\"314.0,58.0 307.0,62.0 307.0,54.0\"/><rect class=\"gi-f\" x=\"314\" y=\"34\" width=\"104\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"366.0\" y=\"50.0\" text-anchor=\"middle\">Walk links</text><text class=\"fig-s\" x=\"366.0\" y=\"63.0\" text-anchor=\"middle\">depth 10, greedy</text><text class=\"fig-s\" x=\"366.0\" y=\"75.0\" text-anchor=\"middle\">unvisited only</text><path class=\"gi-a\" d=\"M418.0 58.0 L423.0 58.0\"/><polygon class=\"gi-ah\" points=\"430.0,58.0 423.0,62.0 423.0,54.0\"/><rect class=\"gi-v fig-soft\" x=\"430\" y=\"34\" width=\"124\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"492.0\" y=\"56.0\" text-anchor=\"middle\">Top 50 LTM</text><text class=\"fig-s\" x=\"492.0\" y=\"69.0\" text-anchor=\"middle\">closest to WM</text><text class=\"fig-s\" x=\"492\" y=\"96\" text-anchor=\"middle\">among the walked ones</text><path class=\"gi-a\" d=\"M492 104 L492 124 L330 124\"/><path class=\"gi-a\" d=\"M330.0 124.0 L330.0 135.0\"/><polygon class=\"gi-ah\" points=\"330.0,142.0 326.0,135.0 334.0,135.0\"/><path class=\"gi-a\" d=\"M39 82 L39 166\"/><path class=\"gi-a\" d=\"M39.0 166.0 L205.0 166.0\"/><polygon class=\"gi-ah\" points=\"212.0,166.0 205.0,170.0 205.0,162.0\"/><text class=\"fig-s\" x=\"46\" y=\"158\" text-anchor=\"start\">WM engrams</text><rect class=\"gi-llm\" x=\"214\" y=\"142\" width=\"232\" height=\"54\" rx=\"8\"/><text class=\"fig-t\" x=\"330\" y=\"162\" text-anchor=\"middle\">Memory cross-attention</text><text class=\"fig-s\" x=\"330\" y=\"175\" text-anchor=\"middle\">every layer: WM first, then 100 retrieved</text><text class=\"fig-s\" x=\"330\" y=\"187\" text-anchor=\"middle\">same attention weights for both</text><path class=\"gi-a\" d=\"M446.0 169.0 L459.0 169.0\"/><polygon class=\"gi-ah\" points=\"466.0,169.0 459.0,173.0 459.0,165.0\"/><rect class=\"gi-hi\" x=\"466\" y=\"146\" width=\"88\" height=\"46\" rx=\"8\"/><text class=\"fig-t\" x=\"510\" y=\"166\" text-anchor=\"middle\">Segment t</text><text class=\"fig-s\" x=\"510\" y=\"179\" text-anchor=\"middle\">prediction</text><path class=\"gi-a d\" d=\"M330 196 L330 222\"/><path class=\"gi-a d\" d=\"M330.0 222.0 L183.0 222.0\"/><polygon class=\"gi-ah\" points=\"176.0,222.0 183.0,218.0 183.0,226.0\"/><text class=\"fig-s\" x=\"172\" y=\"219\" text-anchor=\"end\">attention share → lifespan;</text><text class=\"fig-s\" x=\"172\" y=\"232\" text-anchor=\"end\">co-retrieved links +1</text><text class=\"fig-s\" x=\"346\" y=\"232\" text-anchor=\"start\">memory wiped every 500 training steps</text>",
+        "text": [
+          "Working memory picks the nearest short-term engrams; their strongest links lead into long-term memory, which is walked 10 steps and ranked by distance to working memory (50 + 50 in the LM runs).",
+          "The model cross-attends to these engrams inside its layers, and the attention each receives becomes its new lifespan."
+        ],
+        "src": "paper §3.2-3.4, App. D.2; code memoria.py L55-L83, L106-L246",
+        "url": "https://github.com/cosmoquester/memoria/blob/d25ac6b4d7d424d9d177cf90236261cbbb397016/memoria/memoria.py#L55-L83"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "New engrams per step",
+        "value": "50 per 150-token segment (LM) · 1/8 of segment (sorting) · 64 (Hyperpartisan)",
+        "src": "paper App. D",
+        "section": "construction"
+      },
+      {
+        "label": "Short-term capacity",
+        "value": "400 (Wikitext/PG-19) · 1,360 (enwik8) · half the segment (sorting)",
+        "src": "paper App. D.1-D.2",
+        "section": "construction"
+      },
+      {
+        "label": "Lifespan",
+        "value": "start 9 (LM), 5 (sorting), 12 (classification); gain scale α = 8; −1 per step",
+        "src": "paper App. D",
+        "section": "construction"
+      },
+      {
+        "label": "Retrieved per step",
+        "value": "50 STM + 50 LTM (LM) · 1/4 + 5/8 of segment (sorting)",
+        "src": "paper App. D",
+        "section": "method"
+      },
+      {
+        "label": "Link walk depth",
+        "value": "10",
+        "src": "paper App. D",
+        "section": "method"
+      },
+      {
+        "label": "Memory reset in training",
+        "value": "every 500 steps (1,500 for enwik8)",
+        "src": "paper App. D.2",
+        "section": "method"
+      },
+      {
+        "label": "Inference, Wikitext-103 test",
+        "value": "44.21 s vs 21.23 s Transformer-XL, 54.15 s ∞-former",
+        "src": "paper Table 11",
+        "section": "results"
+      },
+      {
+        "label": "GPU memory",
+        "value": "612.94 MB vs 525.74 MB Transformer-XL",
+        "src": "paper Table 11",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Makes engrams",
+        "model": "attention abstractor with learnable queries (trained)",
+        "kind": "rule",
+        "src": "paper §4; code abstractor.py",
+        "url": "https://github.com/cosmoquester/memoria/blob/d25ac6b4d7d424d9d177cf90236261cbbb397016/memoria/abstractor.py#L25-L43"
+      },
+      {
+        "role": "Finds STM and ranks LTM",
+        "model": "exp(-squared L2) to working-memory engrams",
+        "kind": "retriever",
+        "src": "paper §3.2; code memoria.py L106-L136",
+        "url": "https://github.com/cosmoquester/memoria/blob/d25ac6b4d7d424d9d177cf90236261cbbb397016/memoria/memoria.py#L106-L136"
+      },
+      {
+        "role": "Reaches LTM",
+        "model": "greedy walk over co-retrieval counts, depth 10",
+        "kind": "rule",
+        "src": "paper §3.2; code memoria.py L139-L222",
+        "url": "https://github.com/cosmoquester/memoria/blob/d25ac6b4d7d424d9d177cf90236261cbbb397016/memoria/memoria.py#L139-L222"
+      },
+      {
+        "role": "Uses memory",
+        "model": "GPT-2-style decoder (12 layers, 768-d for LM) or BERT/RoBERTa-base with memory cross-attention",
+        "kind": "llm",
+        "src": "paper §4, §5.2-5.3"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "Sort 4K",
+        "8K",
+        "16K",
+        "32K",
+        "48K"
+      ],
+      "rows": [
+        [
+          "Transformer (no memory)",
+          "36.19",
+          "33.79",
+          "31.69",
+          "29.94",
+          "19.04"
+        ],
+        [
+          "+ working memory",
+          "79.69",
+          "70.85",
+          "62.21",
+          "52.01",
+          "34.32"
+        ],
+        [
+          "+ short-term memory",
+          "82.66",
+          "76.20",
+          "66.37",
+          "58.75",
+          "54.87"
+        ],
+        [
+          "+ long-term memory (full Memoria)",
+          "82.27",
+          "74.08",
+          "66.58",
+          "63.42",
+          "63.26"
+        ],
+        [
+          "random wiring instead of Hebbian",
+          "–",
+          "–",
+          "–",
+          "–",
+          "56.13"
+        ],
+        [
+          "exhaustive LTM search",
+          "–",
+          "–",
+          "–",
+          "–",
+          "65.84"
+        ]
+      ],
+      "src": "paper App. C, Tables 5-6 (sorting accuracy, segment length 1024)"
+    },
+    "discussion": {
+      "takeaway": "Giving memory a use-driven lifespan and associative links lets a segment-recurrent Transformer keep information from the start of a very long sequence. The effect is clearest on long sorting sequences; language-modeling and classification gains are smaller.",
+      "claims": [
+        {
+          "claim": "Memoria resists fateful forgetting as sequences grow.",
+          "evidence": "Sorting with 32 segments of 1024: 63.42 vs 39.71 (∞-former), 35.07 (Compressive), 33.87 (Transformer-XL). Table 7, Fig. 4"
+        },
+        {
+          "claim": "Better language modeling than other memory Transformers.",
+          "evidence": "Wikitext-103 PPL 23.471 vs 24.543 Transformer-XL; PG-19 29.149 vs 29.154 ∞-former; enwik8 1.16 BPC tied with Compressive. Table 1"
+        },
+        {
+          "claim": "Works when fine-tuning pre-trained models.",
+          "evidence": "Wikitext-103 PPL 18.986 vs 20.498 (GPT-2), 13.227 vs 15.332 (Large), 13.241 vs 15.254 (XL). Table 8"
+        },
+        {
+          "claim": "Helps long-document classification.",
+          "evidence": "Hyperpartisan test F1 96.51 (Memoria RoBERTa) vs 95.24 RoBERTa, 94.56 Longformer, 93.24 BigBird. Table 2"
+        },
+        {
+          "claim": "Hebbian links matter.",
+          "evidence": "LTM gain on 48K sorting falls from +8.39 to +1.26 with random wiring. Table 6"
+        },
+        {
+          "claim": "Memoria shows primacy, recency and temporal contiguity like human memory.",
+          "evidence": "Creation-time density of surviving engrams and link weight vs age difference on Wikitext-103. §6, Fig. 7"
+        }
+      ],
+      "limits": [
+        "The multi-store model it follows ignores the continuous levels-of-processing view of memory.",
+        "Interference, a main cause of forgetting in human long-term memory, is not modelled.",
+        "Memory built during inference may keep user data, which raises privacy concerns."
+      ],
+      "limits_src": "paper §7, Impact Statement",
+      "reading": [
+        "Engrams are latent vectors read by cross-attention inside a trained model, so Memoria cannot be dropped into a frozen LLM or inspected as text; it is a different design point from agent memories.",
+        "The Hebbian search is a compute saving rather than an accuracy gain: exhaustive LTM search scores higher (65.84 vs 63.26, Table 6).",
+        "Wikitext-103, PG-19 and enwik8 numbers come from one run each; the PG-19 margin over ∞-former is 0.005 PPL.",
+        "Memoria BERT is below Longformer and BigBird on Hyperpartisan validation F1 (78.24 vs 78.33, 81.22); only the RoBERTa variant leads on both splits.",
+        "Hyperparameters differ by task (initial lifespan 5, 9 or 12; STM capacity 128 to 1,360), and Table 9 shows perplexity moving between 23.38 and 23.83 when they change."
+      ]
+    }
+  }
+}

@@ -1,0 +1,541 @@
+{
+ "id": "remem",
+ "name": "REMem",
+ "paper": {
+  "title": "REMem: Reasoning with Episodic Memory in Language Agent",
+  "arxiv": "2602.13530",
+  "url": "https://arxiv.org/abs/2602.13530",
+  "venue": "ICLR 2026",
+  "venue_short": "ICLR",
+  "track": "main",
+  "year": 2026,
+  "code": "https://github.com/intuit-ai-research/REMem"
+ },
+ "design": {
+  "construction": {
+   "unit": "gist (one time-stamped event sentence) + fact (triple with time qualifiers)",
+   "kept_as": "LLM-restated event sentences with resolved dates + extracted triples; raw messages kept as nodes",
+   "processing": "per session (LoCoMo) one LLM call writes gists, a second writes time-qualified triples from the text and the gists",
+   "trigger": "offline-batch",
+   "writer": "backbone LLM (GPT-4.1-mini)"
+  },
+  "organization": {
+   "structure": "hybrid graph: gist nodes, phrase nodes (fact subjects/objects), relation, context and gist synonymy edges",
+   "stores": "one graph with embedding stores for messages, gists, facts and phrases",
+   "index": "NV-Embed-v2 dense over gists and facts + BM25"
+  },
+  "management": {
+   "operations": "append only; synonymy edges between gists with similarity >= 0.8",
+   "conflicts": "contradictory gists and facts are all kept as a history",
+   "forgetting": null,
+   "timing": "none"
+  },
+  "retrieval": {
+   "query": "question on the first step; afterwards sub-queries and tool arguments written by the agent",
+   "candidates": "agent calls semantic (dense) or lexical (BM25) search, gist-context and entity-context graph tools with time filters",
+   "selection": "each call returns top-10 gists + top-10 facts; the agent decides when to stop",
+   "budget": "3 steps (LoCoMo, REALTALK), 5 steps (Complex-TR, Test of Time); ~9k input tokens per LoCoMo query"
+  },
+  "use": {
+   "context": "question + whole agent history (thoughts, tool calls, retrieved gists and facts, draft answer)",
+   "reasoning": "ReAct loop of tool calls, then one answer call"
+  },
+  "control": {
+   "construction": "prompted-llm",
+   "management": "fixed-rule",
+   "retrieval": "agent-tool-calls"
+  }
+ },
+ "classify": {
+  "structure": "graph",
+  "index": "vector and lexical",
+  "management": "append-only",
+  "candidates": "agent searches",
+  "decides": "LLM decides",
+  "note": "REMem-S (single step) is a plain top-10 dense read; the headline REMem-I lets the agent choose tools and when to stop."
+ },
+ "tags": {
+  "fidelity": "extracted",
+  "structure": [
+   "graph"
+  ],
+  "write_time": [
+   "extract",
+   "link"
+  ],
+  "selection": [
+   "llm-tool-call",
+   "dense",
+   "lexical",
+   "graph-expansion"
+  ],
+  "memory_type": [
+   "episodic",
+   "semantic"
+  ],
+  "learning": "training-free",
+  "domain": [
+   "conversation",
+   "long-document"
+  ]
+ },
+ "stages": {
+  "ingestion": "Conversations are fed one session at a time (LoCoMo, REALTALK) or one passage per event statement; each message is also stored as its own node.",
+  "construction": "An LLM restates each session as a list of single-event gists prefixed with the session timestamp and with relative dates resolved; a second call extracts (subject, predicate, object) facts with point-in-time or start/end qualifiers.",
+  "organization": "Gists and phrase nodes (fact subjects and objects) form one graph: facts link subject to object, each gist links to the phrases and facts from the same chunk, and gists with embedding similarity >= 0.8 get synonymy edges.",
+  "update": "Nothing is overwritten: new and contradictory items are added alongside old ones.",
+  "retrieval": "A ReAct agent (GPT-4.1-mini) calls semantic_retrieve, lexical_retrieve, find_gist_contexts or find_entity_contexts, each returning up to 10 gists and 10 facts, optionally filtered by time; at most 3 steps on conversation sets and 5 on reasoning sets.",
+  "answer": "When the agent calls output_answer, an answer LLM reads the question, the agent's draft answer and the full step history with every retrieved gist and fact.",
+  "learning": ""
+ },
+ "summary": "Episodic memory as a graph of time-stamped event gists and time-qualified triples, read by a tool-using agent that can filter by dates and walk the graph.",
+ "verified": false,
+ "notes": "Venue: ICLR 2026 poster (OpenReview forum fugnQxbvMm; PDF header 'Published as a conference paper at ICLR 2026'). Code checked at commit d87840be (2026-02-27, the head of the repo); files stored with Git LFS (outputs, datasets) were not needed. Judge model is not named in the paper; the LoCoMo script uses the run's LLM (GPT-4.1-mini) with Mem0's judge prompt. The paper's LoCoMo category names differ from the Mem0 convention (see results notes).",
+ "mechanism": {
+  "sources": {
+   "paper": "arXiv 2602.13530v3 (PDF read 2026-09-30)",
+   "code": "https://github.com/intuit-ai-research/REMem/tree/d87840be922c9815a3c97ec24d9c25e4af5c295a/",
+   "code_note": "Commit d87840be (2026-02-27) is the current head and comes two days before paper v3; the repo was released with the paper, so it is taken as the evaluation code. Run outputs are not in the repo, so numbers could not be re-derived."
+  },
+  "sections": {
+   "Memory architecture": "§3, App. B",
+   "Results": "§5, App. C.1-C.4",
+   "Ablation": "§6.1, App. C.6",
+   "Discussion": "§6.2-6.5, §7",
+   "Details": "§4.4, App. D-F"
+  },
+  "abstract": {
+   "text": "REMem targets episodic memory for language agents: recalling what happened when, and reasoning across several events on a timeline. It indexes experiences into a graph that mixes short time-stamped event gists with subject-predicate-object facts carrying time qualifiers. A ReAct-style agent then answers questions by calling retrieval and graph-exploration tools that can filter by time, over several steps. On LoCoMo, REALTALK, Complex-TR and Test of Time the authors report gains over Mem0, Graphiti and HippoRAG 2, largest on the reasoning sets, and better refusal on unanswerable questions.",
+   "note": "Summary in our words; the original abstract is on arXiv.",
+   "url": "https://arxiv.org/abs/2602.13530"
+  },
+  "headline": [
+   "The answer model reads LLM-written gists and triples plus the agent's own step history and draft answer; raw messages are stored but not shown.",
+   "REMem-S (one dense search, 10 gists + 10 facts) is best on LoCoMo LLM-J (77.5 vs 76.2); the multi-step agent wins on the reasoning sets (Test of Time EM 93.1 vs 72.5).",
+   "Gists are longer than the dialogue they come from: 21.7k gist tokens vs 16.0k input tokens per LoCoMo conversation (Table 22)."
+  ],
+  "units": [
+   {
+    "name": "Gist node",
+    "role": "one event from a session, as a standalone sentence",
+    "made_by": "LLM gist prompt, one call per session",
+    "fields": [
+     {
+      "name": "gist text",
+      "what": "'[date, time] who did what …' with relative dates followed by the absolute date in parentheses",
+      "kept_as": "rewritten",
+      "used_for": [
+       "index",
+       "answer"
+      ],
+      "src": "code episodic_gist_extraction_locomo.py L1-L22",
+      "url": "https://github.com/intuit-ai-research/REMem/blob/d87840be922c9815a3c97ec24d9c25e4af5c295a/src/remem/prompts/templates/episodic_gist_extraction_locomo.py#L1-L22"
+     },
+     {
+      "name": "gist embedding",
+      "what": "NV-Embed-v2 vector of the gist text",
+      "kept_as": "derived",
+      "used_for": [
+       "index"
+      ],
+      "src": "paper App. B Index",
+      "url": "https://arxiv.org/pdf/2602.13530"
+     }
+    ]
+   },
+   {
+    "name": "Fact",
+    "role": "time-scoped triple; its subject and object become phrase nodes",
+    "made_by": "LLM fact prompt, reads the session and its gists",
+    "fields": [
+     {
+      "name": "subject, predicate, object",
+      "what": "schemaless short phrases, e.g. (Alice, purchased, 3 cows)",
+      "kept_as": "extracted",
+      "used_for": [
+       "index",
+       "answer"
+      ],
+      "src": "code episodic_fact_extraction_locomo.py L1-L21",
+      "url": "https://github.com/intuit-ai-research/REMem/blob/d87840be922c9815a3c97ec24d9c25e4af5c295a/src/remem/prompts/templates/episodic_fact_extraction_locomo.py#L1-L21"
+     },
+     {
+      "name": "qualifiers",
+      "what": "record_time plus point_in_time or start_time / end_time",
+      "kept_as": "extracted",
+      "used_for": [
+       "index",
+       "answer"
+      ],
+      "src": "code episodic_fact_extraction_locomo.py L7-L11; semantic_retrieve_tool.py L147-L171",
+      "url": "https://github.com/intuit-ai-research/REMem/blob/d87840be922c9815a3c97ec24d9c25e4af5c295a/src/remem/agent/tools/semantic_retrieve_tool.py#L108-L174"
+     }
+    ]
+   },
+   {
+    "name": "Message node",
+    "role": "one original message of the session",
+    "made_by": "split of the session (split_verbatim_per_chunk = True)",
+    "fields": [
+     {
+      "name": "verbatim message",
+      "what": "the raw turn with speaker and date",
+      "kept_as": "verbatim",
+      "used_for": [],
+      "src": "code episodic_gist_strategy.py L94-L114; answer_generator.py L182, L280-L309 (verbatim context off by default)",
+      "url": "https://github.com/intuit-ai-research/REMem/blob/d87840be922c9815a3c97ec24d9c25e4af5c295a/src/remem/rag_strategies/episodic_gist_strategy.py#L224-L366"
+     }
+    ]
+   }
+  ],
+  "write": [
+   {
+    "step": "Chunk",
+    "how": "one chunk per session with its date on top; messages also split into separate nodes",
+    "src": "code text_preprocessing.py L177-L196; examples/locomo.py",
+    "url": "https://github.com/intuit-ai-research/REMem/blob/d87840be922c9815a3c97ec24d9c25e4af5c295a/src/remem/graph/preprocessing/text_preprocessing.py#L177-L196"
+   },
+   {
+    "step": "Gists",
+    "how": "LLM restates every fact or event as one sentence prefixed with the session timestamp and resolves relative dates",
+    "src": "paper §3.1; code gist prompt",
+    "url": "https://github.com/intuit-ai-research/REMem/blob/d87840be922c9815a3c97ec24d9c25e4af5c295a/src/remem/prompts/templates/episodic_gist_extraction_locomo.py#L1-L22"
+   },
+   {
+    "step": "Facts",
+    "how": "LLM extracts triples with time qualifiers from the session text and its gists",
+    "src": "paper §3.1; code fact prompt",
+    "url": "https://github.com/intuit-ai-research/REMem/blob/d87840be922c9815a3c97ec24d9c25e4af5c295a/src/remem/prompts/templates/episodic_fact_extraction_locomo.py#L1-L21"
+   },
+   {
+    "step": "Link",
+    "how": "subject → object edge per fact; each gist → the phrases and facts of its chunk; each message → its gists and phrases",
+    "src": "code episodic_gist_strategy.py L252-L331",
+    "url": "https://github.com/intuit-ai-research/REMem/blob/d87840be922c9815a3c97ec24d9c25e4af5c295a/src/remem/rag_strategies/episodic_gist_strategy.py#L224-L366"
+   },
+   {
+    "step": "Synonymy",
+    "how": "gist-to-gist edges when embedding similarity ≥ 0.8 (at most ~100 per gist)",
+    "params": {
+     "threshold": "0.8"
+    },
+    "out": "1,082 synonymy edges per LoCoMo conversation",
+    "src": "paper §4.4, Table 22; code remem.py L1025-L1063",
+    "url": "https://github.com/intuit-ai-research/REMem/blob/d87840be922c9815a3c97ec24d9c25e4af5c295a/src/remem/remem.py#L1025-L1063"
+   }
+  ],
+  "read": [
+   {
+    "step": "First retrieval",
+    "round": 1,
+    "input": "the full question (the tool's query argument is overridden)",
+    "scores": "gist text and fact text + qualifiers",
+    "how": "agent must start with semantic or lexical retrieve",
+    "params": {
+     "k": "10 gists + 10 facts"
+    },
+    "src": "code tool_selector.py L76-L91",
+    "url": "https://github.com/intuit-ai-research/REMem/blob/d87840be922c9815a3c97ec24d9c25e4af5c295a/src/remem/agent/tools/tool_selector.py#L76-L91"
+   },
+   {
+    "step": "Tool loop",
+    "round": 1,
+    "input": "agent-written sub-queries and filters",
+    "how": "ReAct: the agent picks one of five tools per step from the question and the history so far",
+    "params": {
+     "max steps": "3 (LoCoMo, REALTALK) / 5 (Complex-TR, ToT)"
+    },
+    "src": "paper §3.2, §4.4, Alg. 2; code flexible_tools_strategy.py L40-L62",
+    "url": "https://github.com/intuit-ai-research/REMem/blob/d87840be922c9815a3c97ec24d9c25e4af5c295a/src/remem/agent/strategies/flexible_tools_strategy.py#L40-L62"
+   },
+   {
+    "step": "Time filter",
+    "round": 1,
+    "how": "start/end time with lt/le/ge/gt/eq filters facts by their qualifiers; gists are not filtered",
+    "src": "code semantic_retrieve_tool.py L108-L174",
+    "url": "https://github.com/intuit-ai-research/REMem/blob/d87840be922c9815a3c97ec24d9c25e4af5c295a/src/remem/agent/tools/semantic_retrieve_tool.py#L108-L174"
+   },
+   {
+    "step": "Answer",
+    "round": 1,
+    "input": "question + draft answer + all steps",
+    "how": "a separate answer call over the step history",
+    "src": "code answer_generator.py L256-L431; output_answer_tool.py",
+    "url": "https://github.com/intuit-ai-research/REMem/blob/d87840be922c9815a3c97ec24d9c25e4af5c295a/src/remem/agent/answer_generator.py#L256-L431"
+   }
+  ],
+  "answer_context": {
+   "sees": "question, the agent's draft answer, and every step's thought, tool call, observation and up to 10 gists and 10 facts (each cut at 1,500 characters)",
+   "format": "'Question: …' + 'Preliminary Answer (for reference)' + 'Agent Interaction History: Step n: {reasoning, function, parameters} - Truncated top gists / facts'",
+   "excludes": [
+    "raw messages",
+    "phrase nodes on their own",
+    "graph edges"
+   ],
+   "src": "code answer_generator.py L256-L431",
+   "url": "https://github.com/intuit-ai-research/REMem/blob/d87840be922c9815a3c97ec24d9c25e4af5c295a/src/remem/agent/answer_generator.py#L256-L431"
+  },
+  "compression": [
+   {
+    "what": "per-query input tokens, REMem-I vs full context on LoCoMo",
+    "kept": 9,
+    "of": 26,
+    "unit": "k tokens",
+    "basis": "§5.1: Full-Context uses 26k input tokens per LoCoMo query, REMem-I 9k and REMem-S 0.9k at inference",
+    "src": "paper §5.1",
+    "url": "https://arxiv.org/pdf/2602.13530"
+   },
+   {
+    "what": "gist text vs source text, one LoCoMo conversation",
+    "kept": null,
+    "of": null,
+    "unit": "k tokens",
+    "basis": "Not a reduction: Table 22 reports 21,743.8 gist-node tokens vs 15,965.8 input tokens per graph, so gists are about 1.36x longer than the input",
+    "src": "paper Table 22",
+    "url": "https://arxiv.org/pdf/2602.13530"
+   }
+  ],
+  "paper_vs_code": [
+   {
+    "topic": "Node types",
+    "paper": "two node types: gists and phrases (App. B)",
+    "code": "also message (verbatim) nodes and fact nodes linked to gists",
+    "src": "episodic_gist_strategy.py L252-L331",
+    "url": "https://github.com/intuit-ai-research/REMem/blob/d87840be922c9815a3c97ec24d9c25e4af5c295a/src/remem/rag_strategies/episodic_gist_strategy.py#L224-L366"
+   },
+   {
+    "topic": "Synonymy neighbours in find_gist_contexts",
+    "paper": "the tool explores gists linked by synonymy edges",
+    "code": "graph edges are added with only a weight attribute, while the tool keeps neighbours whose edge predicate contains 'synonym'; as released it seems to return linked facts but no synonym gists (not run by us)",
+    "src": "episodic_gist_strategy.py L440-L483; find_gist_contexts_tool.py L166-L196",
+    "url": "https://github.com/intuit-ai-research/REMem/blob/d87840be922c9815a3c97ec24d9c25e4af5c295a/src/remem/agent/tools/find_gist_contexts_tool.py#L166-L196"
+   },
+   {
+    "topic": "Time filters",
+    "paper": "retrieval tools filter memory by temporal conditions",
+    "code": "semantic and lexical retrieve filter only facts; gists are ranked without the filter",
+    "src": "semantic_retrieve_tool.py L108-L174",
+    "url": "https://github.com/intuit-ai-research/REMem/blob/d87840be922c9815a3c97ec24d9c25e4af5c295a/src/remem/agent/tools/semantic_retrieve_tool.py#L108-L174"
+   }
+  ],
+  "open_questions": [
+   "REMem-S beats REMem-I on LoCoMo LLM-J, so on conversational recollection the gain over baselines comes from the gist index rather than from agentic retrieval.",
+   "Baselines retrieve 10 raw messages; REMem sees 10 gists + 10 facts per step for up to 3-5 steps, so context size is not matched."
+  ],
+  "figures": [
+   {
+    "id": "build",
+    "title": "Memory construction",
+    "viewBox": "0 0 560 236",
+    "body": "<text class=\"fig-t\" x=\"60\" y=\"16\" text-anchor=\"middle\">One session</text><rect class=\"gi-ev\" x=\"10\" y=\"24\" width=\"100\" height=\"128\" rx=\"8\"/><text class=\"fig-s\" x=\"18\" y=\"40\" text-anchor=\"start\">Date: 20 Jan 2024</text><rect class=\"gi-r\" x=\"18\" y=\"48\" width=\"74\" height=\"12\" rx=\"4\"/><line class=\"gi-t\" x1=\"24\" y1=\"54\" x2=\"80\" y2=\"54\"/><rect class=\"gi-r\" x=\"28\" y=\"64\" width=\"74\" height=\"12\" rx=\"4\"/><line class=\"gi-t\" x1=\"34\" y1=\"70\" x2=\"90\" y2=\"70\"/><rect class=\"gi-r\" x=\"18\" y=\"80\" width=\"74\" height=\"12\" rx=\"4\"/><line class=\"gi-t\" x1=\"24\" y1=\"86\" x2=\"80\" y2=\"86\"/><rect class=\"gi-r\" x=\"28\" y=\"96\" width=\"74\" height=\"12\" rx=\"4\"/><line class=\"gi-t\" x1=\"34\" y1=\"102\" x2=\"90\" y2=\"102\"/><rect class=\"gi-r\" x=\"18\" y=\"112\" width=\"74\" height=\"12\" rx=\"4\"/><line class=\"gi-t\" x1=\"24\" y1=\"118\" x2=\"80\" y2=\"118\"/><rect class=\"gi-r\" x=\"28\" y=\"128\" width=\"74\" height=\"12\" rx=\"4\"/><line class=\"gi-t\" x1=\"34\" y1=\"134\" x2=\"90\" y2=\"134\"/><text class=\"fig-s\" x=\"60\" y=\"168\" text-anchor=\"middle\">each message also</text><text class=\"fig-s\" x=\"60\" y=\"180\" text-anchor=\"middle\">kept as a node</text><path class=\"gi-a\" d=\"M110.0 70.0 L141.8 53.3\"/><polygon class=\"gi-ah\" points=\"148.0,50.0 143.7,56.8 139.9,49.7\"/><path class=\"gi-a\" d=\"M110.0 110.0 L142.6 137.5\"/><polygon class=\"gi-ah\" points=\"148.0,142.0 140.1,140.6 145.2,134.4\"/><rect class=\"gi-llm\" x=\"114\" y=\"44\" width=\"30\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"129\" y=\"54\" text-anchor=\"middle\">LLM</text><rect class=\"gi-llm\" x=\"114\" y=\"120\" width=\"30\" height=\"14\" rx=\"3\"/><text class=\"gi-lbl\" x=\"129\" y=\"130\" text-anchor=\"middle\">LLM</text><rect class=\"gi-hi\" x=\"150\" y=\"24\" width=\"170\" height=\"62\" rx=\"8\"/><text class=\"fig-t\" x=\"160\" y=\"40\" text-anchor=\"start\">Gists</text><text class=\"fig-s\" x=\"160\" y=\"55\" text-anchor=\"start\">one sentence per event,</text><text class=\"fig-s\" x=\"160\" y=\"67\" text-anchor=\"start\">timestamp prefix, relative</text><text class=\"fig-s\" x=\"160\" y=\"79\" text-anchor=\"start\">dates resolved</text><path class=\"gi-a d\" d=\"M235.0 86.0 L235.0 103.0\"/><polygon class=\"gi-ah\" points=\"235.0,110.0 231.0,103.0 239.0,103.0\"/><text class=\"fig-s\" x=\"241\" y=\"102\" text-anchor=\"start\">also read</text><rect class=\"gi-f\" x=\"150\" y=\"112\" width=\"170\" height=\"62\" rx=\"8\"/><text class=\"fig-t\" x=\"160\" y=\"128\" text-anchor=\"start\">Facts</text><text class=\"fig-s\" x=\"160\" y=\"143\" text-anchor=\"start\">(subject, predicate, object)</text><text class=\"fig-s\" x=\"160\" y=\"155\" text-anchor=\"start\">+ point in time or</text><text class=\"fig-s\" x=\"160\" y=\"167\" text-anchor=\"start\">start / end time</text><path class=\"gi-a\" d=\"M320.0 55.0 L343.7 66.9\"/><polygon class=\"gi-ah\" points=\"350.0,70.0 342.0,70.4 345.5,63.3\"/><path class=\"gi-a\" d=\"M320.0 143.0 L343.7 131.1\"/><polygon class=\"gi-ah\" points=\"350.0,128.0 345.5,134.7 342.0,127.6\"/><text class=\"fig-t\" x=\"452\" y=\"16\" text-anchor=\"middle\">Memory graph</text><rect class=\"gi-l\" x=\"354\" y=\"24\" width=\"198\" height=\"150\" rx=\"10\"/><line class=\"gi-e d\" x1=\"388\" y1=\"50\" x2=\"464\" y2=\"44\"/><line class=\"gi-e d\" x1=\"388\" y1=\"50\" x2=\"514\" y2=\"70\"/><line class=\"gi-e d\" x1=\"388\" y1=\"100\" x2=\"464\" y2=\"104\"/><line class=\"gi-e d\" x1=\"388\" y1=\"100\" x2=\"514\" y2=\"70\"/><line class=\"gi-e d\" x1=\"388\" y1=\"100\" x2=\"519\" y2=\"132\"/><line class=\"gi-e d\" x1=\"388\" y1=\"148\" x2=\"519\" y2=\"132\"/><line class=\"gi-e d\" x1=\"388\" y1=\"148\" x2=\"464\" y2=\"154\"/><line class=\"gi-e\" x1=\"470\" y1=\"44\" x2=\"520\" y2=\"70\"/><line class=\"gi-e\" x1=\"470\" y1=\"104\" x2=\"525\" y2=\"132\"/><line class=\"gi-e\" x1=\"525\" y1=\"132\" x2=\"470\" y2=\"154\"/><path class=\"gi-a d\" d=\"M372 58 C 360 70, 360 84, 372 94\"/><rect class=\"gi-hi\" x=\"372\" y=\"43\" width=\"16\" height=\"14\" rx=\"3\"/><rect class=\"gi-hi\" x=\"372\" y=\"93\" width=\"16\" height=\"14\" rx=\"3\"/><rect class=\"gi-hi\" x=\"372\" y=\"141\" width=\"16\" height=\"14\" rx=\"3\"/><circle class=\"gi-n\" cx=\"470\" cy=\"44\" r=\"6\"/><circle class=\"gi-n\" cx=\"520\" cy=\"70\" r=\"6\"/><circle class=\"gi-n\" cx=\"470\" cy=\"104\" r=\"6\"/><circle class=\"gi-n\" cx=\"525\" cy=\"132\" r=\"6\"/><circle class=\"gi-n\" cx=\"470\" cy=\"154\" r=\"6\"/><text class=\"fig-s\" x=\"398\" y=\"170\" text-anchor=\"start\">gist</text><text class=\"fig-s\" x=\"456\" y=\"170\" text-anchor=\"start\">phrase</text><rect class=\"gi-hi\" x=\"388\" y=\"162\" width=\"8\" height=\"8\" rx=\"2\"/><circle class=\"gi-n\" cx=\"452\" cy=\"166\" r=\"3.5\"/><text class=\"fig-s\" x=\"452\" y=\"192\" text-anchor=\"middle\">dashed: gist to its phrases;</text><text class=\"fig-s\" x=\"452\" y=\"204\" text-anchor=\"middle\">curve: synonymy, similarity ≥ 0.8</text><text class=\"fig-s\" x=\"452\" y=\"216\" text-anchor=\"middle\">solid: fact edge subject → object</text><text class=\"fig-s\" x=\"235\" y=\"200\" text-anchor=\"middle\">per LoCoMo conversation:</text><text class=\"fig-s\" x=\"235\" y=\"213\" text-anchor=\"middle\">~730 gists, ~764 facts, ~778 phrases</text><text class=\"fig-s\" x=\"235\" y=\"226\" text-anchor=\"middle\">old items are kept, even if contradicted</text>",
+    "text": [
+     "Per session, one LLM call writes time-stamped event gists and a second extracts triples with time qualifiers.",
+     "Gists link to the phrases of their facts and to similar gists (similarity ≥ 0.8); nothing is overwritten."
+    ],
+    "src": "paper §3.1, §4.4, Table 22; code prompts and episodic_gist_strategy.py L224-L366",
+    "url": "https://github.com/intuit-ai-research/REMem/blob/d87840be922c9815a3c97ec24d9c25e4af5c295a/src/remem/rag_strategies/episodic_gist_strategy.py#L224-L366"
+   },
+   {
+    "id": "read",
+    "title": "Memory retrieval",
+    "viewBox": "0 0 560 252",
+    "body": "<rect class=\"gi-f\" x=\"4\" y=\"30\" width=\"64\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"36.0\" y=\"56.0\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M68.0 52.0 L77.0 52.0\"/><polygon class=\"gi-ah\" points=\"84.0,52.0 77.0,56.0 77.0,48.0\"/><rect class=\"gi-llm\" x=\"84\" y=\"26\" width=\"96\" height=\"52\" rx=\"8\"/><text class=\"fig-t\" x=\"132\" y=\"46\" text-anchor=\"middle\">Agent LLM</text><text class=\"fig-s\" x=\"132\" y=\"59\" text-anchor=\"middle\">thinks, picks</text><text class=\"fig-s\" x=\"132\" y=\"70\" text-anchor=\"middle\">one tool</text><path class=\"gi-a\" d=\"M180.0 52.0 L191.0 52.0\"/><polygon class=\"gi-ah\" points=\"198.0,52.0 191.0,56.0 191.0,48.0\"/><rect class=\"gi-f\" x=\"198\" y=\"12\" width=\"176\" height=\"124\" rx=\"8\"/><text class=\"fig-t\" x=\"286\" y=\"28\" text-anchor=\"middle\">Tools on the graph</text><rect class=\"gi-v fig-soft\" x=\"206\" y=\"35\" width=\"160\" height=\"22\" rx=\"5\"/><text class=\"fig-s\" x=\"212\" y=\"46\" text-anchor=\"start\">semantic_retrieve</text><text class=\"fig-s\" x=\"360\" y=\"46\" text-anchor=\"end\">dense</text><rect class=\"gi-v fig-soft\" x=\"206\" y=\"58\" width=\"160\" height=\"22\" rx=\"5\"/><text class=\"fig-s\" x=\"212\" y=\"69\" text-anchor=\"start\">lexical_retrieve</text><text class=\"fig-s\" x=\"360\" y=\"69\" text-anchor=\"end\">BM25</text><rect class=\"gi-v fig-soft\" x=\"206\" y=\"81\" width=\"160\" height=\"22\" rx=\"5\"/><text class=\"fig-s\" x=\"212\" y=\"92\" text-anchor=\"start\">find_gist_contexts</text><text class=\"fig-s\" x=\"360\" y=\"92\" text-anchor=\"end\">gist → facts</text><rect class=\"gi-v fig-soft\" x=\"206\" y=\"104\" width=\"160\" height=\"22\" rx=\"5\"/><text class=\"fig-s\" x=\"212\" y=\"115\" text-anchor=\"start\">find_entity_contexts</text><text class=\"fig-s\" x=\"360\" y=\"115\" text-anchor=\"end\">s/p/o filter</text><text class=\"fig-s\" x=\"286\" y=\"144\" text-anchor=\"middle\">optional time filter: before / after a date</text><path class=\"gi-a\" d=\"M374.0 52.0 L385.0 52.0\"/><polygon class=\"gi-ah\" points=\"392.0,52.0 385.0,56.0 385.0,48.0\"/><rect class=\"gi-hi\" x=\"392\" y=\"30\" width=\"84\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"434.0\" y=\"50.0\" text-anchor=\"middle\">≤ 10 gists</text><text class=\"fig-s\" x=\"434.0\" y=\"63.0\" text-anchor=\"middle\">+ ≤ 10 facts</text><path class=\"gi-a d\" d=\"M434.0 74.0 L434.0 170.0 L132.0 170.0 L132.0 87.0\"/><polygon class=\"gi-ah\" points=\"132.0,80.0 136.0,87.0 128.0,87.0\"/><text class=\"fig-s\" x=\"283\" y=\"184\" text-anchor=\"middle\">added to the history; next step (at most 3 on LoCoMo, 5 on reasoning sets)</text><path class=\"gi-a\" d=\"M476.0 52.0 L480.0 52.0\"/><polygon class=\"gi-ah\" points=\"487.0,52.0 480.0,56.0 480.0,48.0\"/><polygon class=\"gi-llm\" points=\"522,28.0 556.0,52 522,76.0 488.0,52\"/><text class=\"fig-s\" x=\"522\" y=\"50\" text-anchor=\"middle\">Enough?</text><text class=\"fig-s\" x=\"522\" y=\"61\" text-anchor=\"middle\">agent</text><path class=\"gi-a\" d=\"M522.0 74.0 L522.0 189.0\"/><polygon class=\"gi-ah\" points=\"522.0,196.0 518.0,189.0 526.0,189.0\"/><text class=\"fig-yes\" x=\"528\" y=\"124\" text-anchor=\"start\">Yes</text><rect class=\"gi-hi\" x=\"372\" y=\"196\" width=\"184\" height=\"50\" rx=\"8\"/><text class=\"fig-t\" x=\"464\" y=\"214\" text-anchor=\"middle\">output_answer: answer LLM reads</text><text class=\"fig-s\" x=\"464\" y=\"227\" text-anchor=\"middle\">question + every step: thought,</text><text class=\"fig-s\" x=\"464\" y=\"239\" text-anchor=\"middle\">tool call, gists and facts shown</text><rect class=\"gi-ev d\" x=\"4\" y=\"198\" width=\"330\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"14\" y=\"214\" text-anchor=\"start\">REMem-S (single step)</text><text class=\"fig-s\" x=\"14\" y=\"229\" text-anchor=\"start\">one semantic_retrieve on the question → 10 gists</text><text class=\"fig-s\" x=\"14\" y=\"241\" text-anchor=\"start\">+ 10 facts → answer; no tool choice</text>",
+    "text": [
+     "A ReAct agent calls search and graph tools, each returning up to 10 gists and 10 facts, for at most 3 steps on conversations and 5 on reasoning sets.",
+     "The answer model reads the question with the whole step history; REMem-S does one dense search instead."
+    ],
+    "src": "paper §3.2, §4.4, Table 1; code tool_selector.py, semantic_retrieve_tool.py, answer_generator.py",
+    "url": "https://github.com/intuit-ai-research/REMem/blob/d87840be922c9815a3c97ec24d9c25e4af5c295a/src/remem/agent/tools/semantic_retrieve_tool.py#L108-L174"
+   }
+  ],
+  "key_numbers": [
+   {
+    "label": "Nodes per LoCoMo conversation",
+    "value": "730 gists · 778 phrases · 764 triples",
+    "src": "paper Table 22",
+    "section": "construction"
+   },
+   {
+    "label": "Edges per LoCoMo conversation",
+    "value": "25,172 context · 1,082 synonymy · 736 relation",
+    "src": "paper Table 22",
+    "section": "construction"
+   },
+   {
+    "label": "Synonymy threshold",
+    "value": "0.8",
+    "src": "paper §4.4",
+    "section": "construction"
+   },
+   {
+    "label": "Items per tool call",
+    "value": "top 10 gists + top 10 facts",
+    "src": "paper §4.4; code examples/locomo.py qa_top_k 10",
+    "section": "method"
+   },
+   {
+    "label": "Agent steps",
+    "value": "3 on LoCoMo / REALTALK · 5 on Complex-TR / Test of Time",
+    "src": "paper §4.4",
+    "section": "method"
+   },
+   {
+    "label": "Input tokens per LoCoMo query",
+    "value": "REMem-I 9k · REMem-S 0.9k · full context 26k",
+    "src": "paper §5.1",
+    "section": "results"
+   },
+   {
+    "label": "Tokens and cost, all of LoCoMo",
+    "value": "REMem-I 20.5M tokens ($10.02) · REMem-S 3.6M ($2.53)",
+    "src": "paper Table 20",
+    "section": "results"
+   },
+   {
+    "label": "Index time, LoCoMo",
+    "value": "3,604 s; 4.3 s per query",
+    "src": "paper Table 19",
+    "section": "results"
+   }
+  ],
+  "components": [
+   {
+    "role": "Writes gists and facts",
+    "model": "GPT-4.1-mini",
+    "kind": "llm",
+    "src": "paper §4.4"
+   },
+   {
+    "role": "Dense search",
+    "model": "NV-Embed-v2",
+    "kind": "retriever",
+    "src": "paper §4.4"
+   },
+   {
+    "role": "Lexical search",
+    "model": "BM25",
+    "kind": "retriever",
+    "src": "paper §3.2"
+   },
+   {
+    "role": "Time filters, graph lookups",
+    "model": "rules in the tools",
+    "kind": "rule",
+    "src": "paper Table 1; code tools",
+    "url": "https://github.com/intuit-ai-research/REMem/blob/d87840be922c9815a3c97ec24d9c25e4af5c295a/src/remem/agent/tools/semantic_retrieve_tool.py#L108-L174"
+   },
+   {
+    "role": "Picks tools, decides to stop",
+    "model": "GPT-4.1-mini",
+    "kind": "llm",
+    "src": "paper §3.2, App. D"
+   },
+   {
+    "role": "Answer",
+    "model": "GPT-4.1-mini",
+    "kind": "llm",
+    "src": "paper §4.4"
+   }
+  ],
+  "ablation": {
+   "cols": [
+    "LoCoMo LLM-J",
+    "LoCoMo F1",
+    "Complex-TR LLM-J",
+    "Complex-TR F1"
+   ],
+   "rows": [
+    [
+     "REMem-I (full)",
+     "76.2",
+     "42.4",
+     "89.6",
+     "83.3"
+    ],
+    [
+     "REMem-S (one dense search)",
+     "77.5",
+     "41.3",
+     "82.6",
+     "78.5"
+    ],
+    [
+     "without gists",
+     "48.9",
+     "31.7",
+     "80.9",
+     "80.3"
+    ],
+    [
+     "without facts",
+     "74.1",
+     "42.0",
+     "87.2",
+     "80.5"
+    ],
+    [
+     "without synonymy edges",
+     "76.4",
+     "37.6",
+     "89.2",
+     "81.6"
+    ],
+    [
+     "without semantic_retrieve",
+     "72.8",
+     "41.7",
+     "88.1",
+     "82.4"
+    ],
+    [
+     "without lexical_retrieve",
+     "76.8",
+     "40.6",
+     "87.5",
+     "81.7"
+    ]
+   ],
+   "src": "paper Table 5 (GPT-4.1-mini)"
+  },
+  "discussion": {
+   "takeaway": "Storing conversations as time-stamped event gists plus time-scoped triples, and letting an agent query them with date filters, helps most when questions need reasoning across several events on a timeline.",
+   "claims": [
+    {
+     "claim": "REMem beats state-of-the-art memory systems on episodic recollection.",
+     "evidence": "LoCoMo LLM-J 77.5 (REMem-S) / 76.2 (REMem-I) vs 74.0 HippoRAG 2 and 73.0 NV-Embed-v2; REALTALK 65.3 vs 59.5. Table 3"
+    },
+    {
+     "claim": "The gain is larger on episodic reasoning.",
+     "evidence": "Complex-TR LLM-J 89.6 vs 81.5 (HippoRAG 2); Test of Time EM 93.1, the only method above 90. Table 4, Table 13"
+    },
+    {
+     "claim": "Multi-step tool use matters for reasoning.",
+     "evidence": "REMem-I over REMem-S: LLM-J +7.0 on Complex-TR, EM +20.6 on Test of Time. §5.2"
+    },
+    {
+     "claim": "Gists carry most of the signal; facts help multi-hop.",
+     "evidence": "without gists LoCoMo LLM-J 76.2 → 48.9; without facts Complex-TR 89.6 → 87.2 and LoCoMo multi-hop −7.1. Table 5, App. C.6"
+    },
+    {
+     "claim": "REMem refuses unanswerable questions more reliably.",
+     "evidence": "refusal F1 64.0 vs 53.1 Graphiti and 13.5 Mem0 on 446 LoCoMo adversarial questions. Table 6"
+    }
+   ],
+   "limits": [
+    "Tested on conversation and temporal reading benchmarks, not on agents acting in complex environments.",
+    "Memory is built by offline batch indexing; building it as a stream is left open.",
+    "Error analysis: wrong value on the right slot (46%), temporal or numeric slips (19%) and abstaining despite retrieved evidence (18%) on LoCoMo."
+   ],
+   "limits_src": "paper §7, §6.4 (no separate Limitations section)",
+   "reading": [
+    "On LoCoMo the single-step REMem-S has the higher LLM-J (77.5 vs 76.2), and the paper notes most questions need one session; the agent pays 10x the inference tokens (18.1M vs 1.83M input) for no gain there.",
+    "Baselines retrieve 10 raw messages (HippoRAG 2: 3 sessions), while REMem reads 10 gists + 10 facts per step for up to 3-5 steps, so context sizes differ.",
+    "The paper's LoCoMo category names follow a different id mapping from Mem0's: its 'Single-Hop' (321) and 'Temporal' (96) are ids 2 and 3, which Mem0-style papers call temporal and open-domain. Per-category numbers cannot be compared across papers by name.",
+    "LoCoMo scores include the 446 adversarial questions in the average (1,986 questions), unlike papers that report 1,540.",
+    "The judge is the run's own LLM (GPT-4.1-mini in the code) with Mem0's prompt; the paper does not name the judge model.",
+    "Gist text per conversation (21.7k tokens) exceeds the source (16.0k), so this is re-expression, not compression.",
+    "At the released commit, find_gist_contexts looks for edges labelled 'synonym' but synonymy edges carry no label, so the tool may never return similar gists; yet removing synonymy edges changes scores (Table 5), which suggests the paper's runs used different code or the edges act elsewhere."
+   ]
+  }
+ }
+}

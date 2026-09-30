@@ -1,0 +1,459 @@
+{
+  "id": "cer",
+  "name": "Contextual Experience Replay (CER)",
+  "paper": {
+    "title": "Contextual Experience Replay for Self-Improvement of Language Agents",
+    "arxiv": "2506.06698",
+    "url": "https://arxiv.org/abs/2506.06698",
+    "venue": "ACL 2025",
+    "venue_short": "ACL",
+    "track": "main",
+    "year": 2025,
+    "code": null
+  },
+  "design": {
+    "construction": {
+      "unit": "experience: environment dynamics (page summary + URL) or skill (sub-goal workflow with steps)",
+      "kept_as": "LLM-distilled, abstracted with {variables}",
+      "processing": "two GPT-4o distillers read a whole trajectory and its goal: one summarizes visited pages with their URLs, one breaks the goal into sub-goal skills with step-by-step actions",
+      "trigger": "other",
+      "writer": "GPT-4o"
+    },
+    "organization": {
+      "structure": "two flat lists in one buffer: dynamics and skills",
+      "stores": "experience buffer (dynamics list, skills list)",
+      "index": null
+    },
+    "management": {
+      "operations": "append new dynamics and skills; distillers see existing ones and mark repeats 'Summarized before'",
+      "conflicts": null,
+      "forgetting": null,
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "task goal + website description",
+      "candidates": "the whole buffer (every dynamic, every skill) shown to two LLM selectors",
+      "selection": "LLM picks up to k_d = 5 pages and k_s = 5 skills",
+      "budget": "k_d = 5, k_s = 5"
+    },
+    "use": {
+      "context": "selected experiences turned into text by a fixed template and added to the agent's system prompt",
+      "reasoning": "ReAct-format GPT-4o web agent (BrowserGym), multi-step"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "prompted-llm",
+      "retrieval": "prompted-llm"
+    }
+  },
+  "classify": {
+    "structure": "typed stores",
+    "index": "none",
+    "management": "append-only",
+    "candidates": "read everything",
+    "decides": "LLM decides",
+    "note": "Two typed lists (page dynamics, skills). There is no embedding or keyword index: an LLM reads the task goal and the whole list and names up to 5 entries of each type."
+  },
+  "tags": {
+    "fidelity": "extracted",
+    "structure": [
+      "typed-stores"
+    ],
+    "write_time": [
+      "extract",
+      "summarize"
+    ],
+    "selection": [
+      "model-reads"
+    ],
+    "memory_type": [
+      "procedural",
+      "semantic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "web",
+      "multimodal"
+    ]
+  },
+  "stages": {
+    "ingestion": "Input is a whole trajectory with its goal: in the online setting the agent's own trajectory after each task (success or failure, no reward), offline human-annotated demonstrations of 5-10 extra tasks per website, or both (hybrid).",
+    "construction": "A dynamics distiller writes one summary per useful page (name, description, possible usages) paired with its URL; a skills distiller splits the goal into sub-goals and writes each as a named skill with numbered steps, each step a sentence plus an example action, with specific values replaced by variables.",
+    "organization": "Dynamics and skills are kept as two separate lists in one experience buffer.",
+    "update": "New experiences are merged into the buffer after each task; the distillers see the existing entries and skip ones already summarized.",
+    "retrieval": "Two GPT-4o selectors each read the task goal, the website description and every dynamic or skill in the buffer, and return at most 5 of each.",
+    "answer": "The selected experiences are rendered by a fixed template into 'Environment dynamics' and 'Skills' sections of the agent's system prompt, and the agent acts step by step on the website.",
+    "learning": ""
+  },
+  "summary": "Distills past web-agent trajectories into page summaries with URLs and reusable skills, and lets an LLM pick a few of them to replay in the agent's prompt on each new task, online, offline or both.",
+  "verified": false,
+  "notes": "Venue: ACL 2025 long paper (aclanthology 2025.acl-long.694, pp. 14179-14198); arXiv comment 'Accepted to ACL 2025'. The ACL PDF tables match arXiv v1. No official code found (no link in the arXiv or ACL PDF, no repo found on GitHub).\nDESIGN: §3.1-3.4, §4.1 (GPT-4o-2024-05-13, temperature 0.1, k_d = k_s = 5), App. A.1 (prompts, Figs. 3-6), A.2 (replay format, Figs. 7-8). 'trigger' is 'other': online distillation runs after each task, offline on a fixed set of trajectories. Buffer scope (per website or shared) is not stated.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2506.06698v1 (PDF read 2026-09-30); ACL 2025 version checked for the same tables",
+      "code": null,
+      "code_note": "No code: neither the arXiv nor the ACL PDF links a repository, and no official repo was found. Everything below comes from the paper text and its prompt figures (App. A.1-A.2)."
+    },
+    "headline": [
+      "Memory is two lists written by GPT-4o from whole trajectories: page summaries with their URLs, and skills written as step lists with variables.",
+      "There is no vector search: an LLM reads the task goal and the whole buffer and picks up to 5 pages and 5 skills.",
+      "Online, CER learns from its own trajectories without any success signal; learning only from successful ones scores higher (33.5 vs 31.4)."
+    ],
+    "units": [
+      {
+        "name": "Dynamics entry",
+        "role": "what a page shows and how to get there",
+        "made_by": "dynamics distiller LLM (GPT-4o)",
+        "fields": [
+          {
+            "name": "URL",
+            "what": "address of the page as seen in the trajectory; lets the agent jump there with goto",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.1, Fig. 3, Fig. 7",
+            "url": "https://arxiv.org/pdf/2506.06698"
+          },
+          {
+            "name": "name",
+            "what": "short page name, e.g. 'Forums page'",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper Fig. 3, Fig. 5",
+            "url": "https://arxiv.org/pdf/2506.06698"
+          },
+          {
+            "name": "description and usages",
+            "what": "what the page shows and what it can be used for",
+            "kept_as": "summarized",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper Fig. 3, Fig. 7",
+            "url": "https://arxiv.org/pdf/2506.06698"
+          }
+        ]
+      },
+      {
+        "name": "Skill",
+        "role": "a reusable workflow for one sub-goal",
+        "made_by": "skills distiller LLM (GPT-4o)",
+        "fields": [
+          {
+            "name": "skill name",
+            "what": "sub-goal written generally, with variables, e.g. 'Sort posts by {criterion}'",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper §3.1, Fig. 4",
+            "url": "https://arxiv.org/pdf/2506.06698"
+          },
+          {
+            "name": "steps",
+            "what": "numbered steps, each a sentence plus an example action with placeholder element ids",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper §3.1, Fig. 4, Fig. 7",
+            "url": "https://arxiv.org/pdf/2506.06698"
+          }
+        ]
+      },
+      {
+        "name": "Trajectory",
+        "role": "source of experiences",
+        "made_by": "the agent (online) or human annotators (offline)",
+        "fields": [
+          {
+            "name": "state-action trajectory and goal",
+            "what": "read once by the distillers; the paper does not say it is kept afterwards",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "paper §3.4, Figs. 3-4",
+            "url": "https://arxiv.org/pdf/2506.06698"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Collect trajectory",
+        "how": "online: the agent's own trajectory after each task, success or failure, no reward; offline: human demonstrations of 5-10 extra tasks per website (about 5% of the test set)",
+        "src": "paper §3.4, §4.1.1, App. A.4",
+        "url": "https://arxiv.org/pdf/2506.06698"
+      },
+      {
+        "step": "Distill dynamics",
+        "how": "LLM thinks, then writes one summary (name, description, usages) per unique URL, skipping pages already in the buffer",
+        "src": "paper §3.1, Fig. 3",
+        "url": "https://arxiv.org/pdf/2506.06698"
+      },
+      {
+        "step": "Distill skills",
+        "how": "LLM breaks the goal into sub-goals and writes each as a skill with steps, replacing specific values with variable names, skipping skills already in the buffer",
+        "src": "paper §3.1, Fig. 4",
+        "url": "https://arxiv.org/pdf/2506.06698"
+      },
+      {
+        "step": "Merge",
+        "how": "new entries are added to the buffer",
+        "note": "no deletion, rewriting or scoring of old entries is described",
+        "src": "paper §3.1, Fig. 1",
+        "url": "https://arxiv.org/pdf/2506.06698"
+      }
+    ],
+    "read": [
+      {
+        "step": "Pick pages",
+        "round": 1,
+        "input": "task goal + website description",
+        "scores": "every dynamics entry (id, name, description, usages, URL)",
+        "how": "LLM breaks the task into steps and lists the pages most likely needed",
+        "params": {
+          "k_d": "5"
+        },
+        "src": "paper §3.2, §4.1.1, Fig. 5",
+        "url": "https://arxiv.org/pdf/2506.06698"
+      },
+      {
+        "step": "Pick skills",
+        "round": 1,
+        "input": "task goal + website description",
+        "scores": "every skill (name and steps)",
+        "how": "LLM lists the skills that help most, including loosely related ones",
+        "params": {
+          "k_s": "5"
+        },
+        "src": "paper §3.2, §4.1.1, Fig. 6",
+        "url": "https://arxiv.org/pdf/2506.06698"
+      },
+      {
+        "step": "Replay",
+        "round": 1,
+        "how": "a fixed mapping turns the chosen entries into text sections added to the system prompt",
+        "src": "paper §3.3, App. A.2, Fig. 7",
+        "url": "https://arxiv.org/pdf/2506.06698"
+      }
+    ],
+    "answer_context": {
+      "sees": "up to 5 page summaries with URLs and up to 5 skills, plus the usual observation (accessibility tree; Set-of-Marks screenshot on VisualWebArena)",
+      "format": "'# Environment dynamics (common pages to navigate to from previous experience)' with '## Dynamics i: <name>', contents, usages, URL; then '# Skills (common workflows summarized from previous experience)' with '## Skill i: <name>' and steps",
+      "excludes": [
+        "raw past trajectories",
+        "entries not selected"
+      ],
+      "src": "paper App. A.2, Figs. 7-8; §4.1",
+      "url": "https://arxiv.org/pdf/2506.06698",
+      "includes": [
+        "selected page summaries with URLs",
+        "selected skills with example actions"
+      ]
+    },
+    "compression": [
+      {
+        "what": "experiences vs the trajectories they come from",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported: the paper gives no buffer size or entry lengths.",
+        "src": "paper §3",
+        "url": "https://arxiv.org/pdf/2506.06698"
+      }
+    ],
+    "paper_vs_code": [],
+    "open_questions": [
+      "Online results depend on the order in which tasks are solved, which the paper does not state or vary.",
+      "The buffer grows with every task and the selector reads all of it; the paper gives no buffer size, so it is unclear how selection behaves as it grows.",
+      "The ablation removes dynamics or skills but not the URL field, which §7 names as a main reason dynamics help."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 245",
+        "body": "<text class=\"fig-t\" x=\"54\" y=\"44\" text-anchor=\"middle\">Trajectory</text><rect class=\"gi-ev\" x=\"8\" y=\"56\" width=\"80\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"16\" y1=\"65\" x2=\"68\" y2=\"65\"/><rect class=\"gi-ev\" x=\"20\" y=\"78\" width=\"80\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"28\" y1=\"87\" x2=\"80\" y2=\"87\"/><rect class=\"gi-ev\" x=\"8\" y=\"100\" width=\"80\" height=\"18\" rx=\"6\"/><line class=\"gi-t\" x1=\"16\" y1=\"109\" x2=\"68\" y2=\"109\"/><text class=\"fig-s\" x=\"54\" y=\"136\" text-anchor=\"middle\">success or failure;</text><text class=\"fig-s\" x=\"54\" y=\"149\" text-anchor=\"middle\">no reward needed</text><text class=\"fig-s\" x=\"54\" y=\"176\" text-anchor=\"middle\">online: the last task</text><text class=\"fig-s\" x=\"54\" y=\"189\" text-anchor=\"middle\">offline: human demos</text><path class=\"gi-a\" d=\"M104.0 72.0 L118.0 72.0 L118.0 62.0 L125.0 62.0\"/><polygon class=\"gi-ah\" points=\"132.0,62.0 125.0,66.0 125.0,58.0\"/><path class=\"gi-a\" d=\"M104.0 100.0 L118.0 100.0 L118.0 132.0 L125.0 132.0\"/><polygon class=\"gi-ah\" points=\"132.0,132.0 125.0,136.0 125.0,128.0\"/><rect class=\"gi-llm\" x=\"132\" y=\"40\" width=\"110\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"187.0\" y=\"60.0\" text-anchor=\"middle\">Distill pages</text><text class=\"fig-s\" x=\"187.0\" y=\"73.0\" text-anchor=\"middle\">LLM (GPT-4o)</text><rect class=\"gi-llm\" x=\"132\" y=\"110\" width=\"110\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"187.0\" y=\"130.0\" text-anchor=\"middle\">Distill skills</text><text class=\"fig-s\" x=\"187.0\" y=\"143.0\" text-anchor=\"middle\">LLM (GPT-4o)</text><path class=\"gi-a\" d=\"M242.0 62.0 L273.0 62.0\"/><polygon class=\"gi-ah\" points=\"280.0,62.0 273.0,66.0 273.0,58.0\"/><path class=\"gi-a\" d=\"M242.0 132.0 L273.0 132.0\"/><polygon class=\"gi-ah\" points=\"280.0,132.0 273.0,136.0 273.0,128.0\"/><rect class=\"gi-f\" x=\"270\" y=\"12\" width=\"284\" height=\"196\" rx=\"10\"/><text class=\"fig-t\" x=\"412\" y=\"28\" text-anchor=\"middle\">Experience buffer</text><rect class=\"gi-ev\" x=\"280\" y=\"36\" width=\"264\" height=\"66\" rx=\"8\"/><text class=\"fig-t\" x=\"290\" y=\"53\" text-anchor=\"start\">dynamics (one per page)</text><text class=\"fig-s\" x=\"290\" y=\"69\" text-anchor=\"start\">name · description · usages</text><text class=\"fig-s\" x=\"290\" y=\"84\" text-anchor=\"start\">URL to jump to the page</text><rect class=\"gi-ev\" x=\"280\" y=\"108\" width=\"264\" height=\"66\" rx=\"8\"/><text class=\"fig-t\" x=\"290\" y=\"125\" text-anchor=\"start\">skill (one per sub-goal)</text><text class=\"fig-s\" x=\"290\" y=\"141\" text-anchor=\"start\">name with {variables}</text><text class=\"fig-s\" x=\"290\" y=\"156\" text-anchor=\"start\">steps: text + example action</text><text class=\"fig-s\" x=\"412\" y=\"196\" text-anchor=\"middle\">new entries are added; none is rewritten</text><path class=\"gi-a d\" d=\"M300.0 208.0 L300.0 226.0 L187.0 226.0 L187.0 161.0\"/><polygon class=\"gi-ah\" points=\"187.0,154.0 191.0,161.0 183.0,161.0\"/><text class=\"fig-s\" x=\"306\" y=\"238\" text-anchor=\"start\">existing entries shown, to skip repeats</text>",
+        "text": [
+          "After a task (online) or from human demonstrations (offline), two GPT-4o prompts read the whole trajectory: one summarizes the pages visited with their URLs, the other writes reusable skills as step lists with variables.",
+          "Both see the existing buffer and skip what is already there."
+        ],
+        "src": "paper §3.1, §3.4, Figs. 1, 3-4",
+        "url": "https://arxiv.org/pdf/2506.06698"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 240",
+        "body": "<text class=\"fig-s\" x=\"152\" y=\"18\" text-anchor=\"middle\">each reads the goal and every entry</text><rect class=\"gi-ev\" x=\"6\" y=\"26\" width=\"76\" height=\"36\" rx=\"8\"/><text class=\"fig-t\" x=\"44.0\" y=\"48.0\" text-anchor=\"middle\">all pages</text><rect class=\"gi-f\" x=\"6\" y=\"94\" width=\"76\" height=\"36\" rx=\"8\"/><text class=\"fig-t\" x=\"44.0\" y=\"116.0\" text-anchor=\"middle\">Task goal</text><rect class=\"gi-ev\" x=\"6\" y=\"162\" width=\"76\" height=\"36\" rx=\"8\"/><text class=\"fig-t\" x=\"44.0\" y=\"184.0\" text-anchor=\"middle\">all skills</text><path class=\"gi-a\" d=\"M82.0 44.0 L93.0 44.0\"/><polygon class=\"gi-ah\" points=\"100.0,44.0 93.0,48.0 93.0,40.0\"/><path class=\"gi-a\" d=\"M82.0 104.0 L90.0 104.0 L90.0 68.0 L93.0 68.0\"/><polygon class=\"gi-ah\" points=\"100.0,68.0 93.0,72.0 93.0,64.0\"/><path class=\"gi-a\" d=\"M82.0 120.0 L90.0 120.0 L90.0 156.0 L93.0 156.0\"/><polygon class=\"gi-ah\" points=\"100.0,156.0 93.0,160.0 93.0,152.0\"/><path class=\"gi-a\" d=\"M82.0 180.0 L93.0 180.0\"/><polygon class=\"gi-ah\" points=\"100.0,180.0 93.0,184.0 93.0,176.0\"/><rect class=\"gi-llm\" x=\"100\" y=\"30\" width=\"104\" height=\"50\" rx=\"8\"/><text class=\"fig-t\" x=\"152.0\" y=\"53.0\" text-anchor=\"middle\">Pick pages</text><text class=\"fig-s\" x=\"152.0\" y=\"66.0\" text-anchor=\"middle\">LLM · up to 5</text><rect class=\"gi-llm\" x=\"100\" y=\"144\" width=\"104\" height=\"50\" rx=\"8\"/><text class=\"fig-t\" x=\"152.0\" y=\"167.0\" text-anchor=\"middle\">Pick skills</text><text class=\"fig-s\" x=\"152.0\" y=\"180.0\" text-anchor=\"middle\">LLM · up to 5</text><path class=\"gi-a\" d=\"M204.0 55.0 L218.0 55.0 L218.0 104.0 L225.0 104.0\"/><polygon class=\"gi-ah\" points=\"232.0,104.0 225.0,108.0 225.0,100.0\"/><path class=\"gi-a\" d=\"M204.0 169.0 L218.0 169.0 L218.0 120.0 L225.0 120.0\"/><polygon class=\"gi-ah\" points=\"232.0,120.0 225.0,124.0 225.0,116.0\"/><rect class=\"gi-f\" x=\"232\" y=\"90\" width=\"86\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"275.0\" y=\"110.0\" text-anchor=\"middle\">To text</text><text class=\"fig-s\" x=\"275.0\" y=\"123.0\" text-anchor=\"middle\">fixed template</text><path class=\"gi-a\" d=\"M318.0 112.0 L333.0 112.0\"/><polygon class=\"gi-ah\" points=\"340.0,112.0 333.0,116.0 333.0,108.0\"/><rect class=\"gi-hi\" x=\"340\" y=\"84\" width=\"110\" height=\"56\" rx=\"8\"/><text class=\"fig-t\" x=\"395\" y=\"105\" text-anchor=\"middle\">Web agent</text><text class=\"fig-s\" x=\"395\" y=\"118\" text-anchor=\"middle\">GPT-4o, ReAct</text><text class=\"fig-s\" x=\"395\" y=\"131\" text-anchor=\"middle\">+ experiences</text><path class=\"gi-a\" d=\"M450.0 112.0 L461.0 112.0\"/><polygon class=\"gi-ah\" points=\"468.0,112.0 461.0,116.0 461.0,108.0\"/><rect class=\"gi-f\" x=\"468\" y=\"90\" width=\"86\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"511.0\" y=\"110.0\" text-anchor=\"middle\">Website</text><text class=\"fig-s\" x=\"511.0\" y=\"123.0\" text-anchor=\"middle\">act, observe</text><path class=\"gi-a d\" d=\"M511.0 134.0 L511.0 214.0 L44.0 214.0 L44.0 205.0\"/><polygon class=\"gi-ah\" points=\"44.0,198.0 48.0,205.0 40.0,205.0\"/><text class=\"fig-s\" x=\"280\" y=\"230\" text-anchor=\"middle\">online: after each task its trajectory is distilled into the buffer</text>",
+        "text": [
+          "For a new task, two LLM selectors read the goal and every stored page and skill, and keep at most 5 of each.",
+          "A fixed template turns them into text in the agent's system prompt; online, the finished trajectory is distilled back into the buffer."
+        ],
+        "src": "paper §3.2-3.4, §4.1.1, Figs. 5-7",
+        "url": "https://arxiv.org/pdf/2506.06698"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Replayed per task",
+        "value": "≤ 5 pages + ≤ 5 skills",
+        "src": "paper §4.1.1",
+        "section": "method"
+      },
+      {
+        "label": "Backbone for all modules",
+        "value": "GPT-4o-2024-05-13, temperature 0.1",
+        "src": "paper §3, §4.1.1",
+        "section": "method"
+      },
+      {
+        "label": "Offline data",
+        "value": "5-10 human-annotated tasks per website (~5% of the test set)",
+        "src": "paper App. A.4",
+        "section": "construction"
+      },
+      {
+        "label": "Max steps per task",
+        "value": "30 (VisualWebArena)",
+        "src": "paper §4.2",
+        "section": "method"
+      },
+      {
+        "label": "Extra input tokens vs ReAct",
+        "value": "+5.8% offline · +11.2% online · +17.3% hybrid",
+        "src": "paper Table 3",
+        "section": "results"
+      },
+      {
+        "label": "Extra input tokens (absolute)",
+        "value": "7,885 · 16,337 · 20,631 (unit of count not stated)",
+        "src": "paper Table 3",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "WebArena Forum SR"
+      ],
+      "rows": [
+        [
+          "CER (online)",
+          "37.7"
+        ],
+        [
+          "without skills",
+          "33.3"
+        ],
+        [
+          "without dynamics",
+          "35.1"
+        ],
+        [
+          "baseline (no experiences)",
+          "22.8"
+        ],
+        [
+          "offline, human demos",
+          "33.3"
+        ],
+        [
+          "hybrid, human demos",
+          "41.2"
+        ],
+        [
+          "hybrid, self-guided exploration",
+          "35.1"
+        ]
+      ],
+      "src": "paper Table 8 (ablation), Table 9 (baseline and data sources)"
+    },
+    "components": [
+      {
+        "role": "Distill dynamics and skills",
+        "model": "GPT-4o-2024-05-13",
+        "kind": "llm",
+        "src": "paper §3, §4.1.1"
+      },
+      {
+        "role": "Select pages and skills",
+        "model": "GPT-4o-2024-05-13",
+        "kind": "llm",
+        "src": "paper §3.2, Figs. 5-6"
+      },
+      {
+        "role": "Render experiences as text",
+        "model": "fixed template",
+        "kind": "rule",
+        "src": "paper §3.3, App. A.2"
+      },
+      {
+        "role": "Web agent",
+        "model": "GPT-4o (Llama-3.1-70B in one analysis), ReAct format, BrowserGym",
+        "kind": "llm",
+        "src": "paper §4.1, §5.4"
+      }
+    ],
+    "discussion": {
+      "takeaway": "A web agent can improve without training by turning its own past trajectories into short page summaries and skills and replaying a few relevant ones in context; on WebArena this lifts GPT-4o from 24.3% to 36.7% success.",
+      "claims": [
+        {
+          "claim": "CER improves a GPT-4o BrowserGym agent substantially on both benchmarks.",
+          "evidence": "WebArena 24.3 → 36.7 (hybrid), relative +51.0%; VisualWebArena 26.2 → 31.9 (online), +21.8%. Tables 1-2, §4.2"
+        },
+        {
+          "claim": "It beats tree search on VisualWebArena at far lower cost.",
+          "evidence": "31.9 vs 26.4; tree search samples 20 times per step. Table 2, §4.2"
+        },
+        {
+          "claim": "Experiences cost few extra tokens.",
+          "evidence": "+5.8% to +17.3% input tokens. Table 3, §5.1"
+        },
+        {
+          "claim": "Gains come from fine-grained experiences, not memorizing tasks.",
+          "evidence": "Cross-template SR on Forum 44.7 → 60.0; stability 93%, plasticity 141%. Table 4, §5.2-5.3"
+        },
+        {
+          "claim": "Both dynamics and skills are needed.",
+          "evidence": "Forum 37.7 full, 33.3 without skills, 35.1 without dynamics. Table 8, §5.7"
+        },
+        {
+          "claim": "CER composes with other methods and weaker models.",
+          "evidence": "With sampling + reranking 52.6 vs 43.1 (Table 6); Llama-3.1-70B GitLab 17.3 → 22.0 (Table 5)"
+        }
+      ],
+      "limits": [
+        "Offline learning needs goal-oriented trajectories; trajectories from random exploration help little and can hurt.",
+        "Environment dynamics help partly because web pages can be reached by URL; use in other kinds of environments is untested.",
+        "The online setting has nothing to learn from at the start, and offline data depends on human annotators."
+      ],
+      "limits_src": "paper §7 Limitations",
+      "reading": [
+        "The main rows are 'hybrid' on WebArena but 'online' on VisualWebArena; the hybrid setting adds human demonstrations of extra tasks that the baselines do not get.",
+        "Most baseline rows in Tables 1-2 are copied from their papers with different agents and setups; only the BrowserGym GPT-4o rows were rerun, so the like-for-like gains are 24.3 → 33.2 (online) on WebArena and 26.2 → 31.9 on VisualWebArena.",
+        "The relative gain for hybrid is 51.0% in the abstract and §4.2 but 52.5% in Table 3; (36.7 - 24.3) / 24.3 gives 51.0%.",
+        "Several analyses (Tables 4, 6, 8, 9) use only the Forum split, and the success-only comparison (Table 7) uses text observations, so its 31.4 differs from the 33.2 main online number.",
+        "Learning from failures is allowed but not filtered; using only successful trajectories (which needs the benchmark's evaluator) scores higher."
+      ]
+    },
+    "abstract": {
+      "text": "CER targets web agents that start every task without knowledge of the site. After tasks, it prompts an LLM to distill trajectories into two kinds of experience, summaries of useful pages with their URLs and reusable multi-step skills, and keeps them in a growing buffer. For a new task an LLM picks a few relevant experiences, which are written into the agent's prompt. It works with the agent's own trajectories, with human demonstrations, or both, and raises a GPT-4o agent to 36.7% success on WebArena and 31.9% on VisualWebArena.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2506.06698"
+    },
+    "sections": {
+      "Memory architecture": "§3",
+      "Results": "§4.2",
+      "Ablation": "§5.6-5.7, App. A.5",
+      "Discussion": "§5, §7 Limitations",
+      "Details": "§3, §4.1, App. A"
+    }
+  }
+}

@@ -1,0 +1,470 @@
+{
+ "id": "principles",
+ "name": "PRINCIPLES",
+ "paper": {
+  "title": "PRINCIPLES: Synthetic Strategy Memory for Proactive Dialogue Agents",
+  "arxiv": "2509.17459",
+  "url": "https://arxiv.org/abs/2509.17459",
+  "venue": "EMNLP 2025 Findings",
+  "venue_short": "EMNLP",
+  "track": "findings",
+  "year": 2025,
+  "code": "https://github.com/kimnamssya/Principles"
+ },
+ "design": {
+  "construction": {
+   "unit": "principle: 'When [situation], you should [strategy], rather than [failed strategy], because [reason]'",
+   "kept_as": "LLM-derived lesson in a fixed template; the When clause is also stored separately",
+   "processing": "offline self-play; a turn whose critic reward rises yields a principle; a turn that does not rise is revised and re-simulated (up to 3 tries) and a success after revision yields a contrastive principle",
+   "trigger": "offline-batch",
+   "writer": "LLM prompted with the dialogue, the successful turn and any failed tries"
+  },
+  "organization": {
+   "structure": "flat set of principles per domain",
+   "stores": "one FAISS index per dataset",
+   "index": "embedding of the When clause (text-embedding-ada-002, L2 distance)"
+  },
+  "management": {
+   "operations": "none after construction (append-only while building)",
+   "conflicts": null,
+   "forgetting": null,
+   "timing": "none"
+  },
+  "retrieval": {
+   "query": "the dialogue so far (state s_t)",
+   "candidates": "L2 nearest When clauses (FAISS)",
+   "selection": "top-k = 3; each retrieved principle is rewritten by an LLM to fit the current dialogue",
+   "budget": "3 principles per turn"
+  },
+  "use": {
+   "context": "the reinterpreted principles replace the strategy slot of the agent's response prompt",
+   "reasoning": "one reply per turn; no separate strategy-planning call at inference"
+  },
+  "control": {
+   "construction": "prompted-llm",
+   "management": "none",
+   "retrieval": "fixed-rule"
+  }
+ },
+ "classify": {
+  "structure": "flat",
+  "index": "vector",
+  "management": "append-only",
+  "candidates": "dense",
+  "decides": "top-k rule",
+  "note": "The LLM reinterpretation rewrites the 3 retrieved principles but does not choose among them."
+ },
+ "tags": {
+  "fidelity": "extracted",
+  "structure": [
+   "flat"
+  ],
+  "write_time": [
+   "extract"
+  ],
+  "selection": [
+   "dense"
+  ],
+  "memory_type": [
+   "procedural"
+  ],
+  "learning": "training-free",
+  "domain": [
+   "conversation"
+  ]
+ },
+ "stages": {
+  "ingestion": "Offline self-play on training dialogues: an agent, a user simulator and a critic LLM play out conversations started from the first turn of a training dialogue (50 simulations per dataset, up to 10 turns).",
+  "construction": "After each turn the critic's averaged reward is compared with the previous turn. If it rose, an LLM writes a When/should/because principle from the turn. If not, the strategy is revised from the failed tries, the turn is replayed from the same state (up to 3 tries), and a success yields a When/should/rather than/because principle.",
+  "organization": "About 100 principles per domain in one flat set; the When clause is embedded for search.",
+  "update": "",
+  "retrieval": "At each turn the dialogue so far is embedded and the 3 principles whose When clauses are closest (L2, FAISS) are retrieved; an LLM rewrites each to fit the current dialogue.",
+  "answer": "The reinterpreted principles serve as the dialogue strategy in the agent's reply prompt (one short sentence per turn).",
+  "learning": "No parameter updates; memory is built from simulated experience only."
+ },
+ "summary": "A strategy memory for proactive dialogue built by offline self-play: turns that raise the critic's reward, or that succeed after backtracking and revision, are turned into When / should / rather than / because principles, retrieved by situation and reinterpreted to guide each reply.",
+ "verified": false,
+ "notes": "Venue: EMNLP 2025 Findings (arXiv comment; ACL Anthology 2025.findings-emnlp.1164, pages 21329-21368). PDF read: arXiv v1 (22 Sep 2025). Code: kimnamssya/Principles at 8a82a1e2 (2025-09-23), linked from the project page on Hugging Face Spaces named in the abstract; it holds the self-play environment, the PRINCIPLES agent, prompts and data splits, but no derived principle files and no baseline implementations.\nDESIGN: §2, §3.1-3.3, §4.1, App. A, E, F.1; code src/run.py, src/agent.py, src/env.py, scripts/run_ours.sh. Classified as procedural memory: stored items are reusable dialogue strategies, not facts about a user. management 'none': no update or deletion after offline construction (an online, success-only construction variant is reported in Table 6).",
+ "mechanism": {
+  "sources": {
+   "paper": "arXiv 2509.17459v1 (PDF read 2026-09-30)",
+   "code": "https://github.com/kimnamssya/Principles/tree/8a82a1e21c3f6d415fedb09e397581b87fb072dc/",
+   "code_note": "Authors' repository, linked from the project page cited in the abstract. Pinned at the latest commit 8a82a1e2 (2025-09-23), one day after arXiv v1. The released run script defaults every model to gpt-4o-mini, while the paper uses gpt-4o as user simulator and critic; the derived principle files (resources/principles/) and the prompts for the unstructured ablation are not included."
+  },
+  "headline": [
+   "Memory is a set of ~100 strategy rules written by an LLM during offline self-play, not records of the user or the conversation.",
+   "Only the When clause is matched; the whole rule is then rewritten by an LLM for the current dialogue and handed to the agent as its strategy.",
+   "Failed turns are replayed from the same state with revised strategies, so many rules carry a 'rather than' contrast with what failed."
+  ],
+  "units": [
+   {
+    "name": "Principle",
+    "role": "one reusable strategy lesson from a simulated turn",
+    "made_by": "LLM (principle-from-success or principle-from-failure prompt)",
+    "fields": [
+     {
+      "name": "when",
+      "what": "the situation, tied to the user's last utterance",
+      "kept_as": "extracted",
+      "used_for": [
+       "index"
+      ],
+      "src": "code agent.py L84-L90, L207-L224",
+      "url": "https://github.com/kimnamssya/Principles/blob/8a82a1e21c3f6d415fedb09e397581b87fb072dc/src/agent.py#L83-L90"
+     },
+     {
+      "name": "raw principle",
+      "what": "the full When / should / (rather than) / because sentence",
+      "kept_as": "extracted",
+      "used_for": [
+       "answer"
+      ],
+      "src": "code agent.py L85, L150-L152",
+      "url": "https://github.com/kimnamssya/Principles/blob/8a82a1e21c3f6d415fedb09e397581b87fb072dc/src/agent.py#L150-L152"
+     },
+     {
+      "name": "should / rather than / because",
+      "what": "parsed parts of the principle, saved but not read separately",
+      "kept_as": "derived",
+      "used_for": [],
+      "src": "code agent.py L207-L224",
+      "url": "https://github.com/kimnamssya/Principles/blob/8a82a1e21c3f6d415fedb09e397581b87fb072dc/src/agent.py#L207-L224"
+     },
+     {
+      "name": "rationale",
+      "what": "the LLM's explanation of why the strategy worked",
+      "kept_as": "extracted",
+      "used_for": [],
+      "src": "code agent.py L197-L224",
+      "url": "https://github.com/kimnamssya/Principles/blob/8a82a1e21c3f6d415fedb09e397581b87fb072dc/src/agent.py#L197-L224"
+     }
+    ]
+   }
+  ],
+  "write": [
+   {
+    "step": "Self-play turn",
+    "how": "planner LLM writes a one-sentence strategy, the agent replies with it, the user simulator answers, the critic scores the dialogue 10 times and the mapped scores are averaged",
+    "params": {
+     "critic samples": "10",
+     "score map": "-1, -0.5, 0.5, 1"
+    },
+    "src": "paper §2, App. F.1; code env.py L128-L161, L282-L296",
+    "url": "https://github.com/kimnamssya/Principles/blob/8a82a1e21c3f6d415fedb09e397581b87fb072dc/src/env.py#L128-L161"
+   },
+   {
+    "step": "Success",
+    "how": "if the reward is higher than the previous turn's, an LLM writes a When/should/because principle from the dialogue and the turn",
+    "src": "paper §3.1 eq. 5-7; code run.py L83-L89",
+    "url": "https://github.com/kimnamssya/Principles/blob/8a82a1e21c3f6d415fedb09e397581b87fb072dc/src/run.py#L83-L89"
+   },
+   {
+    "step": "Revise and replay",
+    "how": "otherwise an LLM proposes a new strategy from the failed tries, the turn is removed and replayed from the same state",
+    "params": {
+     "max tries": "3"
+    },
+    "src": "paper §3.1 eq. 8-10; code run.py L94-L128",
+    "url": "https://github.com/kimnamssya/Principles/blob/8a82a1e21c3f6d415fedb09e397581b87fb072dc/src/run.py#L94-L128"
+   },
+   {
+    "step": "Contrastive principle",
+    "how": "if a replay raises the reward, an LLM compares it with the failed tries and writes When/should/rather than/because",
+    "src": "paper §3.1 eq. 11-12; code run.py L129-L136",
+    "url": "https://github.com/kimnamssya/Principles/blob/8a82a1e21c3f6d415fedb09e397581b87fb072dc/src/run.py#L129-L136"
+   },
+   {
+    "step": "Give up",
+    "how": "after 3 failed tries the dialogue continues from the best-scoring try and no principle is written",
+    "note": "the paper's Algorithm 1 keeps the original turn instead",
+    "src": "code run.py L119-L128; paper App. A",
+    "url": "https://github.com/kimnamssya/Principles/blob/8a82a1e21c3f6d415fedb09e397581b87fb072dc/src/run.py#L119-L128"
+   },
+   {
+    "step": "Index",
+    "how": "at test time the When clauses are embedded into a FAISS store with the full principle as metadata",
+    "out": "about 100 principles from 50 simulations per domain (Fig. 7 shows 47 from success, 37 from failure)",
+    "src": "paper §3.3, Fig. 7; code agent.py L76-L90",
+    "url": "https://github.com/kimnamssya/Principles/blob/8a82a1e21c3f6d415fedb09e397581b87fb072dc/src/agent.py#L76-L90"
+   }
+  ],
+  "read": [
+   {
+    "step": "Match",
+    "round": 1,
+    "input": "the dialogue so far, as 'Role: text' lines",
+    "scores": "When clauses only",
+    "how": "embedding similarity, L2 distance in FAISS",
+    "params": {
+     "k": "3"
+    },
+    "src": "paper §3.2-3.3; code agent.py L150-L152",
+    "url": "https://github.com/kimnamssya/Principles/blob/8a82a1e21c3f6d415fedb09e397581b87fb072dc/src/agent.py#L150-L152"
+   },
+   {
+    "step": "Reinterpret",
+    "round": 1,
+    "input": "dialogue + one retrieved principle",
+    "how": "one LLM call per principle rewrites it in the same format for the current dialogue",
+    "src": "paper §3.2 eq. 13, Fig. 18; code agent.py L154-L186",
+    "url": "https://github.com/kimnamssya/Principles/blob/8a82a1e21c3f6d415fedb09e397581b87fb072dc/src/agent.py#L154-L186"
+   },
+   {
+    "step": "Reply",
+    "round": 1,
+    "how": "the rewritten principles, joined by newlines, fill the {action} slot of the agent prompt; the agent answers in one short sentence",
+    "src": "code agent.py L92-L96; env.py L128-L135",
+    "url": "https://github.com/kimnamssya/Principles/blob/8a82a1e21c3f6d415fedb09e397581b87fb072dc/src/agent.py#L92-L96"
+   }
+  ],
+  "answer_context": {
+   "sees": "the dialogue so far plus 3 reinterpreted principles as the requested strategy",
+   "format": "role-play prompt '... reply with only one short and succinct sentence using the following dialogue strategy: {action}', with the principles as {action}",
+   "excludes": [
+    "the original (un-reinterpreted) principles",
+    "rationales",
+    "which principles came from failures"
+   ],
+   "includes": [
+    "3 LLM-rewritten principles"
+   ],
+   "src": "code agent.py L92-L96; resources/prompts/simulation/agent.json",
+   "url": "https://github.com/kimnamssya/Principles/blob/8a82a1e21c3f6d415fedb09e397581b87fb072dc/src/agent.py#L92-L96"
+  },
+  "compression": [
+   {
+    "what": "principle length",
+    "kept": null,
+    "of": null,
+    "unit": null,
+    "basis": "Only the principle length is reported: 62.93 tokens on average for GPT-4o-built principles on ESConv (Table 7); no source length is given.",
+    "src": "paper Table 7",
+    "url": "https://arxiv.org/pdf/2509.17459"
+   }
+  ],
+  "paper_vs_code": [
+   {
+    "topic": "Models",
+    "paper": "gpt-4o as user simulator and critic (§3.3); principle source model GPT-4o (Table 7)",
+    "code": "run_ours.sh sets agent, user, critic, principle and reinterpretation models to gpt-4o-mini",
+    "src": "scripts/run_ours.sh L5-L8, L37-L38",
+    "url": "https://github.com/kimnamssya/Principles/blob/8a82a1e21c3f6d415fedb09e397581b87fb072dc/scripts/run_ours.sh#L5-L38"
+   },
+   {
+    "topic": "After 3 failed tries",
+    "paper": "Algorithm 1 continues from the original failed turn",
+    "code": "continues from the highest-reward try",
+    "src": "run.py L119-L128",
+    "url": "https://github.com/kimnamssya/Principles/blob/8a82a1e21c3f6d415fedb09e397581b87fb072dc/src/run.py#L119-L128"
+   },
+   {
+    "topic": "Strategy passed to the agent",
+    "paper": "reinterpreted principles guide strategy planning",
+    "code": "next_action returns a (text, '') tuple that is placed directly in the {action} slot",
+    "src": "agent.py L96; env.py L190-L209",
+    "url": "https://github.com/kimnamssya/Principles/blob/8a82a1e21c3f6d415fedb09e397581b87fb072dc/src/agent.py#L92-L96"
+   },
+   {
+    "topic": "First turn",
+    "paper": "status compares r_t with r_{t-1} at every turn",
+    "code": "comparison starts only when two rewards exist, so the first turn of a simulation never yields a principle",
+    "src": "run.py L75",
+    "url": "https://github.com/kimnamssya/Principles/blob/8a82a1e21c3f6d415fedb09e397581b87fb072dc/src/run.py#L75-L96"
+   }
+  ],
+  "open_questions": [
+   "The best k differs by task (9 for ESConv, 3 for P4G in Fig. 10) and the main results use 3; ESConv at k = 9 (80.0) would exceed Table 1's 73.85.",
+   "Table 3 does not separate the value of the stored content from the value of reinterpretation per turn: w/o Reinterpretation and w/o Structured give the same ExTES SR (83.85).",
+   "Success of a turn is judged by one LLM critic that also decides the final success rate, so principles are optimised for the evaluator used to score them."
+  ],
+  "figures": [
+   {
+    "id": "build",
+    "title": "Memory construction",
+    "viewBox": "0 0 560 240",
+    "body": "<rect class=\"gi-f\" x=\"4\" y=\"30\" width=\"62\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"35.0\" y=\"50.0\" text-anchor=\"middle\">Dialogue</text><text class=\"fig-s\" x=\"35.0\" y=\"63.0\" text-anchor=\"middle\">train start</text><path class=\"gi-a\" d=\"M66 52 L71 52\"/><polygon class=\"gi-ah\" points=\"78,52 71,48 71,56\"/><rect class=\"gi-llm\" x=\"78\" y=\"30\" width=\"70\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"113.0\" y=\"50.0\" text-anchor=\"middle\">Plan</text><text class=\"fig-s\" x=\"113.0\" y=\"63.0\" text-anchor=\"middle\">1 sentence</text><path class=\"gi-a\" d=\"M148 52 L153 52\"/><polygon class=\"gi-ah\" points=\"160,52 153,48 153,56\"/><rect class=\"gi-llm\" x=\"160\" y=\"30\" width=\"84\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"202.0\" y=\"50.0\" text-anchor=\"middle\">Agent, user</text><text class=\"fig-s\" x=\"202.0\" y=\"63.0\" text-anchor=\"middle\">one turn</text><path class=\"gi-a\" d=\"M244 52 L249 52\"/><polygon class=\"gi-ah\" points=\"256,52 249,48 249,56\"/><rect class=\"gi-llm\" x=\"256\" y=\"30\" width=\"70\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"291.0\" y=\"50.0\" text-anchor=\"middle\">Critic</text><text class=\"fig-s\" x=\"291.0\" y=\"63.0\" text-anchor=\"middle\">mean of 10</text><path class=\"gi-a\" d=\"M326 52 L331 52\"/><polygon class=\"gi-ah\" points=\"338,52 331,48 331,56\"/><polygon class=\"gi-f\" points=\"376,26 414,52 376,78 338,52\"/><text class=\"fig-t\" x=\"376\" y=\"56\" text-anchor=\"middle\">Reward up?</text><text class=\"fig-s\" x=\"376\" y=\"16\" text-anchor=\"middle\">vs last turn</text><path class=\"gi-a\" d=\"M414 52 L431 52\"/><polygon class=\"gi-ah\" points=\"438,52 431,48 431,56\"/><text class=\"fig-yes\" x=\"418\" y=\"44\" text-anchor=\"start\">yes</text><rect class=\"gi-hi\" x=\"438\" y=\"30\" width=\"118\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"497.0\" y=\"50.0\" text-anchor=\"middle\">Principle</text><text class=\"fig-s\" x=\"497.0\" y=\"63.0\" text-anchor=\"middle\">When / should / because</text><path class=\"gi-a\" d=\"M376 78 L376 111\"/><polygon class=\"gi-ah\" points=\"376,118 372,111 380,111\"/><text class=\"fig-no\" x=\"384\" y=\"100\" text-anchor=\"start\">no</text><rect class=\"gi-llm\" x=\"316\" y=\"118\" width=\"100\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"366.0\" y=\"138.0\" text-anchor=\"middle\">Revise</text><text class=\"fig-s\" x=\"366.0\" y=\"151.0\" text-anchor=\"middle\">sees failed tries</text><path class=\"gi-a\" d=\"M416 140 L425 140\"/><polygon class=\"gi-ah\" points=\"432,140 425,136 425,144\"/><rect class=\"gi-f\" x=\"432\" y=\"118\" width=\"124\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"494.0\" y=\"138.0\" text-anchor=\"middle\">Redo the turn</text><text class=\"fig-s\" x=\"494.0\" y=\"151.0\" text-anchor=\"middle\">backtrack, ≤ 3 tries</text><path class=\"gi-a\" d=\"M494 162 L494 183\"/><polygon class=\"gi-ah\" points=\"494,190 490,183 498,183\"/><text class=\"fig-yes\" x=\"500\" y=\"180\" text-anchor=\"start\">reward up</text><rect class=\"gi-hi\" x=\"432\" y=\"190\" width=\"124\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"494.0\" y=\"210.0\" text-anchor=\"middle\">Principle</text><text class=\"fig-s\" x=\"494.0\" y=\"223.0\" text-anchor=\"middle\">+ rather than [failed]</text><text class=\"fig-no\" x=\"366\" y=\"180\" text-anchor=\"middle\">3 misses: keep best</text><text class=\"fig-no\" x=\"366\" y=\"193\" text-anchor=\"middle\">try, no principle</text><path class=\"gi-a\" d=\"M432 214 L269 214\"/><polygon class=\"gi-ah\" points=\"262,214 269,210 269,218\"/><text class=\"fig-s\" x=\"347\" y=\"208\" text-anchor=\"middle\">both kinds</text><text class=\"fig-t\" x=\"135\" y=\"106\" text-anchor=\"middle\">Principle store</text><path class=\"gi-h\" d=\"M30 150 C 22 112, 206 108, 244 132 C 272 152, 236 196, 150 196 C 72 196, 36 188, 30 150 Z\"/><circle class=\"gi-n\" cx=\"62\" cy=\"146\" r=\"6\"/><circle class=\"gi-n\" cx=\"90\" cy=\"134\" r=\"6\"/><circle class=\"gi-n\" cx=\"118\" cy=\"156\" r=\"6\"/><circle class=\"gi-n\" cx=\"150\" cy=\"138\" r=\"6\"/><circle class=\"gi-n\" cx=\"178\" cy=\"162\" r=\"6\"/><circle class=\"gi-n\" cx=\"206\" cy=\"144\" r=\"6\"/><circle class=\"gi-n\" cx=\"100\" cy=\"176\" r=\"6\"/><circle class=\"gi-n\" cx=\"140\" cy=\"178\" r=\"6\"/><circle class=\"gi-n\" cx=\"226\" cy=\"170\" r=\"6\"/><text class=\"fig-s\" x=\"135\" y=\"214\" text-anchor=\"middle\">~100 per domain,</text><text class=\"fig-s\" x=\"135\" y=\"227\" text-anchor=\"middle\">from 50 self-play dialogues</text>",
+    "text": [
+     "During offline self-play, a turn that raises the critic's score is turned into a When / should / because principle.",
+     "A turn that does not is revised and replayed from the same point, up to 3 times; a success then yields a principle that also names what failed."
+    ],
+    "src": "paper §3.1, App. A; code run.py L63-L141",
+    "url": "https://github.com/kimnamssya/Principles/blob/8a82a1e21c3f6d415fedb09e397581b87fb072dc/src/run.py#L63-L141"
+   },
+   {
+    "id": "read",
+    "title": "Memory retrieval",
+    "viewBox": "0 0 560 236",
+    "body": "<rect class=\"gi-f\" x=\"4\" y=\"34\" width=\"72\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"40.0\" y=\"54.0\" text-anchor=\"middle\">Dialogue</text><text class=\"fig-s\" x=\"40.0\" y=\"67.0\" text-anchor=\"middle\">all turns so far</text><path class=\"gi-a\" d=\"M76 56 L83 56\"/><polygon class=\"gi-ah\" points=\"90,56 83,52 83,60\"/><rect class=\"gi-v fig-soft\" x=\"90\" y=\"34\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"138.0\" y=\"54.0\" text-anchor=\"middle\">Search</text><text class=\"fig-s\" x=\"138.0\" y=\"67.0\" text-anchor=\"middle\">vs When clauses</text><text class=\"fig-s\" x=\"138\" y=\"90\" text-anchor=\"middle\">embedding, L2</text><path class=\"gi-a\" d=\"M186 56 L193 56\"/><polygon class=\"gi-ah\" points=\"200,56 193,52 193,60\"/><rect class=\"gi-f\" x=\"200\" y=\"34\" width=\"62\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"231.0\" y=\"54.0\" text-anchor=\"middle\">top-3</text><text class=\"fig-s\" x=\"231.0\" y=\"67.0\" text-anchor=\"middle\">principles</text><path class=\"gi-a\" d=\"M262 56 L269 56\"/><polygon class=\"gi-ah\" points=\"276,56 269,52 269,60\"/><rect class=\"gi-llm\" x=\"276\" y=\"34\" width=\"100\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"326.0\" y=\"54.0\" text-anchor=\"middle\">Reinterpret</text><text class=\"fig-s\" x=\"326.0\" y=\"67.0\" text-anchor=\"middle\">LLM, one call each</text><path class=\"gi-a\" d=\"M376 56 L383 56\"/><polygon class=\"gi-ah\" points=\"390,56 383,52 383,60\"/><rect class=\"gi-llm\" x=\"390\" y=\"34\" width=\"84\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"432.0\" y=\"54.0\" text-anchor=\"middle\">Agent reply</text><text class=\"fig-s\" x=\"432.0\" y=\"67.0\" text-anchor=\"middle\">1 sentence</text><path class=\"gi-a\" d=\"M474 56 L481 56\"/><polygon class=\"gi-ah\" points=\"488,56 481,52 481,60\"/><rect class=\"gi-f\" x=\"488\" y=\"34\" width=\"68\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"522.0\" y=\"54.0\" text-anchor=\"middle\">User sim</text><text class=\"fig-s\" x=\"522.0\" y=\"67.0\" text-anchor=\"middle\">+ critic</text><path class=\"gi-a d\" d=\"M522 78 L522 112 L40 112 L40 85\"/><polygon class=\"gi-ah\" points=\"40,78 36,85 44,85\"/><text class=\"fig-s\" x=\"281\" y=\"106\" text-anchor=\"middle\">next turn, up to 10; stops when mean reward &gt; 0.5</text><text class=\"fig-s\" x=\"425\" y=\"90\" text-anchor=\"middle\">3 rewritten principles</text><text class=\"fig-s\" x=\"425\" y=\"101\" text-anchor=\"middle\">= its strategy</text><rect class=\"gi-ev\" x=\"14\" y=\"132\" width=\"262\" height=\"96\" rx=\"10\"/><text class=\"fig-t\" x=\"26\" y=\"150\" text-anchor=\"start\">One principle</text><rect class=\"gi-hi\" x=\"22\" y=\"158\" width=\"246\" height=\"16\" rx=\"4\"/><text class=\"fig-s\" x=\"30\" y=\"170\" text-anchor=\"start\">When [situation]  ← only this is embedded</text><text class=\"fig-s\" x=\"30\" y=\"188\" text-anchor=\"start\">you should [strategy that worked]</text><text class=\"fig-s\" x=\"30\" y=\"203\" text-anchor=\"start\">rather than [strategy that failed]</text><text class=\"fig-s\" x=\"30\" y=\"218\" text-anchor=\"start\">because [reason]</text><text class=\"fig-s\" x=\"292\" y=\"150\" text-anchor=\"start\">The whole principle is rewritten</text><text class=\"fig-s\" x=\"292\" y=\"163\" text-anchor=\"start\">for the current dialogue and</text><text class=\"fig-s\" x=\"292\" y=\"176\" text-anchor=\"start\">passed to the agent as its strategy.</text><text class=\"fig-s\" x=\"292\" y=\"198\" text-anchor=\"start\">Retrieval ablation, ExTES SR:</text><text class=\"fig-s\" x=\"292\" y=\"211\" text-anchor=\"start\">86.2 with it, 78.5 with LLM choice</text>",
+    "text": [
+     "Each turn, the dialogue so far is matched against the When clauses and the 3 closest principles are retrieved.",
+     "An LLM rewrites each for the current dialogue, and the rewritten principles are given to the agent as the strategy for its next reply."
+    ],
+    "src": "paper §3.2-3.3; code agent.py L92-L186",
+    "url": "https://github.com/kimnamssya/Principles/blob/8a82a1e21c3f6d415fedb09e397581b87fb072dc/src/agent.py#L92-L186"
+   }
+  ],
+  "key_numbers": [
+   {
+    "label": "Self-play simulations",
+    "value": "50 per dataset, up to 10 turns",
+    "src": "paper §3.3",
+    "section": "construction"
+   },
+   {
+    "label": "Principles",
+    "value": "about 100 per domain",
+    "src": "paper §3.3",
+    "section": "construction"
+   },
+   {
+    "label": "Revision tries per failed turn",
+    "value": "up to 3",
+    "src": "paper §3.3; code run_ours.sh L9",
+    "section": "construction"
+   },
+   {
+    "label": "Critic samples per turn",
+    "value": "10, success if mean > 0.5",
+    "src": "paper App. F.1",
+    "section": "construction"
+   },
+   {
+    "label": "Principles retrieved",
+    "value": "top-3 by When clause",
+    "src": "paper §3.3",
+    "section": "method"
+   },
+   {
+    "label": "Cost vs DPDP (ESConv)",
+    "value": "$3.29 build + $5.30 inference vs $59.44 + $16.29",
+    "src": "paper Table 4",
+    "section": "results"
+   },
+   {
+    "label": "Inference time vs DPDP",
+    "value": "30.5 s vs 81.4 s",
+    "src": "paper Table 4",
+    "section": "results"
+   }
+  ],
+  "ablation": {
+   "cols": [
+    "ExTES SR",
+    "P4G+ SR"
+   ],
+   "rows": [
+    [
+     "Full",
+     "86.15",
+     "59.17"
+    ],
+    [
+     "unstructured principles",
+     "83.85",
+     "56.67"
+    ],
+    [
+     "LLM picks instead of retrieval",
+     "78.46",
+     "58.33"
+    ],
+    [
+     "no reinterpretation",
+     "83.85",
+     "56.67"
+    ]
+   ],
+   "src": "paper Table 3"
+  },
+  "components": [
+   {
+    "role": "Plans and revises strategies in self-play",
+    "model": "LLM (gpt-4o-mini in the released script)",
+    "kind": "llm",
+    "src": "code agent.py L60-L64, L103-L118",
+    "url": "https://github.com/kimnamssya/Principles/blob/8a82a1e21c3f6d415fedb09e397581b87fb072dc/src/agent.py#L103-L118"
+   },
+   {
+    "role": "Writes principles",
+    "model": "GPT-4o by default (Table 7 also tries Claude-3.7-Sonnet, Llama-3.1-8B)",
+    "kind": "llm",
+    "src": "paper Table 7"
+   },
+   {
+    "role": "User simulator and critic",
+    "model": "gpt-4o (critic temperature 1.0, 10 samples)",
+    "kind": "llm",
+    "src": "paper §3.3, App. F.1"
+   },
+   {
+    "role": "Principle search",
+    "model": "text-embedding-ada-002 + FAISS, L2",
+    "kind": "retriever",
+    "src": "paper §3.3"
+   },
+   {
+    "role": "Reinterpretation",
+    "model": "LLM, one call per principle",
+    "kind": "llm",
+    "src": "paper §3.2; code agent.py L154-L186",
+    "url": "https://github.com/kimnamssya/Principles/blob/8a82a1e21c3f6d415fedb09e397581b87fb072dc/src/agent.py#L154-L186"
+   }
+  ],
+  "discussion": {
+   "takeaway": "Strategy rules mined from an LLM's own simulated successes and repaired failures, stored as situation-indexed principles, beat prompted and trained strategy planners on emotional-support and persuasion self-play without any training.",
+   "claims": [
+    {
+     "claim": "Principles widen strategy coverage.",
+     "evidence": "SR 73.85 ESConv, 86.15 ExTES, 59.17 P4G+ vs best baselines 58.46, 71.54, 53.33; P4G 95.00 vs PPDPP 96.67. Table 1"
+    },
+    {
+     "claim": "Principles reduce strategy preference bias.",
+     "evidence": "Highest macro F1, weighted F1 and entropy on ESConv (10.52 / 17.67 / 1.21) and P4G (14.96 / 24.30 / 2.67). Table 2"
+    },
+    {
+     "claim": "No training is needed and cost stays low.",
+     "evidence": "PPDPP training costs about 11.5x more (Fig. 3); DPDP 18.07x training and 3.07x inference cost for 79.23 vs 73.85 SR on ESConv. Table 4"
+    },
+    {
+     "claim": "Lessons from both success and failure are needed.",
+     "evidence": "Both sources together beat either alone on ExTES and ESConv. Fig. 8"
+    },
+    {
+     "claim": "All four parts of the template matter.",
+     "evidence": "ESConv SR 73.85 full, 62.31 without 'rather than', 64.00 without 'because'. Table 5"
+    },
+    {
+     "claim": "Principles can also be built online.",
+     "evidence": "ESConv SR 66.15 online (success only) vs 73.85 offline. Table 6"
+    }
+   ],
+   "limits": [
+    "Retrieval uses L2 embedding distance between the dialogue and the When clause, which can miss fine contextual differences; reinterpretation may not fix very specific or ambiguous situations.",
+    "Planning is turn by turn with no explicit long-term goal, so the agent may chase short-term reward in tasks such as negotiation.",
+    "Principles are not reviewed by experts; no clinical claims are made for emotional-support use."
+   ],
+   "limits_src": "paper, Limitations and Ethical Considerations",
+   "reading": [
+    "All scores come from self-play with an LLM user simulator and an LLM critic (gpt-4o); the same kind of critic reward also decides which turns become principles, so the memory is shaped by the evaluator.",
+    "The paper states that user simulator and critic are gpt-4o but does not state the agent backbone for PRINCIPLES and the baselines in Table 1; the released script uses gpt-4o-mini for all roles.",
+    "Figure 10 shows ESConv SR 80.0 at k = 9 against 73.9 at the default k = 3, and P4G 95.0 at k = 3; results are sensitive to k and the main table uses one fixed value.",
+    "Figure 9 shows P4G+ SR 60.0 at 25 simulations and 59.2 at 50, so '50 is optimal' holds for ExTES (86.2) but not clearly for P4G+.",
+    "In Table 3, the 'w/o Structured' and 'w/o Reinterpretation' rows are identical on both datasets (83.85 / 56.67).",
+    "Table 7: principles built with Llama-3.1-8B score higher on ESConv (86.15) than those built with GPT-4o (73.85).",
+    "The paper cites Ask-an-Expert as Zhang et al. 2024b in the text but lists it as 2023 in the references and Fig. 28 caption."
+   ]
+  },
+  "abstract": {
+   "text": "PRINCIPLES targets strategy planning in proactive dialogue such as emotional support and persuasion, where fixed strategy sets cover too little, LLMs favour a few strategies, and trained planners are costly. The method runs offline self-play on training dialogues and converts turns that improved the critic's score, or that succeeded after backtracking and revision, into structured principles. At inference, principles matching the current situation are retrieved, adapted to the dialogue and used to guide the agent, with no training. It outperforms prompted and trained baselines on ESConv, ExTES, P4G and an extended P4G+.",
+   "note": "Summary in our words; the original abstract is on arXiv.",
+   "url": "https://arxiv.org/abs/2509.17459"
+  },
+  "sections": {
+   "Memory architecture": "§2, §3",
+   "Results": "§4.2, §5",
+   "Ablation": "§4.2 (Table 3), §6",
+   "Discussion": "§6, Limitations",
+   "Details": "§3.3, App. A, E, F"
+  }
+ }
+}

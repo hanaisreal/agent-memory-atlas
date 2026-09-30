@@ -1,0 +1,691 @@
+{
+  "id": "ace",
+  "name": "ACE",
+  "paper": {
+    "title": "Agentic Context Engineering: Evolving Contexts for Self-Improving Language Models",
+    "arxiv": "2510.04618",
+    "url": "https://arxiv.org/abs/2510.04618",
+    "venue": "ICLR 2026",
+    "venue_short": "ICLR",
+    "track": "main",
+    "year": 2026,
+    "code": "https://github.com/ace-agent/ace"
+  },
+  "design": {
+    "construction": {
+      "unit": "bullet: id, helpful/harmful counters, one short strategy, concept, formula, code snippet or failure mode, filed under a section",
+      "kept_as": "LLM-written lessons (Reflector diagnoses, Curator phrases the bullet)",
+      "processing": "Generator answers with the playbook; Reflector diagnoses the attempt against feedback and tags used bullets; Curator proposes new bullets as ADD operations",
+      "trigger": "session-end",
+      "writer": "the same LLM in three roles (DeepSeek-V3.1 non-thinking by default)"
+    },
+    "organization": {
+      "structure": "one playbook of bullets grouped under fixed section headings",
+      "stores": "a single text playbook (the context) per task domain",
+      "index": null
+    },
+    "management": {
+      "operations": "deterministic append of Curator ADDs under their section with fresh ids; helpful/harmful counters incremented from Reflector tags; optional embedding dedup with LLM merge (off by default in code)",
+      "conflicts": "not resolved in code: UPDATE, MERGE and DELETE are listed as TODO",
+      "forgetting": "paper: lazy pruning when the context window is exceeded; not in the released code",
+      "timing": "both"
+    },
+    "retrieval": {
+      "query": null,
+      "candidates": "none: the whole playbook is read",
+      "selection": "none; the Generator lists the ids of bullets it found useful",
+      "budget": "whole playbook (curator prompt states an 80k-token budget but nothing enforces it)"
+    },
+    "use": {
+      "context": "full playbook plus question and context (finance); playbook inside the first ReAct prompt, before the task (AppWorld)",
+      "reasoning": "single JSON answer (finance) or ReAct loop up to 40 steps (AppWorld)"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "fixed-rule",
+      "retrieval": "none"
+    }
+  },
+  "classify": {
+    "structure": "flat",
+    "index": "none",
+    "management": "append-only",
+    "candidates": "read everything",
+    "decides": "reads everything",
+    "note": "Sections are headings inside one prompt, not separate stores. Counters change in place, but bullet text is only ever added in the released code; the paper's de-duplication is an optional flag."
+  },
+  "tags": {
+    "fidelity": "extracted",
+    "structure": [
+      "flat"
+    ],
+    "write_time": [
+      "extract"
+    ],
+    "selection": [
+      "full-context"
+    ],
+    "memory_type": [
+      "procedural",
+      "semantic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "code",
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "Each training sample (offline, up to 5 epochs) or each test sample (online) is answered by the Generator with the current playbook; its reasoning, answer and the ids of bullets it used are kept.",
+    "construction": "The Reflector compares the attempt with feedback (ground-truth answer, or execution result / unit tests on AppWorld), explains the error, and tags used bullets helpful or harmful; if the answer was wrong it can refine over several rounds while the Generator retries. The Curator then writes only new bullets as ADD operations.",
+    "organization": "One playbook of bullets under fixed section headings (e.g. strategies, formulas, code snippets, common mistakes); each bullet has an id and helpful/harmful counters.",
+    "update": "Non-LLM merge: ADDs get fresh ids and are appended under their section; counters are incremented from the Reflector's tags. The paper adds embedding-based de-duplication and lazy pruning (grow-and-refine); in the code dedup is an optional flag and pruning is absent.",
+    "retrieval": "None. The whole playbook is placed in every Generator call; the Generator reports which bullet ids it relied on.",
+    "answer": "Generator answers with the full playbook, the question and its context (finance), or acts in AppWorld's ReAct loop with the playbook in its system prompt.",
+    "learning": ""
+  },
+  "summary": "Treats the prompt as a growing playbook of itemised bullets: a Generator uses it, a Reflector diagnoses each attempt against feedback and scores bullets, and a Curator appends new bullets as small deltas merged without an LLM, avoiding the collapse that full LLM rewrites cause.",
+  "verified": false,
+  "notes": "Venue: ICLR 2026 main conference, poster (iclr.cc/virtual/2026/poster/10008343; ICLR 2026 proceedings; OpenReview forum eC4ygDs02R); arXiv comment 'ICLR 2026'; the v3 PDF header reads 'Published as a conference paper at ICLR 2026'. PDF read: arXiv v3 (29 Mar 2026).\nCode: ace-agent/ace at 4f679bef (committed 2026-03-11, the last commit before v3 of 29 Mar 2026; later commits add task-specific prompts and ComBEE batching) for the finance pipeline; its ace-appworld submodule pins ace-agent/ace-appworld at 9f3e9215 (2025-11-18) for AppWorld.\nDESIGN: paper §3, §4.1-4.2, App. A.4-A.6, F; code ace/ace.py, playbook_utils.py, ace/core/*.py, ace/prompts/*.py, eval/finance/run.py; ace-appworld experiments/code/ace/adaptation_agent.py, adaptation_react.py, playbook.py, configs. trigger 'session-end' = after each sample/task. index null: nothing is embedded unless the optional dedup runs. control.retrieval 'none': there is no retrieval step.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2510.04618v3 (PDF read 2026-09-30)",
+      "code": "https://github.com/ace-agent/ace/tree/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/",
+      "code_note": "Finance/general pipeline: ace-agent/ace at 4f679bef (2026-03-11), the last commit before paper v3 (later ones add ComBEE batching). AppWorld runs live in the submodule ace-agent/ace-appworld, pinned by that commit to 9f3e9215 (2025-11-18): https://github.com/ace-agent/ace-appworld/tree/9f3e92155345a9159f3a8b25abc334eeca05b545/ . The two pipelines differ (see paper_vs_code)."
+    },
+    "headline": [
+      "There is no retrieval: every bullet in the playbook goes into every call, so the context grows with experience (24.9k vs 10.9k input tokens per AppWorld call against GEPA).",
+      "The Curator only adds; the released code implements ADD alone, so bullets are never rewritten or deleted and de-duplication is an optional switch.",
+      "The online AppWorld row of Table 1 (59.5) starts from an offline-trained playbook; without that warm-up the paper reports 56.1."
+    ],
+    "units": [
+      {
+        "name": "Bullet",
+        "role": "one reusable piece of advice in the playbook",
+        "made_by": "Curator LLM (from the Reflector's diagnosis)",
+        "fields": [
+          {
+            "name": "content",
+            "what": "a strategy, domain concept, formula, code snippet or common mistake, one line",
+            "kept_as": "extracted",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.1; code playbook_utils.py L143-L161",
+            "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/playbook_utils.py#L143-L161"
+          },
+          {
+            "name": "id",
+            "what": "section slug + running number, e.g. calc-00031; the Generator cites ids it used",
+            "kept_as": "derived",
+            "used_for": [
+              "answer",
+              "verifier"
+            ],
+            "src": "code playbook_utils.py L153-L159; utils.py L52-L72",
+            "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/playbook_utils.py#L153-L159"
+          },
+          {
+            "name": "helpful / harmful counters",
+            "what": "incremented from the Reflector's tags; printed in the playbook but no rule filters on them (finance code only; in the AppWorld code the tags are requested but never applied and bullets carry no counters)",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.1; code playbook_utils.py L50-L93",
+            "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/playbook_utils.py#L50-L93"
+          },
+          {
+            "name": "section",
+            "what": "heading the bullet is filed under (e.g. FORMULAS & CALCULATIONS, COMMON MISTAKES TO AVOID)",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code ace.py L95-L109",
+            "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/ace/ace.py#L95-L109"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Generate",
+        "how": "the Generator answers with the full playbook and returns reasoning, final answer and the ids of bullets it used",
+        "src": "code prompts/generator.py L6-L41; ace.py L463-L473",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/ace/prompts/generator.py#L6-L41"
+      },
+      {
+        "step": "Reflect",
+        "how": "the Reflector gets the reasoning, the answer, feedback (ground truth if allowed, else only right/wrong) and the used bullets; it names the error, root cause and key insight and tags each used bullet helpful, harmful or neutral",
+        "params": {
+          "rounds if wrong": "≤ 3 (code default), 5 (paper)"
+        },
+        "out": "diagnosis + bullet tags; the Generator retries after each round and stops when correct",
+        "src": "paper §3, §4.2; code ace.py L499-L576, prompts/reflector.py L6-L60",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/ace/ace.py#L499-L576"
+      },
+      {
+        "step": "Count",
+        "how": "increment helpful/harmful counters of the tagged bullets",
+        "src": "code playbook_utils.py L50-L93",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/playbook_utils.py#L50-L93"
+      },
+      {
+        "step": "Curate",
+        "how": "the Curator sees the playbook, its stats, the latest reflection and the question context and outputs JSON ADD operations (section + content) for insights not yet present",
+        "src": "paper §3.1; code curator.py L35-L163, prompts/curator.py L6-L60",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/ace/core/curator.py#L35-L163"
+      },
+      {
+        "step": "Merge",
+        "how": "deterministic: each ADD gets a fresh id with 0/0 counters and is inserted under its section (unknown sections go to OTHERS)",
+        "src": "paper §3.1; code playbook_utils.py L96-L216",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/playbook_utils.py#L96-L216"
+      },
+      {
+        "step": "Dedup (optional)",
+        "how": "embed bullets with all-mpnet-base-v2, group pairs above cosine 0.90, and have the LLM merge each group into one bullet with summed counters",
+        "params": {
+          "threshold": "0.90",
+          "default": "off"
+        },
+        "src": "paper §3.2; code bulletpoint_analyzer.py L150-L271, ace.py L599-L606",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/ace/core/bulletpoint_analyzer.py#L150-L271"
+      }
+    ],
+    "read": [
+      {
+        "step": "Put the whole playbook in the prompt",
+        "round": 1,
+        "input": "question + context",
+        "scores": "nothing is scored",
+        "how": "the full playbook text (all sections, all bullets with ids and counters) is formatted into the Generator prompt with the question and context",
+        "src": "code prompts/generator.py L6-L41, generator.py L59",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/ace/prompts/generator.py#L6-L41"
+      },
+      {
+        "step": "Answer and cite",
+        "round": 1,
+        "how": "the Generator answers and lists the ids of bullets it found relevant; the ids feed the Reflector during adaptation",
+        "src": "paper §3.1; code prompts/generator.py L16-L19",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/ace/prompts/generator.py#L16-L19"
+      }
+    ],
+    "answer_context": {
+      "sees": "the entire playbook, a reflection slot ('(empty)' at test time), the question and its context",
+      "format": "Generator prompt: instructions, then **Playbook:** {every bullet as '[id] helpful=h harmful=k :: content' under ## section headings}, **Reflection:**, **Question:**, **Context:**, answer as JSON with reasoning, bullet_ids, final_answer",
+      "excludes": [
+        "past trajectories",
+        "past reflections (at test time)",
+        "any retrieval or filtering"
+      ],
+      "includes": [
+        "all bullets",
+        "their ids and helpful/harmful counts (finance code)"
+      ],
+      "note": "On AppWorld the playbook is inserted between PLAYBOOK BEGIN / END markers in the first ReAct prompt, without counters.",
+      "src": "code prompts/generator.py L6-L41; ace-appworld adaptation_react.py L48-L65",
+      "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/ace/prompts/generator.py#L6-L41"
+    },
+    "compression": [
+      {
+        "what": "playbook vs the experience it is built from",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported. The paper argues against compression; the released AppWorld online playbook holds 359 bullets (130 KB of text).",
+        "src": "ace-appworld experiments/playbooks/appworld_online_trained_playbook.txt",
+        "url": "https://github.com/ace-agent/ace-appworld/blob/9f3e92155345a9159f3a8b25abc334eeca05b545/experiments/playbooks/appworld_online_trained_playbook.txt"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "AppWorld average (DeepSeek-V3.1)",
+        "value": "ReAct 42.4 · +GEPA 46.4 · +ACE offline 59.4 · +DC online 51.9 · +ACE online 59.5",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "Finance average (FiNER, Formula)",
+        "value": "Base 69.1 · GEPA 72.5 · ACE offline 81.9 · DC online 71.8 · ACE online 76.6 (with labels)",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "Context collapse example (DC on AppWorld)",
+        "value": "18,282 tokens (66.7) → 122 tokens (57.1) in one step",
+        "src": "paper §2.2, Fig. 2"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Grow-and-refine",
+        "paper": "existing bullets updated in place, redundancy pruned by embedding comparison, lazy pruning when the window is exceeded",
+        "code": "only ADD is implemented (UPDATE/MERGE/DELETE are TODO); dedup is an opt-in flag (off by default, none in the sequential AppWorld agent); no pruning; the token budget is only text in the Curator prompt",
+        "src": "playbook_utils.py L96-L216; ace.py L127, L599-L606",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/playbook_utils.py#L96-L216"
+      },
+      {
+        "topic": "Refinement rounds and epochs",
+        "paper": "up to 5 Reflector rounds and 5 offline epochs",
+        "code": "defaults 3 rounds and 1 epoch (finance); AppWorld with-GT retries a training task up to 5 times",
+        "src": "eval/finance/run.py L45-L48; ace-appworld adaptation_agent.py L61",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/eval/finance/run.py#L45-L48"
+      },
+      {
+        "topic": "Online adaptation",
+        "paper": "each test sample is predicted with the current context, then used to update it",
+        "code": "finance code scores a whole window (15 samples by default) with the playbook from before the window, then trains on each sample",
+        "src": "ace.py L934-L1030; eval/finance/run.py L53",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/ace/ace.py#L934-L1030"
+      },
+      {
+        "topic": "No ground-truth labels (finance)",
+        "paper": "Reflector works without labels",
+        "code": "the reference answer is hidden, but the Reflector is still told whether the prediction matched it, and the retry loop stops on a label match",
+        "src": "ace.py L499-L560",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/ace/ace.py#L499-L560"
+      },
+      {
+        "topic": "Helpful/harmful counters on AppWorld",
+        "paper": "every bullet carries helpful/harmful counters",
+        "code": "the AppWorld Reflector prompt asks for helpful/harmful tags, but the agent never parses or applies them (update_bullet_counts is unused) and AppWorld bullets carry no counters",
+        "src": "ace-appworld adaptation_react.py L235-L267; appworld_react_reflector_no_gt_prompt.txt L12; playbook.py L66",
+        "url": "https://github.com/ace-agent/ace-appworld/blob/9f3e92155345a9159f3a8b25abc334eeca05b545/experiments/code/ace/adaptation_react.py#L235-L267"
+      },
+      {
+        "topic": "Merging and de-duplication",
+        "paper": "deltas and de-duplication are handled by lightweight non-LLM logic (§3, §4.7)",
+        "code": "ADD deltas are merged by a rule, but the optional de-duplicator asks an LLM to merge each group of similar bullets; the sequential AppWorld agent has no de-duplication at all",
+        "src": "bulletpoint_analyzer.py L193-L271; ace-appworld adaptation_react.py L323-L359",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/ace/core/bulletpoint_analyzer.py#L193-L271"
+      },
+      {
+        "topic": "Offline playbook selection (finance)",
+        "paper": "context optimised on the training split, evaluated on test",
+        "code": "the playbook with the best validation accuracy (scored against validation labels, also in no-label runs) is the one tested",
+        "src": "ace.py L735-L785, L289",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/ace/ace.py#L735-L785"
+      },
+      {
+        "topic": "Finance data splits",
+        "paper": "original train/validation/test splits",
+        "code": "released files are subsets: FiNER 1,000 train / 500 val / 441 test, Formula 500 / 300 / 200",
+        "src": "eval/finance/data/sample_config.json",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/eval/finance/data/sample_config.json"
+      },
+      {
+        "topic": "AppWorld adaptation loop",
+        "paper": "Reflector refines up to 5 rounds; up to 5 offline epochs",
+        "code": "one Reflector and one Curator call per attempt; with ground truth a training task is re-attempted up to 5 times with the reflection fed back; the released configs set no num_epochs, so run.py uses 1",
+        "src": "ace-appworld adaptation_agent.py L61, L91-L142; run.py L20, L41",
+        "url": "https://github.com/ace-agent/ace-appworld/blob/9f3e92155345a9159f3a8b25abc334eeca05b545/experiments/code/ace/adaptation_agent.py#L91-L142"
+      },
+      {
+        "topic": "Starting playbook on AppWorld",
+        "paper": "context built by adaptation",
+        "code": "adaptation starts from 8 seed bullets that restate the numbered rules of AppWorld's ReAct prompt (e.g. read API docs first, loop over page_index)",
+        "src": "ace-appworld experiments/playbooks/appworld_initial_playbook.txt; prompts/react.txt L248-L262",
+        "url": "https://github.com/ace-agent/ace-appworld/blob/9f3e92155345a9159f3a8b25abc334eeca05b545/experiments/playbooks/appworld_initial_playbook.txt"
+      }
+    ],
+    "open_questions": [
+      "How much of the gain comes from simply having a long, detailed prompt rather than from what the reflect-curate loop writes? No run gives the Generator an equally long playbook written without feedback.",
+      "Because every bullet is always read, the method's cost and noise grow with the playbook; the paper's pruning study (Table 21) is on FiNER only and its pruning is not in the released code."
+    ],
+    "glance": [
+      {
+        "q": "What is one memory item?",
+        "a": "A bullet: one line of advice (strategy, formula, code snippet or common mistake) with an id and helpful/harmful counters, filed under a section of the playbook.",
+        "src": "paper §3.1",
+        "url": "https://arxiv.org/pdf/2510.04618"
+      },
+      {
+        "q": "Who writes it?",
+        "a": "The same LLM in three roles: a Generator tries the task, a Reflector explains what went right or wrong, a Curator writes only the new bullets.",
+        "src": "paper §3, §4.2",
+        "url": "https://arxiv.org/pdf/2510.04618"
+      },
+      {
+        "q": "Is anything retrieved?",
+        "a": "No. The whole playbook is placed in every prompt; the Generator only reports which bullet ids it used.",
+        "src": "code prompts/generator.py L6-L41",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/ace/prompts/generator.py#L6-L41"
+      },
+      {
+        "q": "Is memory edited or deleted?",
+        "a": "Only counters change. The code implements ADD only; semantic de-duplication is optional and off by default.",
+        "src": "code playbook_utils.py L96-L161",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/playbook_utils.py#L96-L161"
+      },
+      {
+        "q": "What feedback drives it?",
+        "a": "Ground-truth answers or unit tests when allowed; otherwise execution results (AppWorld) or a right/wrong signal (finance code).",
+        "src": "paper §4.3-4.4; code ace.py L499-L560",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/ace/ace.py#L499-L560"
+      }
+    ],
+    "flow": [
+      {
+        "n": 1,
+        "round": 0,
+        "title": "Answer with the playbook",
+        "actor": "llm",
+        "method": "LLM generation",
+        "model": "DeepSeek-V3.1 (non-thinking)",
+        "in": "whole playbook, question, context",
+        "out": "answer + bullet ids used",
+        "sees": "Every bullet with its id and counters; no search.",
+        "params": {},
+        "src": "prompts/generator.py L6-L41",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/ace/prompts/generator.py#L6-L41",
+        "short": "Generate",
+        "count": "playbook → answer"
+      },
+      {
+        "n": 2,
+        "round": 0,
+        "title": "Check against feedback",
+        "actor": "rule",
+        "decision": true,
+        "method": "compare with label, or run tests / code",
+        "in": "answer",
+        "out": "right or wrong",
+        "sees": "Ground truth (finance, AppWorld with GT) or execution output (AppWorld without GT).",
+        "yes": "reflect once to tag bullets",
+        "no": "reflect and retry, ≤ 3 rounds (code)",
+        "src": "ace.py L476-L576",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/ace/ace.py#L476-L576",
+        "short": "Right?",
+        "count": "answer → yes / no"
+      },
+      {
+        "n": 3,
+        "round": 0,
+        "title": "Diagnose and tag",
+        "actor": "llm",
+        "method": "LLM generation",
+        "model": "same LLM",
+        "in": "reasoning, answer, feedback, used bullets",
+        "out": "insight + helpful/harmful tags",
+        "sees": "Only the bullets the Generator cited, plus the attempt.",
+        "params": {
+          "rounds": "≤ 3 code, 5 paper"
+        },
+        "src": "prompts/reflector.py L6-L60",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/ace/prompts/reflector.py#L6-L60",
+        "short": "Reflect",
+        "count": "attempt → insight"
+      },
+      {
+        "n": 4,
+        "round": 0,
+        "title": "Propose new bullets",
+        "actor": "llm",
+        "method": "LLM generation (JSON)",
+        "model": "same LLM",
+        "in": "playbook, stats, reflection, context",
+        "out": "ADD operations",
+        "sees": "The whole playbook, so it can skip insights already present.",
+        "params": {},
+        "src": "curator.py L35-L163",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/ace/core/curator.py#L35-L163",
+        "short": "Curate",
+        "count": "insight → ADDs"
+      },
+      {
+        "n": 5,
+        "round": 0,
+        "title": "Merge",
+        "actor": "rule",
+        "method": "deterministic insert under section",
+        "in": "ADD operations",
+        "out": "longer playbook",
+        "sees": "No LLM.",
+        "params": {},
+        "src": "playbook_utils.py L96-L216",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/playbook_utils.py#L96-L216",
+        "short": "Append",
+        "count": "ADDs → playbook"
+      }
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 246",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"40\" width=\"72\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"40\" y=\"59.0\" text-anchor=\"middle\">Query</text><text class=\"fig-s\" x=\"40\" y=\"72.0\" text-anchor=\"middle\">train or test</text><path class=\"gi-a\" d=\"M76 62 L81 62\"/><polygon class=\"gi-ah\" points=\"88,62 81,58 81,66\"/><rect class=\"gi-llm\" x=\"88\" y=\"40\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"132\" y=\"59.0\" text-anchor=\"middle\">Generator</text><text class=\"fig-s\" x=\"132\" y=\"72.0\" text-anchor=\"middle\">uses playbook</text><path class=\"gi-a\" d=\"M176 62 L181 62\"/><polygon class=\"gi-ah\" points=\"188,62 181,58 181,66\"/><rect class=\"gi-f\" x=\"188\" y=\"40\" width=\"84\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"230\" y=\"59.0\" text-anchor=\"middle\">Feedback</text><text class=\"fig-s\" x=\"230\" y=\"72.0\" text-anchor=\"middle\">right / wrong?</text><path class=\"gi-a\" d=\"M272 62 L277 62\"/><polygon class=\"gi-ah\" points=\"284,62 277,58 277,66\"/><rect class=\"gi-llm\" x=\"284\" y=\"40\" width=\"90\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"329\" y=\"59.0\" text-anchor=\"middle\">Reflector</text><text class=\"fig-s\" x=\"329\" y=\"72.0\" text-anchor=\"middle\">why; tag bullets</text><path class=\"gi-a\" d=\"M374 62 L379 62\"/><polygon class=\"gi-ah\" points=\"386,62 379,58 379,66\"/><rect class=\"gi-llm\" x=\"386\" y=\"40\" width=\"78\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"425\" y=\"59.0\" text-anchor=\"middle\">Curator</text><text class=\"fig-s\" x=\"425\" y=\"72.0\" text-anchor=\"middle\">ADD ops only</text><path class=\"gi-a\" d=\"M464 62 L469 62\"/><polygon class=\"gi-ah\" points=\"476,62 469,58 469,66\"/><rect class=\"gi-f\" x=\"476\" y=\"40\" width=\"78\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"515\" y=\"59.0\" text-anchor=\"middle\">Append</text><text class=\"fig-s\" x=\"515\" y=\"72.0\" text-anchor=\"middle\">rule, no LLM</text><path class=\"gi-a d\" d=\"M329 40 L329 24 L132 24 L132 33\"/><polygon class=\"gi-ah\" points=\"132,40 128,33 136,33\"/><text class=\"fig-s\" x=\"230\" y=\"17\" text-anchor=\"middle\">wrong: reflect, regenerate (≤ 3 rounds in code, 5 in paper)</text><rect class=\"gi-f\" x=\"236\" y=\"116\" width=\"318\" height=\"104\" rx=\"8\"/><text class=\"fig-t\" x=\"246\" y=\"132\" text-anchor=\"start\">Playbook</text><text class=\"fig-s\" x=\"544\" y=\"132\" text-anchor=\"end\">sections of bullets</text><rect class=\"gi-ev\" x=\"246\" y=\"140\" width=\"298\" height=\"18\" rx=\"5\"/><text class=\"fig-s\" x=\"254\" y=\"153\" text-anchor=\"start\">[fin-00012] helpful=3 harmful=0 :: strategy …</text><rect class=\"gi-ev\" x=\"246\" y=\"162\" width=\"298\" height=\"18\" rx=\"5\"/><text class=\"fig-s\" x=\"254\" y=\"175\" text-anchor=\"start\">[calc-00031] helpful=0 harmful=1 :: formula …</text><rect class=\"gi-hi\" x=\"246\" y=\"184\" width=\"298\" height=\"18\" rx=\"5\"/><text class=\"fig-s\" x=\"254\" y=\"197\" text-anchor=\"start\">[err-00044] helpful=0 harmful=0 :: new lesson</text><text class=\"fig-s\" x=\"544\" y=\"214\" text-anchor=\"end\">new bullets start at 0 / 0</text><path class=\"gi-a\" d=\"M515 84 L515 109\"/><polygon class=\"gi-ah\" points=\"515,116 511,109 519,109\"/><path class=\"gi-a d\" d=\"M329 84 L329 109\"/><polygon class=\"gi-ah\" points=\"329,116 325,109 333,109\"/><text class=\"fig-s\" x=\"335\" y=\"104\" text-anchor=\"start\">+1 helpful / harmful</text><path class=\"gi-a\" d=\"M236 150 L132 150 L132 91\"/><polygon class=\"gi-ah\" points=\"132,84 128,91 136,91\"/><text class=\"fig-s\" x=\"184\" y=\"144\" text-anchor=\"middle\">all of it</text><rect class=\"gi-ev d\" x=\"6\" y=\"176\" width=\"216\" height=\"44\" rx=\"6\"/><text class=\"fig-s\" x=\"14\" y=\"193\" text-anchor=\"start\">optional dedup (off by default): embed,</text><text class=\"fig-s\" x=\"14\" y=\"208\" text-anchor=\"start\">LLM-merge bullets ≥ 0.90 similar</text><text class=\"fig-s\" x=\"280\" y=\"238\" text-anchor=\"middle\">nothing is edited or deleted: only ADD is implemented</text>",
+        "text": [
+          "A Generator tries the sample with the playbook, a Reflector explains the outcome and scores the bullets used, and a Curator proposes only new bullets.",
+          "A plain rule appends them under their section; in the released code nothing is ever rewritten or deleted."
+        ],
+        "src": "paper §3, Fig. 4; code ace.py L422-L630, playbook_utils.py L50-L216",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/ace/ace.py#L422-L630"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 236",
+        "body": "<text class=\"fig-t\" x=\"81\" y=\"22\" text-anchor=\"middle\">Playbook</text><rect class=\"gi-f\" x=\"6\" y=\"30\" width=\"150\" height=\"80\" rx=\"8\"/><rect class=\"gi-ev\" x=\"14\" y=\"38\" width=\"134\" height=\"14\" rx=\"4\"/><line class=\"gi-t\" x1=\"22\" y1=\"45\" x2=\"138\" y2=\"45\"/><rect class=\"gi-ev\" x=\"14\" y=\"56\" width=\"134\" height=\"14\" rx=\"4\"/><line class=\"gi-t\" x1=\"22\" y1=\"63\" x2=\"120\" y2=\"63\"/><rect class=\"gi-ev\" x=\"14\" y=\"74\" width=\"134\" height=\"14\" rx=\"4\"/><line class=\"gi-t\" x1=\"22\" y1=\"81\" x2=\"138\" y2=\"81\"/><rect class=\"gi-ev\" x=\"14\" y=\"92\" width=\"134\" height=\"14\" rx=\"4\"/><line class=\"gi-t\" x1=\"22\" y1=\"99\" x2=\"120\" y2=\"99\"/><rect class=\"gi-f\" x=\"6\" y=\"125\" width=\"150\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"81\" y=\"144.0\" text-anchor=\"middle\">Question</text><text class=\"fig-s\" x=\"81\" y=\"157.0\" text-anchor=\"middle\">+ task context</text><path class=\"gi-a\" d=\"M156 70 L183 70\"/><polygon class=\"gi-ah\" points=\"190,70 183,66 183,74\"/><text class=\"fig-s\" x=\"173\" y=\"62\" text-anchor=\"middle\">all</text><path class=\"gi-a\" d=\"M156 147 L183 147\"/><polygon class=\"gi-ah\" points=\"190,147 183,143 183,151\"/><text class=\"fig-t\" x=\"290\" y=\"22\" text-anchor=\"middle\">Generator prompt</text><rect class=\"gi-f\" x=\"190\" y=\"30\" width=\"200\" height=\"164\" rx=\"8\"/><rect class=\"gi-hi\" x=\"198\" y=\"38\" width=\"184\" height=\"64\" rx=\"5\"/><text class=\"fig-t\" x=\"206\" y=\"56\" text-anchor=\"start\">every bullet</text><text class=\"fig-s\" x=\"206\" y=\"70\" text-anchor=\"start\">id, helpful / harmful counts,</text><text class=\"fig-s\" x=\"206\" y=\"83\" text-anchor=\"start\">content; grouped by section</text><rect class=\"gi-ev\" x=\"198\" y=\"106\" width=\"184\" height=\"24\" rx=\"5\"/><text class=\"fig-s\" x=\"206\" y=\"122\" text-anchor=\"start\">reflection: \"(empty)\"</text><rect class=\"gi-ev\" x=\"198\" y=\"136\" width=\"184\" height=\"22\" rx=\"5\"/><text class=\"fig-s\" x=\"206\" y=\"151\" text-anchor=\"start\">question</text><rect class=\"gi-ev\" x=\"198\" y=\"162\" width=\"184\" height=\"22\" rx=\"5\"/><text class=\"fig-s\" x=\"206\" y=\"177\" text-anchor=\"start\">context</text><path class=\"gi-a\" d=\"M390 110 L403 110\"/><polygon class=\"gi-ah\" points=\"410,110 403,106 403,114\"/><rect class=\"gi-llm\" x=\"410\" y=\"88\" width=\"140\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"480\" y=\"107.0\" text-anchor=\"middle\">Generator</text><text class=\"fig-s\" x=\"480\" y=\"120.0\" text-anchor=\"middle\">same LLM as curator</text><path class=\"gi-a\" d=\"M480 132 L480 143\"/><polygon class=\"gi-ah\" points=\"480,150 476,143 484,143\"/><rect class=\"gi-f\" x=\"410\" y=\"150\" width=\"140\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"480\" y=\"169.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"480\" y=\"182.0\" text-anchor=\"middle\">+ ids of bullets used</text><text class=\"fig-s\" x=\"290\" y=\"214\" text-anchor=\"middle\">no search step: the whole playbook goes into every call</text><text class=\"fig-s\" x=\"290\" y=\"228\" text-anchor=\"middle\">AppWorld: 24.9k input tokens per call vs 10.9k for GEPA (Table 15)</text>",
+        "text": [
+          "There is no retrieval step: the full playbook, question and context form the Generator prompt.",
+          "The Generator answers and names the bullets it used, which the Reflector scores during adaptation."
+        ],
+        "src": "code prompts/generator.py L6-L41; paper Table 15",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/ace/prompts/generator.py#L6-L41"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Reflector rounds / offline epochs",
+        "value": "≤ 5 / ≤ 5 (paper); 3 / 1 (code defaults)",
+        "src": "paper §4.2; code eval/finance/run.py L45-L48",
+        "section": "construction"
+      },
+      {
+        "label": "Batch size",
+        "value": "1 sample per delta",
+        "src": "paper §4.2",
+        "section": "construction"
+      },
+      {
+        "label": "Dedup threshold",
+        "value": "0.90 cosine (optional); 50-90% tested",
+        "src": "code ace.py L42; paper Table 20",
+        "section": "construction"
+      },
+      {
+        "label": "Released AppWorld online playbook",
+        "value": "359 bullets",
+        "src": "ace-appworld appworld_online_trained_playbook.txt",
+        "section": "construction"
+      },
+      {
+        "label": "Bullets read per call",
+        "value": "all of them",
+        "src": "code prompts/generator.py L6-L41",
+        "section": "method"
+      },
+      {
+        "label": "AppWorld agent step limit",
+        "value": "40",
+        "src": "ace-appworld configs",
+        "section": "method"
+      },
+      {
+        "label": "Input tokens per call (AppWorld eval)",
+        "value": "24.9k vs 10.9k for GEPA (+128%)",
+        "src": "paper Table 15",
+        "section": "results"
+      },
+      {
+        "label": "Adaptation latency",
+        "value": "−82.3% vs GEPA (AppWorld offline), −91.5% vs DC (FiNER online)",
+        "src": "paper Table 4",
+        "section": "results"
+      },
+      {
+        "label": "Input tokens served from cache",
+        "value": "91.8% (GPT-5.1, OpenAI prompt caching)",
+        "src": "paper §4.7",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "Normal TGC",
+        "Normal SGC",
+        "Challenge TGC",
+        "Challenge SGC",
+        "Average"
+      ],
+      "rows": [
+        [
+          "ReAct (no adaptation)",
+          "63.7",
+          "42.9",
+          "41.5",
+          "21.6",
+          "42.4"
+        ],
+        [
+          "Offline, without Reflector or multi-epoch",
+          "70.8",
+          "55.4",
+          "55.9",
+          "38.1",
+          "55.1"
+        ],
+        [
+          "Offline, without multi-epoch",
+          "72.0",
+          "60.7",
+          "54.9",
+          "39.6",
+          "56.8"
+        ],
+        [
+          "Offline, full ACE",
+          "76.2",
+          "64.3",
+          "57.3",
+          "39.6",
+          "59.4"
+        ],
+        [
+          "Offline, no incremental update (full rewrite)",
+          "67.3",
+          "46.4",
+          "–",
+          "–",
+          "–"
+        ],
+        [
+          "Online, no labels",
+          "67.9",
+          "51.8",
+          "61.4",
+          "43.2",
+          "56.1"
+        ],
+        [
+          "Online + offline warm-up",
+          "69.6",
+          "53.6",
+          "66.0",
+          "48.9",
+          "59.5"
+        ]
+      ],
+      "src": "paper Table 3, Table 18 (AppWorld, DeepSeek-V3.1)"
+    },
+    "components": [
+      {
+        "role": "Generator",
+        "model": "DeepSeek-V3.1, non-thinking (also GPT-OSS-120B, GPT-5.1, Llama-3.3-70B in App. A.1)",
+        "kind": "llm",
+        "src": "paper §4.2, App. A.1"
+      },
+      {
+        "role": "Reflector",
+        "model": "same LLM",
+        "kind": "llm",
+        "src": "paper §4.2"
+      },
+      {
+        "role": "Curator",
+        "model": "same LLM",
+        "kind": "llm",
+        "src": "paper §4.2"
+      },
+      {
+        "role": "Merge deltas and counters",
+        "model": "deterministic rule",
+        "kind": "rule",
+        "src": "code playbook_utils.py L50-L216",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/playbook_utils.py#L50-L216"
+      },
+      {
+        "role": "Optional de-duplication",
+        "model": "all-mpnet-base-v2 embeddings + LLM merge",
+        "kind": "retriever",
+        "src": "code bulletpoint_analyzer.py L76, L150-L271",
+        "url": "https://github.com/ace-agent/ace/blob/4f679bef3b78e973a0e13a0acc2b4a7f6f7e41a2/ace/core/bulletpoint_analyzer.py#L150-L271"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Letting a context grow as an itemised playbook, written by reflection and merged in small deltas rather than rewritten, beats prompt optimisers and Dynamic Cheatsheet on AppWorld and financial tasks, at lower adaptation cost.",
+      "claims": [
+        {
+          "claim": "Large gains on agents.",
+          "evidence": "AppWorld average 59.4 offline and 59.5 online vs ReAct 42.4, GEPA 46.4, DC 51.9 (DeepSeek-V3.1). Table 1"
+        },
+        {
+          "claim": "Large gains on domain tasks.",
+          "evidence": "FiNER/Formula average 81.9 offline vs GEPA 72.5 and base 69.1. Table 2"
+        },
+        {
+          "claim": "Works without labels when execution feedback exists.",
+          "evidence": "AppWorld offline without labels 57.2 vs 59.4 with; but finance online without labels drops to 67.3 on FiNER (base 70.7). Tables 1-2"
+        },
+        {
+          "claim": "Full rewriting collapses contexts; deltas avoid it.",
+          "evidence": "DC context fell from 18,282 to 122 tokens and 66.7 → 57.1; removing incremental updates cuts test-normal TGC 76.2 → 67.3. §2.2, Table 18"
+        },
+        {
+          "claim": "Cheaper to adapt.",
+          "evidence": "−82.3% latency and −75.1% rollouts vs GEPA offline; −91.5% latency and −83.6% token cost vs DC online. Table 4"
+        },
+        {
+          "claim": "Holds across models.",
+          "evidence": "Gains with GPT-OSS-120B, GPT-5.1 and Llama-3.3-70B. Tables 5-9"
+        }
+      ],
+      "limits": [
+        "Depends on a reasonably strong Reflector; poor insights make the context noisy or harmful.",
+        "Without reliable feedback (labels or execution signals) adaptation can hurt.",
+        "Not every task needs a long context; tasks like HotPotQA or Game of 24 gain little."
+      ],
+      "limits_src": "paper §5, Table 2 caption",
+      "reading": [
+        "There is no retrieval: every call carries the whole playbook, which on AppWorld more than doubles input tokens per call (Table 15); the paper argues KV-cache reuse offsets the cost.",
+        "The released code only appends bullets; UPDATE/MERGE/DELETE are TODO, dedup is off by default and pruning is not implemented, so the 'refine' half of grow-and-refine is not what the code runs by default.",
+        "Table 1's online ACE row (59.5) is the warm-started variant from Table 3; the plain online run is 56.1, still above DC (51.9), which gets no warm-up.",
+        "'Without labels' on finance still gives the Reflector a right/wrong signal in the released code; on AppWorld it means execution output instead of ground-truth code and unit tests.",
+        "The offline finance run keeps the playbook with the best validation accuracy, so validation labels steer the no-label rows too; the released test files are subsets (FiNER 441, Formula 200 questions).",
+        "All three roles use the same model, so gains are not from a stronger teacher (§4.2); Table 16 shows a weaker Reflector still helps."
+      ]
+    },
+    "abstract": {
+      "text": "ACE improves an LLM application by editing its context instead of its weights. The context is a playbook of small, itemised bullets that grows over time: a Generator attempts tasks, a Reflector turns successes and failures into lessons, and a Curator adds new bullets that are merged by simple code rather than rewritten by an LLM. The authors argue this avoids brevity bias and the 'context collapse' seen when an LLM repeatedly rewrites its whole context. On AppWorld and financial reasoning benchmarks it beats prompt optimisers and Dynamic Cheatsheet in both offline and online adaptation, with lower adaptation latency and cost.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2510.04618"
+    },
+    "sections": {
+      "Memory architecture": "§3, Fig. 4",
+      "Results": "§4.3-4.5, Tables 1-2, App. A.1-A.2",
+      "Ablation": "§4.6, App. A.4-A.6",
+      "Discussion": "§4.7, §5",
+      "Details": "§4.1-4.2, App. A.3, F"
+    }
+  }
+}

@@ -1,0 +1,582 @@
+{
+  "id": "tokenpilot",
+  "name": "TokenPilot",
+  "paper": {
+    "title": "TokenPilot: Cache-Efficient Context Management for LLM Agents",
+    "arxiv": "2606.17016",
+    "url": "https://arxiv.org/abs/2606.17016",
+    "venue": "EMNLP 2026 Findings",
+    "venue_short": "EMNLP",
+    "track": "findings",
+    "year": 2026,
+    "code": "https://github.com/zjunlp/LightRSI"
+  },
+  "design": {
+    "construction": {
+      "unit": "the agent's own message history, split into task segments; long tool outputs replaced by a preview with an archive key",
+      "kept_as": "messages verbatim; tool outputs over a size limit cut to first 600 + last 400 chars, full copy archived",
+      "processing": "rule passes at ingestion: volatile prompt fields → placeholders, tool definitions moved to the end, repeated reads deduplicated, long outputs truncated, HTML slimmed, images downsampled",
+      "trigger": "every-turn",
+      "writer": "rule-based harness (no LLM)"
+    },
+    "organization": {
+      "structure": "active context (stable prefix + task segments) plus an on-disk archive keyed by content hash; a task registry labels segments",
+      "stores": "active context; artifact archive; task registry (active / completed / evictable)",
+      "index": "content hash (dataKey) for the archive"
+    },
+    "management": {
+      "operations": "every B turns an LLM estimator updates task lifecycles; tasks marked evictable are archived and taken out of the context in one pass",
+      "conflicts": null,
+      "forgetting": "finished tasks the estimator deems no longer useful leave the context (code: replaced by a one-line stub; content kept in the archive)",
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "the agent's own recovery-tool call with an archive key",
+      "candidates": "exact lookup of the archived payload by dataKey",
+      "selection": "the agent decides when to recover; otherwise the whole kept context is read",
+      "budget": "tool outputs cut above 50k chars by default (30k shell, 20k grep, 10k mcp_auth, 100k glob/write/edit, read unlimited)"
+    },
+    "use": {
+      "context": "stable prefix + retained task segments with trimmed tool outputs (+ stubs for paged-out tasks)",
+      "reasoning": "unchanged host agent loop (OpenClaw with GPT-5.4-mini in the experiments)"
+    },
+    "control": {
+      "construction": "fixed-rule",
+      "management": "prompted-llm",
+      "retrieval": "agent-tool-calls"
+    }
+  },
+  "classify": {
+    "structure": "tiers",
+    "index": "exact match",
+    "management": "evict",
+    "candidates": "read everything",
+    "decides": "reads everything",
+    "note": "The agent reads the whole kept context each call; the only lookup is the agent's own recovery-tool call by archive key, so 'read everything' fits better than 'agent searches'."
+  },
+  "tags": {
+    "fidelity": "mixed",
+    "structure": [
+      "tiered"
+    ],
+    "write_time": [
+      "filter",
+      "segment"
+    ],
+    "selection": [
+      "full-context",
+      "llm-tool-call"
+    ],
+    "memory_type": [
+      "working"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "code",
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "Before each model call, rule passes rewrite the prompt prefix (placeholders for agent id, working directory, timestamps; tool definitions moved to the end) and shrink tool results (deduplicate repeated reads, truncate long outputs to a 600+400-char preview, slim HTML, downsample images).",
+    "construction": "Trimmed outputs keep a preview and an archive key; the full payload is saved on disk under its content hash.",
+    "organization": "The context is a byte-stable prefix followed by turns grouped into task segments tracked in a registry with lifecycle states.",
+    "update": "Every B turns (B = 3) a Qwen3.5-35B-A3B estimator reads a compressed view of recent turns and the registry and moves tasks active → completed → evictable; evictable tasks are archived and removed in one pass.",
+    "retrieval": "No search: the agent reads the whole kept context. It can call a recovery tool with an archive key to get a trimmed payload back in full.",
+    "answer": "The host agent (OpenClaw, GPT-5.4-mini) answers from the managed context as usual.",
+    "learning": ""
+  },
+  "summary": "Context manager for tool-using agents that keeps the prompt prefix byte-stable for provider KV caching, trims tool outputs at ingestion with a recovery tool, and evicts whole finished tasks in batches when an LLM estimator judges them no longer useful.",
+  "verified": false,
+  "notes": "Venue: arXiv v2 comment 'EMNLP 2026 Findings'; LightRSI README (2026-08-21 news) says accepted by EMNLP 2026 without a track. EMNLP 2026 proceedings are not yet on the ACL Anthology (checked 2026-09-30), so the track rests on the arXiv comment. Text read from arXiv v2 PDF (28 Aug 2026). Code: TokenPilot is the first preset of the LightRSI monorepo; the experiments ran on OpenClaw, so the OpenClaw adapter and shared packages were read.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2606.17016v2 (PDF read 2026-09-30)",
+      "code": "https://github.com/zjunlp/LightRSI/tree/0b7a81c359355b3ed7b6ba357eb4be36ac1f0e36/",
+      "code_note": "Pinned to the last commit on 2026-08-28, the date of arXiv v2. The repo is an actively developed product (Codex, Claude Code, DeepSeek adapters) and holds no experiment configs, so defaults read here may differ from the evaluated settings (e.g. estimator batch 5 by default vs B = 3 in the paper)."
+    },
+    "headline": [
+      "The aim is cost, not recall: keep the prompt prefix byte-identical so the provider's cache discounts it, and cut tokens only where that does not break the cache.",
+      "Nothing is searched; the agent reads its whole kept context and can fetch a trimmed payload back by key.",
+      "Whole tasks leave the context only after an LLM estimator marks them evictable, checked in batches of 3 turns."
+    ],
+    "units": [
+      {
+        "name": "Active context",
+        "role": "what the agent model receives on each call",
+        "made_by": "host agent messages, rewritten by rule passes",
+        "fields": [
+          {
+            "name": "stable prefix",
+            "what": "system prompt with <WORKDIR>, <AGENT_ID> and timestamp placeholders and the tool section moved to the end",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.2 Eq. 4, App. A.4; code message-text.ts L262-L330",
+            "url": "https://github.com/zjunlp/LightRSI/blob/0b7a81c359355b3ed7b6ba357eb4be36ac1f0e36/components/packages/features/stabilizer/src/message-text.ts#L262-L330"
+          },
+          {
+            "name": "task turns",
+            "what": "prompts, thinking, tool calls and responses of each task segment",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.2-3.3"
+          },
+          {
+            "name": "trimmed tool output",
+            "what": "outputs over the per-tool limit replaced by the first 600 and last 400 characters plus an archive key; HTML slimmed, repeated reads deduplicated",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper App. A.4; code pass-exec-output-truncation.ts L12-L34",
+            "url": "https://github.com/zjunlp/LightRSI/blob/0b7a81c359355b3ed7b6ba357eb4be36ac1f0e36/components/packages/features/reduction/src/passes/pass-exec-output-truncation.ts#L12-L34"
+          },
+          {
+            "name": "page-out stub",
+            "what": "one assistant message per evicted task: '[Completed task paged out] We previously completed a task about …'",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code history-apply.ts L414-L450",
+            "url": "https://github.com/zjunlp/LightRSI/blob/0b7a81c359355b3ed7b6ba357eb4be36ac1f0e36/components/packages/features/eviction/src/history-apply.ts#L380-L450"
+          }
+        ]
+      },
+      {
+        "name": "Artifact archive",
+        "role": "full payloads removed from the context",
+        "made_by": "rule, keyed by content hash",
+        "fields": [
+          {
+            "name": "full tool payload",
+            "what": "untrimmed tool output, returned by the recovery tool",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper Eq. 5; code recovery-tool.ts L20-L90",
+            "url": "https://github.com/zjunlp/LightRSI/blob/0b7a81c359355b3ed7b6ba357eb4be36ac1f0e36/components/adapters/openclaw/src/context-stack/page-in/recovery-tool.ts#L20-L90"
+          },
+          {
+            "name": "evicted task bundle",
+            "what": "all text of a paged-out task; the stub text shown to the model names no archive key",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "code history-apply.ts L394-L417",
+            "url": "https://github.com/zjunlp/LightRSI/blob/0b7a81c359355b3ed7b6ba357eb4be36ac1f0e36/components/packages/features/eviction/src/history-apply.ts#L380-L450"
+          }
+        ]
+      },
+      {
+        "name": "Task registry",
+        "role": "lifecycle label per task segment, used only to decide eviction",
+        "made_by": "Qwen3.5-35B-A3B estimator (JSON deltas), validated by rule",
+        "fields": [
+          {
+            "name": "task entry",
+            "what": "taskId, objective, lifecycle (active / blocked / completed / evictable), covered turn ids, completion evidence, unresolved questions",
+            "kept_as": "extracted",
+            "used_for": [],
+            "src": "paper App. A.4 Fig. 8; code task-state-estimator.ts L26-L75",
+            "url": "https://github.com/zjunlp/LightRSI/blob/0b7a81c359355b3ed7b6ba357eb4be36ac1f0e36/components/packages/features/eviction/src/task-state-estimator.ts#L26-L75"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Stabilize prefix",
+        "how": "replace working directory, agent id and timestamps with placeholders; move the tool section to the end of the system prompt next to the real values",
+        "src": "paper §3.2, App. A.4; code message-text.ts L262-L330",
+        "url": "https://github.com/zjunlp/LightRSI/blob/0b7a81c359355b3ed7b6ba357eb4be36ac1f0e36/components/packages/features/stabilizer/src/message-text.ts#L262-L330"
+      },
+      {
+        "step": "Reduce tool output",
+        "how": "passes run when a call carries ≥2,200 chars; outputs above the per-tool limit keep a 600 + 400-char preview; identical reads are deduplicated; HTML slimmed; images downsampled (100KB, SVG 50KB); paths cut to 80 chars",
+        "params": {
+          "default limit": "50k chars",
+          "shell": "30k",
+          "grep": "20k",
+          "read": "no limit"
+        },
+        "src": "paper App. A.4; code config-normalize.ts L214-L215, pass-exec-output-truncation.ts L12-L34",
+        "url": "https://github.com/zjunlp/LightRSI/blob/0b7a81c359355b3ed7b6ba357eb4be36ac1f0e36/components/packages/features/reduction/src/passes/pass-exec-output-truncation.ts#L12-L34"
+      },
+      {
+        "step": "Archive",
+        "how": "the full payload is stored under its content hash so it can be recovered",
+        "src": "paper §3.2 Eq. 5",
+        "url": "https://arxiv.org/pdf/2606.17016"
+      },
+      {
+        "step": "Estimate task states",
+        "how": "once B new turns have accumulated, the estimator reads a compressed view plus the registry and returns lifecycle updates; a task becomes evictable only when finished, with evidence, no open questions, and the session has moved on",
+        "params": {
+          "B": "3 (paper); code default 5",
+          "model": "Qwen3.5-35B-A3B"
+        },
+        "out": "under $0.03 of estimator cost for the whole continuous PinchBench stream",
+        "src": "paper §3.3 Eq. 7-8, App. A.4; code lifecycle-planner.ts L260-L278",
+        "url": "https://github.com/zjunlp/LightRSI/blob/0b7a81c359355b3ed7b6ba357eb4be36ac1f0e36/components/packages/features/eviction/src/lifecycle-planner.ts#L260-L278"
+      },
+      {
+        "step": "Evict",
+        "how": "all messages of an evictable task are archived and replaced by one stub message (paper: removed)",
+        "src": "paper Eq. 9; code history-apply.ts L380-L450",
+        "url": "https://github.com/zjunlp/LightRSI/blob/0b7a81c359355b3ed7b6ba357eb4be36ac1f0e36/components/packages/features/eviction/src/history-apply.ts#L380-L450"
+      }
+    ],
+    "read": [
+      {
+        "step": "Next call",
+        "round": 1,
+        "input": "managed context",
+        "scores": "nothing is scored",
+        "how": "the agent reads the stable prefix, kept task turns, trimmed outputs and stubs",
+        "src": "paper §3.1, Eq. 9",
+        "url": "https://arxiv.org/pdf/2606.17016"
+      },
+      {
+        "step": "Recover",
+        "round": 1,
+        "input": "archive key from a trimmed-output notice",
+        "how": "the agent calls memory_fault_recover with the dataKey (optionally a line range) and gets the full payload; the paper says that path is then no longer truncated",
+        "src": "paper §3.2; code recovery-tool.ts L20-L90",
+        "url": "https://github.com/zjunlp/LightRSI/blob/0b7a81c359355b3ed7b6ba357eb4be36ac1f0e36/components/adapters/openclaw/src/context-stack/page-in/recovery-tool.ts#L20-L90"
+      },
+      {
+        "step": "Repeat-read gate",
+        "round": 1,
+        "how": "in code, after 4 calls return the same content hash, a further identical call is blocked with a message pointing to the recovery tool",
+        "params": {
+          "min calls": "4"
+        },
+        "src": "code tool-call-memo.ts L99-L145, tool-call-memo-shared.ts L27",
+        "url": "https://github.com/zjunlp/LightRSI/blob/0b7a81c359355b3ed7b6ba357eb4be36ac1f0e36/components/adapters/openclaw/src/context-stack/integration/tool-call-memo.ts#L99-L145"
+      }
+    ],
+    "answer_context": {
+      "sees": "the agent's own history minus paged-out tasks, with long tool outputs cut to a preview",
+      "format": "host agent's normal message list; trimmed outputs as a 600-char head and 400-char tail preview with a recovery key; each evicted task as one '[Completed task paged out] …' message",
+      "excludes": [
+        "middle of truncated tool outputs (until recovered)",
+        "messages of evicted tasks",
+        "HTML markup removed by slimming",
+        "duplicate reads"
+      ],
+      "includes": [
+        "stable system prefix with placeholders",
+        "tool definitions and real runtime values at the end of the system prompt"
+      ],
+      "src": "paper App. A.4; code history-apply.ts L414-L450",
+      "url": "https://github.com/zjunlp/LightRSI/blob/0b7a81c359355b3ed7b6ba357eb4be36ac1f0e36/components/packages/features/eviction/src/history-apply.ts#L380-L450"
+    },
+    "compression": [
+      {
+        "what": "input tokens, continuous PinchBench run vs Vanilla",
+        "kept": 10.1,
+        "of": 31.0,
+        "unit": "M tokens",
+        "basis": "Table 1 continuous mode: TokenPilot 8.551 hit + 1.549 miss vs Vanilla 25.015 + 5.943",
+        "src": "paper Table 1",
+        "url": "https://arxiv.org/pdf/2606.17016"
+      },
+      {
+        "what": "input tokens, continuous Claw-Eval run vs Vanilla",
+        "kept": 31.4,
+        "of": 731.8,
+        "unit": "M tokens",
+        "basis": "Table 2 continuous mode: 21.430 + 9.928 vs 709.845 + 21.981",
+        "src": "paper Table 2",
+        "url": "https://arxiv.org/pdf/2606.17016"
+      },
+      {
+        "what": "input tokens, isolated PinchBench run vs Vanilla",
+        "kept": 10.8,
+        "of": 14.9,
+        "unit": "M tokens",
+        "basis": "Table 1 isolated mode: 8.893 + 1.933 vs 6.184 + 8.753",
+        "src": "paper Table 1",
+        "url": "https://arxiv.org/pdf/2606.17016"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Cost, PinchBench isolated / continuous",
+        "value": "$3.22 / $2.79 (Vanilla $8.31 / $7.24)",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "Cost, Claw-Eval isolated / continuous",
+        "value": "$2.27 / $10.58 (Vanilla $5.16 / $81.52)",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "Cache hit rate with placeholders",
+        "value": "38.7% → 79.2% PinchBench; 67.2% → 83.1% Claw-Eval",
+        "src": "paper Fig. 4"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "What eviction leaves",
+        "paper": "evicted messages are removed from the context (Eq. 9)",
+        "code": "default replacementMode pointer_stub: the task's messages become one '[Completed task paged out]' message; drop only in two_state mode",
+        "src": "config-normalize.ts L115-L121; history-apply.ts L414-L450",
+        "url": "https://github.com/zjunlp/LightRSI/blob/0b7a81c359355b3ed7b6ba357eb4be36ac1f0e36/components/packages/features/eviction/src/history-apply.ts#L380-L450"
+      },
+      {
+        "topic": "Estimator batch",
+        "paper": "B = 3 turns",
+        "code": "default batchTurns 5 (configurable)",
+        "src": "config-normalize.ts L128",
+        "url": "https://github.com/zjunlp/LightRSI/blob/0b7a81c359355b3ed7b6ba357eb4be36ac1f0e36/components/adapters/openclaw/src/context-stack/integration/config-normalize.ts#L100-L145"
+      },
+      {
+        "topic": "Frequency gate",
+        "paper": "G(m): content accessed more than τ times gets full delivery; τ not given",
+        "code": "no such gate found; tool-call-memo counts accesses per content hash and after 4 blocks the repeat, pointing to the recovery tool",
+        "src": "tool-call-memo.ts L99-L145",
+        "url": "https://github.com/zjunlp/LightRSI/blob/0b7a81c359355b3ed7b6ba357eb4be36ac1f0e36/components/adapters/openclaw/src/context-stack/integration/tool-call-memo.ts#L99-L145"
+      },
+      {
+        "topic": "Eviction on by default",
+        "paper": "part of the full system",
+        "code": "eviction module and eviction.enabled default to false; stabilizer and reduction default on",
+        "src": "config-normalize.ts L100-L106",
+        "url": "https://github.com/zjunlp/LightRSI/blob/0b7a81c359355b3ed7b6ba357eb4be36ac1f0e36/components/adapters/openclaw/src/context-stack/integration/config-normalize.ts#L100-L145"
+      }
+    ],
+    "open_questions": [
+      "The estimator's residual-utility judgement is compared with four heuristics (Table 7) but its accuracy at labelling tasks is never measured.",
+      "Scores are single runs with no variance; many category differences involve 2-6 tasks (e.g. Memory 2, Integrations 3 on PinchBench)."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 250",
+        "body": "<text class=\"fig-t\" x=\"62\" y=\"18\" text-anchor=\"middle\">Incoming</text><rect class=\"gi-ev\" x=\"6\" y=\"30\" width=\"112\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"62\" y=\"50\" text-anchor=\"middle\">system prompt</text><text class=\"fig-s\" x=\"62\" y=\"64\" text-anchor=\"middle\">+ tool definitions</text><rect class=\"gi-ev\" x=\"6\" y=\"144\" width=\"112\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"62\" y=\"164\" text-anchor=\"middle\">tool result</text><text class=\"fig-s\" x=\"62\" y=\"178\" text-anchor=\"middle\">logs, HTML, files</text><path class=\"gi-a\" d=\"M118.0 54.0 L139.0 54.0\"/><polygon class=\"gi-ah\" points=\"146.0,54.0 139.0,58.0 139.0,50.0\"/><path class=\"gi-a\" d=\"M118.0 168.0 L139.0 168.0\"/><polygon class=\"gi-ah\" points=\"146.0,168.0 139.0,172.0 139.0,164.0\"/><rect class=\"gi-f\" x=\"146\" y=\"30\" width=\"126\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"209\" y=\"52\" text-anchor=\"middle\">Stabilize prefix</text><text class=\"fig-s\" x=\"209\" y=\"65\" text-anchor=\"middle\">placeholders; tools last</text><rect class=\"gi-f\" x=\"146\" y=\"144\" width=\"126\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"209\" y=\"166\" text-anchor=\"middle\">Reduce output</text><text class=\"fig-s\" x=\"209\" y=\"179\" text-anchor=\"middle\">dedupe, slim, truncate</text><rect class=\"gi-r\" x=\"150\" y=\"22\" width=\"30\" height=\"12\" rx=\"3\"/><text class=\"gi-lbl\" x=\"165\" y=\"31\" text-anchor=\"middle\">rule</text><rect class=\"gi-r\" x=\"150\" y=\"136\" width=\"30\" height=\"12\" rx=\"3\"/><text class=\"gi-lbl\" x=\"165\" y=\"145\" text-anchor=\"middle\">rule</text><text class=\"fig-t\" x=\"374\" y=\"18\" text-anchor=\"middle\">Context sent to the agent</text><rect class=\"gi-ev\" x=\"296\" y=\"28\" width=\"156\" height=\"172\" rx=\"10\"/><rect class=\"gi-hi\" x=\"304\" y=\"36\" width=\"140\" height=\"40\" rx=\"6\"/><text class=\"fig-t\" x=\"312\" y=\"53\" text-anchor=\"start\">stable prefix</text><text class=\"fig-s\" x=\"312\" y=\"67\" text-anchor=\"start\">same bytes every call</text><rect class=\"gi-f\" x=\"304\" y=\"82\" width=\"140\" height=\"24\" rx=\"6\"/><text class=\"fig-t\" x=\"374\" y=\"98\" text-anchor=\"middle\">task A turns</text><rect class=\"gi-f\" x=\"304\" y=\"110\" width=\"140\" height=\"24\" rx=\"6\"/><text class=\"fig-t\" x=\"374\" y=\"126\" text-anchor=\"middle\">task B turns</text><rect class=\"gi-f\" x=\"304\" y=\"140\" width=\"140\" height=\"52\" rx=\"6\"/><text class=\"fig-t\" x=\"312\" y=\"157\" text-anchor=\"start\">trimmed output</text><text class=\"fig-s\" x=\"312\" y=\"171\" text-anchor=\"start\">first 600 + last 400</text><text class=\"fig-s\" x=\"312\" y=\"184\" text-anchor=\"start\">chars + archive key</text><path class=\"gi-a\" d=\"M272.0 54.0 L297.0 55.6\"/><polygon class=\"gi-ah\" points=\"304.0,56.0 296.8,59.6 297.3,51.6\"/><path class=\"gi-a\" d=\"M272.0 168.0 L297.0 166.4\"/><polygon class=\"gi-ah\" points=\"304.0,166.0 297.3,170.4 296.8,162.4\"/><rect class=\"gi-ev d\" x=\"470\" y=\"138\" width=\"84\" height=\"62\" rx=\"8\"/><text class=\"fig-t\" x=\"512\" y=\"158\" text-anchor=\"middle\">Archive</text><text class=\"fig-s\" x=\"512\" y=\"173\" text-anchor=\"middle\">full text,</text><text class=\"fig-s\" x=\"512\" y=\"186\" text-anchor=\"middle\">keyed by hash</text><path class=\"gi-a d\" d=\"M209.0 192.0 L209.0 218.0 L512.0 218.0 L512.0 207.0\"/><polygon class=\"gi-ah\" points=\"512.0,200.0 516.0,207.0 508.0,207.0\"/><text class=\"fig-s\" x=\"360\" y=\"213\" text-anchor=\"middle\">full copy saved</text><text class=\"fig-s\" x=\"280\" y=\"242\" text-anchor=\"middle\">cut above 50k chars (30k shell, 20k grep, read never); repeated reads deduped</text>",
+        "text": [
+          "Rules rewrite every call before it reaches the model: volatile prompt fields become placeholders and tool definitions move to the end, so the prefix stays byte-identical.",
+          "Long tool results keep only a head-and-tail preview in context; the full text goes to an archive keyed by its hash."
+        ],
+        "src": "paper §3.2, App. A.4; code message-text.ts, pass-exec-output-truncation.ts",
+        "url": "https://github.com/zjunlp/LightRSI/blob/0b7a81c359355b3ed7b6ba357eb4be36ac1f0e36/components/packages/features/reduction/src/passes/pass-exec-output-truncation.ts#L12-L34"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 250",
+        "body": "<rect class=\"gi-f\" x=\"6\" y=\"28\" width=\"84\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"48\" y=\"48\" text-anchor=\"middle\">New turns</text><text class=\"fig-s\" x=\"48\" y=\"61\" text-anchor=\"middle\">3 per batch</text><path class=\"gi-a\" d=\"M90.0 50.0 L103.0 50.0\"/><polygon class=\"gi-ah\" points=\"110.0,50.0 103.0,54.0 103.0,46.0\"/><rect class=\"gi-llm\" x=\"110\" y=\"28\" width=\"110\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"165\" y=\"48\" text-anchor=\"middle\">Estimator</text><text class=\"fig-s\" x=\"165\" y=\"61\" text-anchor=\"middle\">Qwen3.5-35B-A3B</text><text class=\"fig-s\" x=\"165\" y=\"86\" text-anchor=\"middle\">labels each task</text><text class=\"fig-s\" x=\"312\" y=\"98\" text-anchor=\"start\">yes if done and moved on</text><path class=\"gi-a\" d=\"M220.0 50.0 L245.0 50.0\"/><polygon class=\"gi-ah\" points=\"252.0,50.0 245.0,54.0 245.0,46.0\"/><polygon class=\"gi-llm\" points=\"304,22.0 356,50.0 304,78.0 252,50.0\"/><text class=\"fig-t\" x=\"304\" y=\"54\" text-anchor=\"middle\">Evictable?</text><path class=\"gi-a\" d=\"M356.0 50.0 L393.0 50.0\"/><polygon class=\"gi-ah\" points=\"400.0,50.0 393.0,54.0 393.0,46.0\"/><text class=\"fig-yes\" x=\"378\" y=\"44\" text-anchor=\"middle\">Yes</text><rect class=\"gi-hi\" x=\"400\" y=\"28\" width=\"154\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"477\" y=\"48\" text-anchor=\"middle\">Page out the task</text><text class=\"fig-s\" x=\"477\" y=\"61\" text-anchor=\"middle\">archive it, leave a stub</text><path class=\"gi-a\" d=\"M304.0 78.0 L304.0 113.0\"/><polygon class=\"gi-ah\" points=\"304.0,120.0 300.0,113.0 308.0,113.0\"/><text class=\"fig-no\" x=\"296\" y=\"110\" text-anchor=\"end\">No: keep</text><path class=\"gi-a\" d=\"M477.0 72.0 L477.0 142.0 L397.0 142.0\"/><polygon class=\"gi-ah\" points=\"390.0,142.0 397.0,138.0 397.0,146.0\"/><rect class=\"gi-f\" x=\"200\" y=\"120\" width=\"190\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"295\" y=\"140\" text-anchor=\"middle\">Context</text><text class=\"fig-s\" x=\"295\" y=\"153\" text-anchor=\"middle\">prefix + kept tasks + stubs</text><path class=\"gi-a\" d=\"M295.0 164.0 L295.0 189.0\"/><polygon class=\"gi-ah\" points=\"295.0,196.0 291.0,189.0 299.0,189.0\"/><rect class=\"gi-llm\" x=\"200\" y=\"196\" width=\"190\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"295\" y=\"216\" text-anchor=\"middle\">Agent call</text><text class=\"fig-s\" x=\"295\" y=\"229\" text-anchor=\"middle\">GPT-5.4-mini reads it all</text><rect class=\"gi-v fig-soft\" x=\"6\" y=\"120\" width=\"118\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"65\" y=\"140\" text-anchor=\"middle\">Recover tool</text><text class=\"fig-s\" x=\"65\" y=\"153\" text-anchor=\"middle\">exact archive key</text><path class=\"gi-a d\" d=\"M200.0 218.0 L65.0 218.0 L65.0 171.0\"/><polygon class=\"gi-ah\" points=\"65.0,164.0 69.0,171.0 61.0,171.0\"/><text class=\"fig-s\" x=\"8\" y=\"238\" text-anchor=\"start\">if a preview is short</text><path class=\"gi-a\" d=\"M124.0 142.0 L193.0 142.0\"/><polygon class=\"gi-ah\" points=\"200.0,142.0 193.0,146.0 193.0,138.0\"/><text class=\"fig-s\" x=\"162\" y=\"136\" text-anchor=\"middle\">full text</text>",
+        "text": [
+          "Every 3 turns an LLM estimator labels tasks; finished tasks the session has moved past are paged out and leave a one-line stub.",
+          "The agent reads everything that remains and can pull a trimmed payload back in full with a recovery tool."
+        ],
+        "src": "paper §3.3, App. A.4; code history-apply.ts, recovery-tool.ts",
+        "url": "https://github.com/zjunlp/LightRSI/blob/0b7a81c359355b3ed7b6ba357eb4be36ac1f0e36/components/packages/features/eviction/src/history-apply.ts#L380-L450"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Reduction trigger",
+        "value": "≥2,200 chars per call; tool fragments >1,200 chars",
+        "src": "paper App. A.4",
+        "section": "construction"
+      },
+      {
+        "label": "Output truncation",
+        "value": "50k chars default · 30k shell · 20k grep · read unlimited",
+        "src": "paper App. A.4",
+        "section": "construction"
+      },
+      {
+        "label": "Preview kept",
+        "value": "first 600 + last 400 chars",
+        "src": "paper App. A.4",
+        "section": "construction"
+      },
+      {
+        "label": "Identical tool call cap",
+        "value": "5 in a rolling window",
+        "src": "paper App. A.4",
+        "section": "construction"
+      },
+      {
+        "label": "Estimator batch",
+        "value": "every 3 turns (B = 3)",
+        "src": "paper App. A.4, Fig. 6",
+        "section": "method"
+      },
+      {
+        "label": "Estimator cost",
+        "value": "< $0.03 for the whole continuous PinchBench stream",
+        "src": "paper §3.3",
+        "section": "method"
+      },
+      {
+        "label": "Prices used",
+        "value": "$0.075 hit · $0.75 miss · $4.50 output per M tokens",
+        "src": "paper App. A.2",
+        "section": "results"
+      },
+      {
+        "label": "Cost cut vs Vanilla",
+        "value": "61% / 56% isolated, 61% / 87% continuous (PinchBench / Claw-Eval)",
+        "src": "paper Tables 1-2",
+        "section": "results"
+      },
+      {
+        "label": "Cache hit rate",
+        "value": "38.7% → 79.2% PinchBench with placeholders",
+        "src": "paper Fig. 4",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Agent (answers and acts)",
+        "model": "GPT-5.4-mini on OpenClaw",
+        "kind": "llm",
+        "src": "paper §4.1"
+      },
+      {
+        "role": "Prefix stabilizer",
+        "model": "rule",
+        "kind": "rule",
+        "src": "paper App. A.4; code message-text.ts",
+        "url": "https://github.com/zjunlp/LightRSI/blob/0b7a81c359355b3ed7b6ba357eb4be36ac1f0e36/components/packages/features/stabilizer/src/message-text.ts#L262-L330"
+      },
+      {
+        "role": "Tool-output reduction passes",
+        "model": "rule",
+        "kind": "rule",
+        "src": "paper App. A.4",
+        "url": "https://github.com/zjunlp/LightRSI/blob/0b7a81c359355b3ed7b6ba357eb4be36ac1f0e36/components/packages/features/reduction/src/passes/pass-exec-output-truncation.ts#L12-L34"
+      },
+      {
+        "role": "Task-state estimator",
+        "model": "Qwen3.5-35B-A3B, zero-shot, JSON deltas",
+        "kind": "llm",
+        "src": "paper §3.3, App. A.4",
+        "url": "https://github.com/zjunlp/LightRSI/blob/0b7a81c359355b3ed7b6ba357eb4be36ac1f0e36/components/packages/features/eviction/src/task-state-estimator.ts#L26-L75"
+      },
+      {
+        "role": "Eviction executor and recovery lookup",
+        "model": "rule (exact archive key)",
+        "kind": "rule",
+        "src": "code history-apply.ts, recovery-tool.ts",
+        "url": "https://github.com/zjunlp/LightRSI/blob/0b7a81c359355b3ed7b6ba357eb4be36ac1f0e36/components/adapters/openclaw/src/context-stack/page-in/recovery-tool.ts#L20-L90"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "PinchBench score",
+        "Cost ($)",
+        "Cache miss (M)"
+      ],
+      "rows": [
+        [
+          "Continuous: Vanilla",
+          "79.2",
+          "7.24",
+          "5.943"
+        ],
+        [
+          "+ Ingestion-Aware Compaction",
+          "79.9",
+          "4.22",
+          "1.589"
+        ],
+        [
+          "+ Lifecycle-Aware Eviction (full)",
+          "81.3",
+          "2.79",
+          "1.549"
+        ],
+        [
+          "Isolated: Vanilla",
+          "80.47",
+          "8.31",
+          "8.753"
+        ],
+        [
+          "+ Cache stabilization",
+          "80.81",
+          "4.35",
+          "2.818"
+        ],
+        [
+          "+ Reduction passes",
+          "80.92",
+          "2.87",
+          "1.493"
+        ],
+        [
+          "Reduction without recovery tool",
+          "77.12",
+          "4.03",
+          "2.539"
+        ]
+      ],
+      "src": "paper Table 3 (continuous) and Table 4 (isolated)"
+    },
+    "discussion": {
+      "takeaway": "For API-served agents, cutting context text can cost more than it saves if it breaks the provider's prefix cache. TokenPilot keeps the prefix stable, trims tool output only at ingestion and evicts whole finished tasks in batches, lowering cost 56-87% at similar scores.",
+      "claims": [
+        {
+          "claim": "Lowest cost of 11 methods in every setting.",
+          "evidence": "PinchBench $3.22 isolated / $2.79 continuous; Claw-Eval $2.27 / $10.58, vs Vanilla $8.31 / $7.24 / $5.16 / $81.52. Tables 1-2"
+        },
+        {
+          "claim": "Task scores stay competitive.",
+          "evidence": "PinchBench 81.0 / 81.3 vs Vanilla 80.5 / 79.2; Claw-Eval 63.1 / 60.8 vs 64.5 / 63.4. Tables 1-2"
+        },
+        {
+          "claim": "Stable placeholders turn cold starts into cache hits.",
+          "evidence": "Cache hit rate 38.7% → 79.2% (PinchBench), 67.2% → 83.1% (Claw-Eval); cost $8.31 → $4.35. Fig. 4, Table 4"
+        },
+        {
+          "claim": "The recovery tool is needed.",
+          "evidence": "Without it score 80.9 → 77.1 and cost $2.87 → $4.03. Table 4, §4.4"
+        },
+        {
+          "claim": "Model-judged residual utility is the cheapest retention signal.",
+          "evidence": "$4.69 vs $5.17-$6.82 (category-grouped) and $5.25 vs $5.79-$7.04 (mixed streams), similar scores. Table 7"
+        }
+      ],
+      "limits": [
+        "The estimator can mislabel segments when interactions are ambiguous or sparse.",
+        "The frequency threshold τ and batch size B may need tuning per deployment.",
+        "Prefix stabilization helps only when the provider supports prefix caching.",
+        "Continuous mode groups same-category tasks; heterogeneous streams may reuse prefixes less."
+      ],
+      "limits_src": "paper, Limitations",
+      "reading": [
+        "The contribution is a cost optimization for prefix-cached APIs; recall of past information is never tested apart from task scores.",
+        "On Claw-Eval TokenPilot scores below Vanilla in both modes (63.1 vs 64.5, 60.8 vs 63.4); the 'competitive' claim rests mostly on PinchBench.",
+        "In isolated mode the global layer alone (Table 4: 80.92, $2.87) is cheaper than the full system in Table 1 (81.0, $3.22), so eviction pays off only in continuous sessions.",
+        "The main continuous results group same-category tasks, which favours cross-task reuse; on shuffled streams (Table 9) TokenPilot scores 69.10 at $4.83, still the cheapest.",
+        "Savings depend on the price ratio: the cost model uses GPT-5.4-mini's 10× discount for cached input.",
+        "τ for the ingestion gate is never given, and the code's closest mechanism blocks repeated reads instead of restoring full content.",
+        "In code an evicted task leaves a one-line stub whose text names no archive key, so the agent has no stated way to recover it."
+      ]
+    },
+    "abstract": {
+      "text": "TokenPilot targets the cost of long agent sessions, where context grows with every tool call. The authors argue that pruning or summarizing history changes the prompt layout and so defeats the provider's prefix cache, which can erase the savings. TokenPilot instead fixes the prompt prefix byte for byte, trims noisy tool output before it enters the history (keeping a recoverable archive), and has a small LLM mark finished tasks for eviction only in periodic batches. On PinchBench and Claw-Eval it reports 56-87% lower cost than an unmanaged OpenClaw agent with similar task scores.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2606.17016"
+    },
+    "sections": {
+      "Memory architecture": "§3",
+      "Results": "§4.2",
+      "Ablation": "§4.3-4.5",
+      "Discussion": "§6, Limitations",
+      "Details": "§2, §4.1, App. A"
+    }
+  }
+}

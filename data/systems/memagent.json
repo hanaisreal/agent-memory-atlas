@@ -1,0 +1,447 @@
+{
+  "id": "memagent",
+  "name": "MemAgent",
+  "paper": {
+    "title": "MemAgent: Reshaping Long-Context LLM with Multi-Conv RL-based Memory Agent",
+    "arxiv": "2507.02259",
+    "url": "https://arxiv.org/abs/2507.02259",
+    "venue": "ICLR 2026",
+    "venue_short": "ICLR",
+    "track": "main",
+    "year": 2026,
+    "code": "https://github.com/BytedTsinghua-SIA/MemAgent"
+  },
+  "design": {
+    "construction": {
+      "unit": "one free-text memory of at most 1,024 tokens per question",
+      "kept_as": "LLM-written notes (copied sentences plus the model's comments), rewritten whole after every chunk",
+      "processing": "the model reads question + previous memory + next 5,000-token chunk and writes a new memory that replaces the old one",
+      "trigger": "other",
+      "writer": "RL-trained Qwen2.5-7B/14B-Instruct (RL-MemoryAgent), same model that answers"
+    },
+    "organization": {
+      "structure": "single text buffer inside the prompt",
+      "stores": "one memory string; no external store",
+      "index": null
+    },
+    "management": {
+      "operations": "overwrite the whole memory after each chunk",
+      "conflicts": "left to the model; no explicit rule",
+      "forgetting": "implicit: whatever the new memory omits is gone; output beyond 1,024 tokens is cut",
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "the question is in every update prompt, so writing is question-conditioned",
+      "candidates": "no retrieval: every chunk is read once, in order",
+      "selection": "the RL-trained model decides what to keep while writing",
+      "budget": "memory 1,024 + chunk 5,000 + question 1,024 + output 1,024 tokens (8K window)"
+    },
+    "use": {
+      "context": "question + final memory only",
+      "reasoning": "single answer call after K memory updates"
+    },
+    "control": {
+      "construction": "learned-rl",
+      "management": "learned-rl",
+      "retrieval": "none"
+    }
+  },
+  "classify": {
+    "structure": "none",
+    "index": "none",
+    "management": "update in place",
+    "candidates": "read everything",
+    "decides": "reads everything",
+    "note": "No store or search: the model streams the whole document and keeps one overwritten text memory; selection happens at write time by an RL-trained policy."
+  },
+  "tags": {
+    "fidelity": "extracted",
+    "structure": [
+      "none"
+    ],
+    "write_time": [
+      "summarize",
+      "extract",
+      "learned"
+    ],
+    "selection": [
+      "model-reads"
+    ],
+    "memory_type": [
+      "working"
+    ],
+    "learning": "rl",
+    "domain": [
+      "long-document"
+    ]
+  },
+  "stages": {
+    "ingestion": "The document is tokenised and cut into consecutive 5,000-token chunks that are fed one per call; nothing is indexed.",
+    "construction": "At each chunk the model sees the question, the previous memory and the chunk, and generates a new memory (at most 1,024 tokens) through a fixed prompt.",
+    "organization": "",
+    "update": "The new memory overwrites the old one, so keeping, merging and dropping are all implicit in what the model writes.",
+    "retrieval": "",
+    "answer": "After the last chunk a second prompt gives the model only the question and the final memory and asks for the answer.",
+    "learning": "Multi-conv DAPO: all K update calls and the answer call of a rollout share one advantage computed from a rule-based exact-match reward on the final answer (group size 16), in two curriculum stages on synthetic HotpotQA and DocQA data."
+  },
+  "summary": "An LLM reads a long document chunk by chunk and overwrites a fixed 1,024-token text memory after each chunk; RL on the final answer (Multi-conv DAPO) teaches it what to keep, so an 8K-window model is tested up to 3.5M tokens.",
+  "verified": false,
+  "notes": "Venue: arXiv comment and PDF footer both say ICLR 2026 (oral per the arXiv comment; OpenReview forum k5nIOvYGCL). PDF read: arXiv v2 (29 Jul 2026). Code: BytedTsinghua-SIA/MemAgent at ef4219b (2026-05-12, latest; evaluation files last changed 2025-07). Was a baseline-only entry in extra_systems.json under the same id.\nDESIGN: §2.1-2.3, §3.1, App. A. There is no retrieval stage; control.retrieval=none. classify.structure=none because the memory is one buffer in the prompt, not a store.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2507.02259v2 (PDF read 2026-09-30)",
+      "code": "https://github.com/BytedTsinghua-SIA/MemAgent/tree/ef4219b23499a069cb00e5daff4c426d4c600851/",
+      "code_note": "Latest commit (2026-05-12, a README change). The evaluation loop (taskutils/memory_eval) and the training agent (recurrent/impls/memory.py) were last changed in July 2025, after paper v1; whether they are exactly the runs behind v2's tables is not stated. The repo has no evaluation code for LongBench-QA/SUM and no stage II training script."
+    },
+    "headline": [
+      "The only memory is one text string of at most 1,024 tokens that the model rewrites after every 5,000-token chunk; the answer call sees only this string and the question.",
+      "Nothing is retrieved or revisited: a 3.5M-token input means about 700 update calls in sequence.",
+      "What to keep is learned end to end: every update call gets the reward of the final answer (Multi-conv DAPO)."
+    ],
+    "units": [
+      {
+        "name": "Memory",
+        "role": "the whole working state carried from chunk to chunk",
+        "made_by": "the RL-trained model, one update call per chunk",
+        "fields": [
+          {
+            "name": "memory text",
+            "what": "the full output of the last update call: notes, copied sentences and the model's comments; cut at 1,024 generated tokens",
+            "kept_as": "rewritten",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code recurrent.py L58-L89; paper App. C",
+            "url": "https://github.com/BytedTsinghua-SIA/MemAgent/blob/ef4219b23499a069cb00e5daff4c426d4c600851/taskutils/memory_eval/utils/recurrent.py#L58-L89"
+          }
+        ]
+      },
+      {
+        "name": "Chunk",
+        "role": "5,000 consecutive tokens of the document",
+        "made_by": "fixed token split",
+        "fields": [
+          {
+            "name": "chunk text",
+            "what": "verbatim slice of the input, shown once to one update call",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "code recurrent.py L58-L60",
+            "url": "https://github.com/BytedTsinghua-SIA/MemAgent/blob/ef4219b23499a069cb00e5daff4c426d4c600851/taskutils/memory_eval/utils/recurrent.py#L58-L60"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Split",
+        "how": "tokenise the document and cut it into consecutive 5,000-token chunks",
+        "params": {
+          "chunk": "5,000 tokens"
+        },
+        "out": "about 700 chunks for the 3.5M-token test (derived: 3.5M / 5,000)",
+        "src": "code recurrent.py L54-L60; paper §3.1",
+        "url": "https://github.com/BytedTsinghua-SIA/MemAgent/blob/ef4219b23499a069cb00e5daff4c426d4c600851/taskutils/memory_eval/utils/recurrent.py#L54-L60"
+      },
+      {
+        "step": "Update",
+        "how": "prompt with question, previous memory (first call: 'No previous memory') and the chunk; the generated text becomes the new memory",
+        "params": {
+          "max new tokens": "1,024",
+          "temperature": "0.7 (eval)",
+          "top_p": "0.95 (eval)"
+        },
+        "src": "code recurrent.py L5-L20, L64-L80; ruler_hqa.py L66",
+        "url": "https://github.com/BytedTsinghua-SIA/MemAgent/blob/ef4219b23499a069cb00e5daff4c426d4c600851/taskutils/memory_eval/utils/recurrent.py#L64-L80"
+      },
+      {
+        "step": "Overwrite",
+        "how": "the old memory is discarded; nothing is appended or stored elsewhere",
+        "src": "code recurrent.py L80; recurrent/impls/memory.py L242",
+        "url": "https://github.com/BytedTsinghua-SIA/MemAgent/blob/ef4219b23499a069cb00e5daff4c426d4c600851/recurrent/impls/memory.py#L242"
+      }
+    ],
+    "read": [
+      {
+        "step": "Answer",
+        "round": 1,
+        "input": "question + final memory",
+        "scores": "nothing is scored; the whole memory is in the prompt",
+        "how": "one generation call with the answer template; the answer is taken after 'the answer is'",
+        "params": {
+          "max new tokens": "1,024"
+        },
+        "src": "code recurrent.py L22-L33, L90-L113; utils/__init__.py L41-L49",
+        "url": "https://github.com/BytedTsinghua-SIA/MemAgent/blob/ef4219b23499a069cb00e5daff4c426d4c600851/taskutils/memory_eval/utils/recurrent.py#L90-L113"
+      }
+    ],
+    "answer_context": {
+      "sees": "the question and one memory of at most 1,024 tokens",
+      "format": "answer template: problem block, then memory block, then 'Your answer:' (eval asks for 'Therefore, the answer is ...'; training asks for \\boxed{})",
+      "excludes": [
+        "the document",
+        "any chunk",
+        "earlier memories"
+      ],
+      "includes": [
+        "final memory text",
+        "question"
+      ],
+      "src": "code recurrent.py L22-L33",
+      "url": "https://github.com/BytedTsinghua-SIA/MemAgent/blob/ef4219b23499a069cb00e5daff4c426d4c600851/taskutils/memory_eval/utils/recurrent.py#L22-L33"
+    },
+    "compression": [
+      {
+        "what": "answer context vs the longest RULER-HQA input",
+        "kept": 1.024,
+        "of": 3500,
+        "unit": "k tokens",
+        "basis": "memory cap of 1,024 tokens (§3.1) against the 3.5M-token test (Table 1); the memory can be shorter",
+        "src": "paper §3.1, Table 1",
+        "url": "https://arxiv.org/pdf/2507.02259"
+      },
+      {
+        "what": "memory vs one chunk",
+        "kept": 1.024,
+        "of": 5,
+        "unit": "k tokens",
+        "basis": "1,024-token memory and 5,000-token chunk (§3.1)",
+        "src": "paper §3.1",
+        "url": "https://arxiv.org/pdf/2507.02259"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "RL-MemAgent-14B, RULER-HQA 7K → 3.5M",
+        "value": "80.47 → 71.09",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "NIAH average at 512K, 14B / 7B",
+        "value": "98.18 / 96.62",
+        "src": "paper Fig. 5"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Answer format",
+        "paper": "Table 5 asks for the answer in \\boxed{}",
+        "code": "evaluation uses a template asking for 'Therefore, the answer is ...' (App. A.4 describes this one); \\boxed{} is the training template",
+        "src": "recurrent.py L22; recurrent/impls/memory.py L131-L142",
+        "url": "https://github.com/BytedTsinghua-SIA/MemAgent/blob/ef4219b23499a069cb00e5daff4c426d4c600851/taskutils/memory_eval/utils/recurrent.py#L22-L33"
+      },
+      {
+        "topic": "Test lengths above 896K",
+        "paper": "App. A.3: 50 to 6,400 wiki items give about 7K to 3.5M tokens",
+        "code": "6,400 items is the 896K test; 1.75M and 3.5M use 12,800 and 25,600 items and are run for MemAgent only",
+        "src": "run.py L50-L53, L324-L329",
+        "url": "https://github.com/BytedTsinghua-SIA/MemAgent/blob/ef4219b23499a069cb00e5daff4c426d4c600851/taskutils/memory_eval/run.py#L50-L53"
+      },
+      {
+        "topic": "Memory length limit",
+        "paper": "a fixed-length 1,024-token memory",
+        "code": "no separate limit: the memory is the whole update output, capped by max_tokens=1,024, so an overlong memory is cut mid-sentence (App. F.1 shows this)",
+        "src": "recurrent.py L72, L80",
+        "url": "https://github.com/BytedTsinghua-SIA/MemAgent/blob/ef4219b23499a069cb00e5daff4c426d4c600851/taskutils/memory_eval/utils/recurrent.py#L64-L80"
+      },
+      {
+        "topic": "Training length",
+        "paper": "stage II trains on inputs up to 60K tokens",
+        "code": "the released 14B script trains on the 32K set with the default max_chunks=8, so contexts over 40K tokens would be centre-truncated; no stage II script is released",
+        "src": "verl/trainer/config/ppo_trainer.yaml L247-L252; recurrent/impls/memory.py L60-L62",
+        "url": "https://github.com/BytedTsinghua-SIA/MemAgent/blob/ef4219b23499a069cb00e5daff4c426d4c600851/verl/trainer/config/ppo_trainer.yaml#L247-L252"
+      }
+    ],
+    "open_questions": [
+      "Baselines read at most 120K tokens (990K for the 1M models), with the middle cut out, so beyond those lengths the comparison is between reading everything and reading a truncated input.",
+      "No run separates the RL-learned write policy from the chunked workflow at matched length except the w/o-RL rows; the no-RL agent is the untrained instruct model, not a prompted strong model."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 228",
+        "body": "<text class=\"fig-t\" x=\"280\" y=\"14\" text-anchor=\"middle\">Document, cut into 5,000-token chunks, read once in order</text><rect class=\"gi-f\" x=\"22\" y=\"24\" width=\"88\" height=\"34\" rx=\"8\"/><text class=\"fig-t\" x=\"66.0\" y=\"39.0\" text-anchor=\"middle\">chunk 1</text><text class=\"fig-s\" x=\"66.0\" y=\"52.0\" text-anchor=\"middle\">5,000 tokens</text><path class=\"gi-a\" d=\"M66.0 58.0 L66.0 87.0\"/><polygon class=\"gi-ah\" points=\"66.0,94.0 62.0,87.0 70.0,87.0\"/><rect class=\"gi-f\" x=\"142\" y=\"24\" width=\"88\" height=\"34\" rx=\"8\"/><text class=\"fig-t\" x=\"186.0\" y=\"39.0\" text-anchor=\"middle\">chunk 2</text><text class=\"fig-s\" x=\"186.0\" y=\"52.0\" text-anchor=\"middle\">5,000 tokens</text><path class=\"gi-a\" d=\"M186.0 58.0 L186.0 87.0\"/><polygon class=\"gi-ah\" points=\"186.0,94.0 182.0,87.0 190.0,87.0\"/><rect class=\"gi-f\" x=\"262\" y=\"24\" width=\"88\" height=\"34\" rx=\"8\"/><text class=\"fig-t\" x=\"306.0\" y=\"39.0\" text-anchor=\"middle\">chunk 3</text><text class=\"fig-s\" x=\"306.0\" y=\"52.0\" text-anchor=\"middle\">5,000 tokens</text><path class=\"gi-a\" d=\"M306.0 58.0 L306.0 87.0\"/><polygon class=\"gi-ah\" points=\"306.0,94.0 302.0,87.0 310.0,87.0\"/><rect class=\"gi-f\" x=\"442\" y=\"24\" width=\"88\" height=\"34\" rx=\"8\"/><text class=\"fig-t\" x=\"486.0\" y=\"39.0\" text-anchor=\"middle\">chunk K</text><text class=\"fig-s\" x=\"486.0\" y=\"52.0\" text-anchor=\"middle\">5,000 tokens</text><path class=\"gi-a\" d=\"M486.0 58.0 L486.0 87.0\"/><polygon class=\"gi-ah\" points=\"486.0,94.0 482.0,87.0 490.0,87.0\"/><text class=\"fig-t\" x=\"396\" y=\"44\" text-anchor=\"middle\">…</text><rect class=\"gi-llm\" x=\"22\" y=\"94\" width=\"88\" height=\"30\" rx=\"8\"/><text class=\"fig-t\" x=\"66.0\" y=\"107.0\" text-anchor=\"middle\">LLM</text><text class=\"fig-s\" x=\"66.0\" y=\"120.0\" text-anchor=\"middle\">RL-trained</text><path class=\"gi-a\" d=\"M66.0 124.0 L66.0 145.0\"/><polygon class=\"gi-ah\" points=\"66.0,152.0 62.0,145.0 70.0,145.0\"/><rect class=\"gi-llm\" x=\"142\" y=\"94\" width=\"88\" height=\"30\" rx=\"8\"/><text class=\"fig-t\" x=\"186.0\" y=\"107.0\" text-anchor=\"middle\">LLM</text><text class=\"fig-s\" x=\"186.0\" y=\"120.0\" text-anchor=\"middle\">RL-trained</text><path class=\"gi-a\" d=\"M186.0 124.0 L186.0 145.0\"/><polygon class=\"gi-ah\" points=\"186.0,152.0 182.0,145.0 190.0,145.0\"/><rect class=\"gi-llm\" x=\"262\" y=\"94\" width=\"88\" height=\"30\" rx=\"8\"/><text class=\"fig-t\" x=\"306.0\" y=\"107.0\" text-anchor=\"middle\">LLM</text><text class=\"fig-s\" x=\"306.0\" y=\"120.0\" text-anchor=\"middle\">RL-trained</text><path class=\"gi-a\" d=\"M306.0 124.0 L306.0 145.0\"/><polygon class=\"gi-ah\" points=\"306.0,152.0 302.0,145.0 310.0,145.0\"/><rect class=\"gi-llm\" x=\"442\" y=\"94\" width=\"88\" height=\"30\" rx=\"8\"/><text class=\"fig-t\" x=\"486.0\" y=\"107.0\" text-anchor=\"middle\">LLM</text><text class=\"fig-s\" x=\"486.0\" y=\"120.0\" text-anchor=\"middle\">RL-trained</text><path class=\"gi-a\" d=\"M486.0 124.0 L486.0 145.0\"/><polygon class=\"gi-ah\" points=\"486.0,152.0 482.0,145.0 490.0,145.0\"/><rect class=\"gi-hi\" x=\"22\" y=\"152\" width=\"88\" height=\"34\" rx=\"8\"/><text class=\"fig-t\" x=\"66.0\" y=\"167.0\" text-anchor=\"middle\">memory 1</text><text class=\"fig-s\" x=\"66.0\" y=\"180.0\" text-anchor=\"middle\">≤ 1,024 tokens</text><rect class=\"gi-hi\" x=\"142\" y=\"152\" width=\"88\" height=\"34\" rx=\"8\"/><text class=\"fig-t\" x=\"186.0\" y=\"167.0\" text-anchor=\"middle\">memory 2</text><text class=\"fig-s\" x=\"186.0\" y=\"180.0\" text-anchor=\"middle\">≤ 1,024 tokens</text><rect class=\"gi-hi\" x=\"262\" y=\"152\" width=\"88\" height=\"34\" rx=\"8\"/><text class=\"fig-t\" x=\"306.0\" y=\"167.0\" text-anchor=\"middle\">memory 3</text><text class=\"fig-s\" x=\"306.0\" y=\"180.0\" text-anchor=\"middle\">≤ 1,024 tokens</text><rect class=\"gi-hi\" x=\"442\" y=\"152\" width=\"88\" height=\"34\" rx=\"8\"/><text class=\"fig-t\" x=\"486.0\" y=\"167.0\" text-anchor=\"middle\">memory K</text><text class=\"fig-s\" x=\"486.0\" y=\"180.0\" text-anchor=\"middle\">≤ 1,024 tokens</text><path class=\"gi-a\" d=\"M110.0 160.0 L136.1 121.8\"/><polygon class=\"gi-ah\" points=\"140.0,116.0 139.4,124.0 132.8,119.5\"/><path class=\"gi-a\" d=\"M230.0 160.0 L256.1 121.8\"/><polygon class=\"gi-ah\" points=\"260.0,116.0 259.4,124.0 252.8,119.5\"/><path class=\"gi-a d\" d=\"M350.0 160.0 L376.6 138.4\"/><polygon class=\"gi-ah\" points=\"382.0,134.0 379.1,141.5 374.0,135.3\"/><text class=\"fig-t\" x=\"396\" y=\"134\" text-anchor=\"middle\">…</text><path class=\"gi-a d\" d=\"M410.0 128.0 L433.5 118.6\"/><polygon class=\"gi-ah\" points=\"440.0,116.0 435.0,122.3 432.0,114.9\"/><text class=\"fig-s\" x=\"72\" y=\"80\" text-anchor=\"start\">+ question</text><text class=\"fig-s\" x=\"196\" y=\"206\" text-anchor=\"middle\">each call reads: question + previous memory + one chunk</text><text class=\"fig-s\" x=\"196\" y=\"219\" text-anchor=\"middle\">its output replaces the old memory (first: “No previous memory”)</text><text class=\"fig-s\" x=\"486\" y=\"206\" text-anchor=\"middle\">final memory</text><text class=\"fig-s\" x=\"486\" y=\"219\" text-anchor=\"middle\">goes to the answer call</text>",
+        "text": [
+          "The document is read once in 5,000-token chunks; each call sees the question, the previous memory and one chunk.",
+          "The model's output, at most 1,024 tokens, replaces the old memory, so the memory never grows."
+        ],
+        "src": "paper §2.1, §3.1, Table 5; code recurrent.py L53-L89",
+        "url": "https://github.com/BytedTsinghua-SIA/MemAgent/blob/ef4219b23499a069cb00e5daff4c426d4c600851/taskutils/memory_eval/utils/recurrent.py#L53-L89"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 224",
+        "body": "<rect class=\"gi-f\" x=\"10\" y=\"22\" width=\"112\" height=\"32\" rx=\"8\"/><text class=\"fig-t\" x=\"66.0\" y=\"42.0\" text-anchor=\"middle\">Question</text><rect class=\"gi-hi\" x=\"10\" y=\"64\" width=\"112\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"66.0\" y=\"82.0\" text-anchor=\"middle\">Final memory</text><text class=\"fig-s\" x=\"66.0\" y=\"95.0\" text-anchor=\"middle\">≤ 1,024 tokens</text><path class=\"gi-a\" d=\"M122 38 L146 38 L146 64\"/><path class=\"gi-a\" d=\"M146.0 64.0 L159.0 64.0\"/><polygon class=\"gi-ah\" points=\"166.0,64.0 159.0,68.0 159.0,60.0\"/><path class=\"gi-a\" d=\"M122.0 84.0 L159.0 84.0\"/><polygon class=\"gi-ah\" points=\"166.0,84.0 159.0,88.0 159.0,80.0\"/><rect class=\"gi-llm\" x=\"166\" y=\"44\" width=\"120\" height=\"60\" rx=\"8\"/><text class=\"fig-t\" x=\"226.0\" y=\"72.0\" text-anchor=\"middle\">Answer call</text><text class=\"fig-s\" x=\"226.0\" y=\"85.0\" text-anchor=\"middle\">same RL-trained LLM</text><path class=\"gi-a\" d=\"M286.0 74.0 L311.0 74.0\"/><polygon class=\"gi-ah\" points=\"318.0,74.0 311.0,78.0 311.0,70.0\"/><rect class=\"gi-ev\" x=\"318\" y=\"54\" width=\"100\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"368.0\" y=\"72.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"368.0\" y=\"85.0\" text-anchor=\"middle\">“the answer is …”</text><rect class=\"gi-ev d\" x=\"436\" y=\"22\" width=\"114\" height=\"82\" rx=\"8\"/><text class=\"fig-t\" x=\"493\" y=\"40\" text-anchor=\"middle\">not in the prompt</text><text class=\"fig-s\" x=\"493\" y=\"56\" text-anchor=\"middle\">the document</text><text class=\"fig-s\" x=\"493\" y=\"70\" text-anchor=\"middle\">any chunk</text><text class=\"fig-s\" x=\"493\" y=\"84\" text-anchor=\"middle\">earlier memories</text><text class=\"fig-s\" x=\"493\" y=\"98\" text-anchor=\"middle\">no search step</text><line class=\"gi-e d\" x1=\"10\" y1=\"124\" x2=\"550\" y2=\"124\"/><text class=\"gi-lbl\" x=\"10\" y=\"142\" text-anchor=\"start\">TRAINING (Multi-conv DAPO)</text><rect class=\"gi-f\" x=\"10\" y=\"152\" width=\"120\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"70.0\" y=\"172.0\" text-anchor=\"middle\">16 rollouts</text><text class=\"fig-s\" x=\"70.0\" y=\"185.0\" text-anchor=\"middle\">K updates + 1 answer</text><path class=\"gi-a\" d=\"M130.0 174.0 L153.0 174.0\"/><polygon class=\"gi-ah\" points=\"160.0,174.0 153.0,178.0 153.0,170.0\"/><rect class=\"gi-f\" x=\"160\" y=\"152\" width=\"126\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"223.0\" y=\"172.0\" text-anchor=\"middle\">Rule verifier</text><text class=\"fig-s\" x=\"223.0\" y=\"185.0\" text-anchor=\"middle\">final answer vs gold</text><path class=\"gi-a\" d=\"M286.0 174.0 L309.0 174.0\"/><polygon class=\"gi-ah\" points=\"316.0,174.0 309.0,178.0 309.0,170.0\"/><rect class=\"gi-w\" x=\"316\" y=\"152\" width=\"112\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"372.0\" y=\"172.0\" text-anchor=\"middle\">Advantage</text><text class=\"fig-s\" x=\"372.0\" y=\"185.0\" text-anchor=\"middle\">R − group mean</text><path class=\"gi-a d\" d=\"M372 152 L372 136 L236 136\"/><path class=\"gi-a d\" d=\"M236.0 136.0 L236.0 113.0\"/><polygon class=\"gi-ah\" points=\"236.0,106.0 240.0,113.0 232.0,113.0\"/><text class=\"fig-s\" x=\"438\" y=\"168\" text-anchor=\"start\">shared by every</text><text class=\"fig-s\" x=\"438\" y=\"181\" text-anchor=\"start\">update call and</text><text class=\"fig-s\" x=\"438\" y=\"194\" text-anchor=\"start\">the answer call</text><text class=\"fig-s\" x=\"220\" y=\"214\" text-anchor=\"middle\">only the last answer is scored; memory writes learn from that reward</text>",
+        "text": [
+          "There is no retrieval step: the answer call reads only the question and the final memory.",
+          "In training, a rule-based check of that answer gives one reward, and every update call of the rollout shares its advantage."
+        ],
+        "src": "paper §2.2, Eq. 1-3, App. A.3; code recurrent.py L90-L113",
+        "url": "https://github.com/BytedTsinghua-SIA/MemAgent/blob/ef4219b23499a069cb00e5daff4c426d4c600851/taskutils/memory_eval/utils/recurrent.py#L90-L113"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Context window",
+        "value": "8K: question 1,024 + chunk 5,000 + memory 1,024 + output 1,024",
+        "src": "paper §3.1",
+        "section": "construction"
+      },
+      {
+        "label": "Memory size",
+        "value": "≤ 1,024 tokens, overwritten per chunk",
+        "src": "paper §3.3.2; code recurrent.py L72",
+        "section": "construction"
+      },
+      {
+        "label": "Update calls",
+        "value": "one per 5,000 tokens (~700 at 3.5M, derived)",
+        "src": "paper §3.1, Table 1",
+        "section": "method"
+      },
+      {
+        "label": "RL group size",
+        "value": "16 rollouts, batch 256, lr 1e-6, KL 1e-3",
+        "src": "paper App. A.3",
+        "section": "method"
+      },
+      {
+        "label": "Training data",
+        "value": "stage I 32,768 × ~32K tokens; stage II 2,560 up to 60K",
+        "src": "paper App. A.3",
+        "section": "method"
+      },
+      {
+        "label": "Stage I length",
+        "value": "~400 steps",
+        "src": "paper App. A.3",
+        "section": "method"
+      },
+      {
+        "label": "Compute",
+        "value": "linear in input length (FLOPs, Fig. 10)",
+        "src": "paper App. B",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "NIAH avg 128K",
+        "NIAH avg 512K"
+      ],
+      "rows": [
+        [
+          "RL-MemAgent-14B",
+          "98.96",
+          "98.18"
+        ],
+        [
+          "MemAgent-14B w/o RL",
+          "60.42",
+          "40.10"
+        ],
+        [
+          "Qwen2.5-14B-Instruct, full input",
+          "91.14",
+          "23.44"
+        ],
+        [
+          "RL-MemAgent-7B",
+          "97.40",
+          "96.62"
+        ],
+        [
+          "MemAgent-7B w/o RL",
+          "94.01",
+          "88.54"
+        ],
+        [
+          "Qwen2.5-7B-Instruct, full input",
+          "47.14",
+          "15.10"
+        ],
+        [
+          "MemAgent-32B w/o RL",
+          "81.25",
+          "71.88"
+        ]
+      ],
+      "src": "paper Fig. 5 (NIAH-Average heatmap)"
+    },
+    "components": [
+      {
+        "role": "Writes memory and answers",
+        "model": "RL-MemoryAgent-7B / 14B (Qwen2.5-Instruct trained with Multi-conv DAPO)",
+        "kind": "llm",
+        "src": "paper §3.1"
+      },
+      {
+        "role": "Splits the document",
+        "model": "fixed 5,000-token chunks",
+        "kind": "rule",
+        "src": "code recurrent.py L58-L60",
+        "url": "https://github.com/BytedTsinghua-SIA/MemAgent/blob/ef4219b23499a069cb00e5daff4c426d4c600851/taskutils/memory_eval/utils/recurrent.py#L58-L60"
+      },
+      {
+        "role": "Training reward",
+        "model": "rule-based verifier (answer equivalence)",
+        "kind": "rule",
+        "src": "paper Eq. 3"
+      }
+    ],
+    "discussion": {
+      "takeaway": "A fixed-size, overwritten text memory trained with RL on the final answer lets a model with an 8K window handle inputs of millions of tokens with a small drop, where long-context models collapse past their windows.",
+      "claims": [
+        {
+          "claim": "Near-lossless extrapolation far beyond the training length.",
+          "evidence": "RL-MemAgent-14B 80.47 at 7K and 71.09 at 3.5M on RULER-HQA; 7B 81.25 → 71.88. Table 1"
+        },
+        {
+          "claim": "Long-context baselines degrade sharply.",
+          "evidence": "Qwen2.5-Instruct-14B-1M 60.16 at 7K, 0.00 at 896K; QwenLong-L1-32B 11.72 at 896K. Table 1"
+        },
+        {
+          "claim": "RL is what makes the workflow work.",
+          "evidence": "NIAH avg at 512K: 14B w/o RL 40.10 vs RL 98.18. Fig. 5; RULER-HQA and LongBench-QA plots, Fig. 6-7"
+        },
+        {
+          "claim": "The learned memory transfers to other tasks.",
+          "evidence": "LongBench-QA avg 51.0 (14B) vs 50.7 QwenLong-L1-32B, Table 3; best or second-best ROUGE recall on GovReport and QMSum, Table 2"
+        },
+        {
+          "claim": "Better than RAG over the same text.",
+          "evidence": "RULER-HQA at 3.5M: best RAG row 66.41 (Qwen2.5-14B, K=6) vs 71.09; LongBench-QA avg: best RAG 39.42 (14B, 2,048-token chunks, K=8) vs 51.00. Tables 10-11"
+        },
+        {
+          "claim": "The 1,024-token memory is a reasonable choice and results are stable across 256-4,096.",
+          "evidence": "§3.3.2, Fig. 8-9, Tables 8-9"
+        }
+      ],
+      "limits": [
+        "No limitations section. The authors show failure cases: early distractors fill the memory and a key fact appended later is cut off; a multi-hop fact seen before its bridge is not kept; an early wrong reading of the question is reinforced (App. F)."
+      ],
+      "limits_src": "paper App. F",
+      "reading": [
+        "RULER-HQA is built the same way as the stage I training data (§3.1), so Table 1 is in-distribution in task type; only the length is out of distribution.",
+        "Baselines are run with 120K inputs (990K for the 1M models) and the code cuts the middle of longer inputs, so above those lengths they see only part of the document while MemAgent reads all of it.",
+        "Answers are sampled at temperature 0.7 with one sample per question in the released evaluation, and RULER-HQA has 128 questions per length, so differences of a few points are within one or two questions' worth of noise (1 question = 0.78 points).",
+        "Mem0 is described as a baseline in App. D.2 (GPT-5.1, top-30 memories) but no Mem0 number appears in any table or figure.",
+        "The LongBench-QA gain over the 32B reasoning baselines is small (51.0 vs 50.7 and 49.0 avg), and on NarrativeQA and Qasper MemAgent-14B is within 1-2 points of them."
+      ]
+    },
+    "abstract": {
+      "text": "MemAgent turns long-document question answering into a loop: the model reads the text in fixed chunks and after each one rewrites a short memory, then answers from that memory alone. Because the memory has a fixed size, cost grows linearly with length and the model's own window never has to grow. The authors train the memory updates with an extension of DAPO in which every update call shares the reward of the final answer. Models trained on 32K-60K inputs with an 8K window keep most of their accuracy up to 3.5M tokens and score above 95% on 512K needle tests.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2507.02259"
+    },
+    "sections": {
+      "Memory architecture": "§2.1, §2.3",
+      "Results": "§3.2",
+      "Ablation": "§3.3, App. D",
+      "Discussion": "§5, App. F",
+      "Details": "§3.1, App. A-B"
+    }
+  }
+}

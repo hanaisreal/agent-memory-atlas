@@ -1640,44 +1640,49 @@
     {
       "id": "factual",
       "name": "Factual",
-      "def": "facts about the world or the user"
+      "def": "what is true: facts about the user and the world, kept across sessions"
     },
     {
       "id": "experiential",
       "name": "Experiential",
-      "def": "lessons, skills and procedures from past tasks"
+      "def": "what worked before: lessons, skills and procedures distilled from past tasks and reused on new ones"
     },
     {
       "id": "working",
       "name": "Working",
-      "def": "state of the current task"
+      "def": "what is going on now: the state of the task in progress, kept only while it runs"
     }
   ],
   "learning": [
     {
       "id": "none",
-      "name": "Does not learn",
-      "def": "Stores new records, but how it writes and reads never changes: fixed rules or a prompted LLM."
+      "name": "Static",
+      "def": "Memory grows (records are written and updated) but the way it writes and reads never changes: fixed rules or a prompted, frozen LLM.",
+      "kind": "static"
     },
     {
       "id": "experience",
-      "name": "Learns from experience, no training",
-      "def": "Gets better from past tasks without weight updates: stored reflections, insights, skills or workflows, or edits to its own prompts, tools or harness."
+      "name": "Non-parametric: lessons",
+      "def": "The agent improves from task outcomes by storing lessons, skills or workflows outside the model; no weights are trained.",
+      "kind": "non-parametric"
     },
     {
       "id": "sft",
-      "name": "Supervised training",
-      "def": "A model is fine-tuned on labelled or imitation data to manage memory or to hold it."
+      "name": "Parametric: SFT",
+      "def": "A model is fine-tuned on labelled or imitation data to manage memory or to hold it.",
+      "kind": "parametric"
     },
     {
       "id": "rl",
-      "name": "Reinforcement learning",
-      "def": "A memory policy or the agent is trained with rewards from task outcomes."
+      "name": "Parametric: RL",
+      "def": "A memory policy or the agent is trained with rewards from task outcomes.",
+      "kind": "parametric"
     },
     {
       "id": "model-training",
-      "name": "Trained with the model",
-      "def": "The memory is a component learned during model (pre)training or end-to-end training, not a policy for memory operations, e.g. memory layers, recurrent memory, KV selection learned offline."
+      "name": "Parametric: trained-in module",
+      "def": "The memory is a component learned during model (pre)training or end-to-end training, such as memory layers or recurrent memory.",
+      "kind": "parametric"
     }
   ],
   "cells": {
@@ -1729,5 +1734,26 @@
       "text": "Latent memory whose purpose the source does not state.",
       "note": ""
     }
+  },
+  "learning_kinds": [
+    {
+      "id": "static",
+      "name": "Static",
+      "def": "Memory grows, the method stays the same."
+    },
+    {
+      "id": "non-parametric",
+      "name": "Non-parametric",
+      "def": "What is learned is stored outside the model; weights stay fixed."
+    },
+    {
+      "id": "parametric",
+      "name": "Parametric",
+      "def": "What is learned goes into model weights through training."
+    }
+  ],
+  "learning_reward": {
+    "name": "Non-parametric: RL",
+    "def": "A reward decides which lessons or cases are kept, but no weights are trained."
   }
 }

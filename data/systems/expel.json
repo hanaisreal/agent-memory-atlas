@@ -1,0 +1,543 @@
+{
+  "id": "expel",
+  "name": "ExpeL",
+  "paper": {
+    "title": "ExpeL: LLM Agents Are Experiential Learners",
+    "arxiv": "2308.10144",
+    "url": "https://arxiv.org/abs/2308.10144",
+    "venue": "AAAI 2024",
+    "venue_short": "AAAI",
+    "track": "main",
+    "year": 2024,
+    "code": "https://github.com/LeapLabTHU/ExpeL"
+  },
+  "design": {
+    "construction": {
+      "unit": "two kinds: successful trajectories from training tasks, and short natural-language insights",
+      "kept_as": "trajectories stored as they ran; insights written by an LLM from many trajectories",
+      "processing": "ReAct + Reflexion (up to 3 retries) on training tasks fills an experience pool; GPT-4 then compares failed and successful attempts of the same task and groups of L successes, editing a list of insights",
+      "trigger": "offline-batch",
+      "writer": "gpt-3.5-turbo-0613 gathers trajectories; gpt-4-0613 writes insights"
+    },
+    "organization": {
+      "structure": "experience pool of trajectories + a ranked flat list of insights with importance counts",
+      "stores": "Faiss vector store of successful trajectories (keyed by task text); insight list",
+      "index": "all-mpnet-base-v2 embedding of the task text, kNN in Faiss"
+    },
+    "management": {
+      "operations": "insights: ADD / EDIT / UPVOTE / DOWNVOTE by the insight LLM (AGREE / REMOVE in code), with importance counts",
+      "conflicts": "the LLM can edit or downvote an insight a new comparison contradicts; an insight whose count reaches 0 is deleted",
+      "forgetting": "insight deleted at count 0; no forgetting of trajectories",
+      "timing": "offline"
+    },
+    "retrieval": {
+      "query": "the evaluation task's text (question, instruction or goal)",
+      "candidates": "kNN by inner product on task embeddings over successful training trajectories (code: same ALFWorld task type, k × 4 candidates)",
+      "selection": "top-k by task similarity; code skips trajectories longer than the longest hand-written example, the same task and duplicates",
+      "budget": "k = 6 HotpotQA, 2 ALFWorld, 2 WebShop few-shot trajectories; all insights"
+    },
+    "use": {
+      "context": "task instruction + k retrieved successful trajectories as few-shot + full insight list + task + current trajectory",
+      "reasoning": "ReAct actor (gpt-3.5-turbo-0613), one attempt per evaluation task"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "prompted-llm",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "typed stores",
+    "index": "vector",
+    "management": "consolidate",
+    "candidates": "dense",
+    "decides": "top-k rule",
+    "note": "Two stores: trajectories are retrieved by embedding kNN on the task text; the insight list is always read in full. Consolidation is the LLM editing the insight list offline."
+  },
+  "tags": {
+    "fidelity": "mixed",
+    "structure": [
+      "flat",
+      "typed-stores"
+    ],
+    "write_time": [
+      "filter",
+      "consolidate"
+    ],
+    "selection": [
+      "dense",
+      "full-context"
+    ],
+    "memory_type": [
+      "episodic",
+      "procedural"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "embodied",
+      "web",
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "On training tasks a ReAct agent with Reflexion retries each failed task up to 3 times; every trajectory, successful or failed, enters the experience pool.",
+    "construction": "Successful trajectories are kept as they ran. An insight LLM (gpt-4-0613) reads fail/success pairs of the same task and chunks of L successful trajectories (L = 8, or 4 on WebShop) and proposes operations on the insight list.",
+    "organization": "Successes are indexed in Faiss by an all-mpnet-base-v2 embedding of their task text; insights form one list ordered by importance count.",
+    "update": "ADD starts an insight at count 2; UPVOTE and EDIT add 1; DOWNVOTE subtracts 1 (code: 3 when the list is over its cap); an insight at 0 is removed.",
+    "retrieval": "For a new task, the top-k successful trajectories by task-text similarity become the few-shot examples (k = 6 HotpotQA, 2 ALFWorld and WebShop); the whole insight list is added without search.",
+    "answer": "A ReAct actor (gpt-3.5-turbo-0613) solves the evaluation task in one attempt with these examples and insights in its prompt.",
+    "learning": "No weight updates: learning is the offline insight extraction plus the growing pool of retrievable successes. Insights can be carried from HotpotQA to FEVER by rewriting them with GPT-4 and target-task examples."
+  },
+  "summary": "An agent gathers trial-and-error experience on training tasks, has GPT-4 distil it into a vote-weighted list of insights, and at test time solves new tasks in one try using all insights plus its most similar past successes as few-shot examples.",
+  "verified": false,
+  "notes": "Venue: AAAI 2024 main track, verified on ojs.aaai.org (AAAI vol. 38 no. 17, pp. 19632-19642); the arXiv v3 PDF also carries the AAAI 2024 copyright line.\nDESIGN: §4.1-4.3, Alg. 1-3, App. D-E (Table 4). Management vocabulary: the paper says UPVOTE/DOWNVOTE, the code says AGREE/REMOVE. Retrieval details (task-type filter, ×4 candidate buffer, length filter) come from the code only. Main results exist only as bar labels in Fig. 5 (read from the rendered PDF page).",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2308.10144v3 (PDF read 2026-09-30)",
+      "code": "https://github.com/LeapLabTHU/ExpeL/tree/e41ec9a24823e7b560c561ab191441b56d9bcefc/",
+      "code_note": "The code was first released on 2024-01-23 (after the AAAI version); later commits only edit the README and delete ALFWorld data folders. HEAD e41ec9a (2024-12-20) is used. Run commands with per-benchmark settings are in README L202-L241."
+    },
+    "headline": [
+      "Two memories: raw successful trajectories, retrieved by task similarity as few-shot examples, and a short list of GPT-4-written insights that is always read in full.",
+      "Everything is built offline from one half of the benchmark tasks and tested on the other half with a single attempt."
+    ],
+    "units": [
+      {
+        "name": "Successful trajectory",
+        "role": "a solved training task, reused as an in-context example",
+        "made_by": "ReAct + Reflexion agent during experience gathering",
+        "fields": [
+          {
+            "name": "task text",
+            "what": "the question or instruction; the only text that is embedded for retrieval",
+            "kept_as": "verbatim",
+            "used_for": [
+              "index"
+            ],
+            "src": "code agent/expel.py L464-L466",
+            "url": "https://github.com/LeapLabTHU/ExpeL/blob/e41ec9a24823e7b560c561ab191441b56d9bcefc/agent/expel.py#L464-L466"
+          },
+          {
+            "name": "trajectory",
+            "what": "thoughts, actions and observations as run; the shortest success of a task is the one shown",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code agent/expel.py L555-L564",
+            "url": "https://github.com/LeapLabTHU/ExpeL/blob/e41ec9a24823e7b560c561ab191441b56d9bcefc/agent/expel.py#L555-L564"
+          },
+          {
+            "name": "thought / step / action / reflection docs",
+            "what": "also indexed, used only by alternative fewshot strategies (the paper's reason-similarity ablation)",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "code agent/expel.py L479-L495",
+            "url": "https://github.com/LeapLabTHU/ExpeL/blob/e41ec9a24823e7b560c561ab191441b56d9bcefc/agent/expel.py#L479-L495"
+          }
+        ]
+      },
+      {
+        "name": "Failed trajectory",
+        "role": "a failed attempt at a training task",
+        "made_by": "ReAct + Reflexion agent",
+        "fields": [
+          {
+            "name": "trajectory",
+            "what": "compared with a success of the same task during insight extraction; never retrieved",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "paper §4.2, Alg. 2; code agent/expel.py L340-L351",
+            "url": "https://github.com/LeapLabTHU/ExpeL/blob/e41ec9a24823e7b560c561ab191441b56d9bcefc/agent/expel.py#L340-L351"
+          }
+        ]
+      },
+      {
+        "name": "Insight",
+        "role": "one general rule for the task family",
+        "made_by": "insight LLM (gpt-4-0613)",
+        "fields": [
+          {
+            "name": "rule text",
+            "what": "one sentence of advice, e.g. to reassess or to try other search terms",
+            "kept_as": "summarized",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §4.2, App. G; code agent/expel.py L404-L412",
+            "url": "https://github.com/LeapLabTHU/ExpeL/blob/e41ec9a24823e7b560c561ab191441b56d9bcefc/agent/expel.py#L404-L412"
+          },
+          {
+            "name": "importance count",
+            "what": "starts at 2; orders the list and deletes the rule at 0; not shown to the actor",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "code agent/expel.py L696-L743",
+            "url": "https://github.com/LeapLabTHU/ExpeL/blob/e41ec9a24823e7b560c561ab191441b56d9bcefc/agent/expel.py#L696-L743"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Gather",
+        "how": "ReAct on each training task; on failure Reflexion reflects and retries, reflections concatenated",
+        "params": {
+          "max retries Z": "3",
+          "steps H": "7 HotpotQA / 20 ALFWorld / 15 WebShop"
+        },
+        "src": "paper §4.1, Alg. 1, Table 4",
+        "url": "https://arxiv.org/pdf/2308.10144"
+      },
+      {
+        "step": "Compare",
+        "how": "for each training task with a success, GPT-4 sees the success and each failed attempt plus the current insight list and outputs operations",
+        "src": "paper §4.2, Alg. 2; code agent/expel.py L340-L352",
+        "url": "https://github.com/LeapLabTHU/ExpeL/blob/e41ec9a24823e7b560c561ab191441b56d9bcefc/agent/expel.py#L340-L352"
+      },
+      {
+        "step": "Generalise",
+        "how": "successful trajectories are split randomly into chunks of L and GPT-4 edits the insight list from each chunk",
+        "params": {
+          "L": "8 HotpotQA, ALFWorld; 4 WebShop"
+        },
+        "src": "paper Table 4; code agent/expel.py L369-L386",
+        "url": "https://github.com/LeapLabTHU/ExpeL/blob/e41ec9a24823e7b560c561ab191441b56d9bcefc/agent/expel.py#L369-L386"
+      },
+      {
+        "step": "Vote",
+        "how": "parse ADD / EDIT / AGREE / REMOVE; ADD = 2, AGREE and EDIT +1, REMOVE −1 (−3 when the list is 5 over the cap); drop at 0; sort by count",
+        "params": {
+          "cap": "10 HotpotQA, ALFWorld; 8 WebShop (README)"
+        },
+        "src": "code agent/expel.py L665-L743",
+        "url": "https://github.com/LeapLabTHU/ExpeL/blob/e41ec9a24823e7b560c561ab191441b56d9bcefc/agent/expel.py#L665-L743"
+      },
+      {
+        "step": "Index",
+        "how": "embed the task text of every successful trajectory (and of the hand-written few-shots) with all-mpnet-base-v2 into Faiss",
+        "src": "paper §4.2; code agent/expel.py L420-L496",
+        "url": "https://github.com/LeapLabTHU/ExpeL/blob/e41ec9a24823e7b560c561ab191441b56d9bcefc/agent/expel.py#L420-L496"
+      }
+    ],
+    "read": [
+      {
+        "step": "Match",
+        "round": 1,
+        "input": "evaluation task text",
+        "scores": "task text of stored successes",
+        "how": "Faiss kNN on all-mpnet-base-v2 embeddings; ALFWorld restricted to the same task type",
+        "params": {
+          "candidates": "k × 4 (WebShop × 20 in README)"
+        },
+        "src": "code agent/expel.py L507-L533",
+        "url": "https://github.com/LeapLabTHU/ExpeL/blob/e41ec9a24823e7b560c561ab191441b56d9bcefc/agent/expel.py#L507-L533"
+      },
+      {
+        "step": "Filter",
+        "round": 1,
+        "how": "walk candidates in order; skip the same task, duplicates and trajectories longer than the longest hand-written example; stop at k",
+        "params": {
+          "k": "6 HotpotQA, 2 ALFWorld, 2 WebShop"
+        },
+        "src": "code agent/expel.py L555-L568; utils.py L502-L514",
+        "url": "https://github.com/LeapLabTHU/ExpeL/blob/e41ec9a24823e7b560c561ab191441b56d9bcefc/agent/expel.py#L555-L568"
+      },
+      {
+        "step": "Add insights",
+        "round": 1,
+        "how": "the whole numbered insight list is inserted before the task, with a benchmark-specific header",
+        "src": "code agent/expel.py L404-L412; prompts/templates/human.py L74-L90",
+        "url": "https://github.com/LeapLabTHU/ExpeL/blob/e41ec9a24823e7b560c561ab191441b56d9bcefc/prompts/templates/human.py#L74-L90"
+      }
+    ],
+    "answer_context": {
+      "sees": "k successful past trajectories as few-shot, all insights, the task and the current trajectory",
+      "format": "instruction with the k trajectories as examples, then e.g. \"The following are some experience you gather on a similar task...\" and the numbered insights, then the task",
+      "excludes": [
+        "failed trajectories",
+        "reflections",
+        "insight counts"
+      ],
+      "includes": [
+        "k retrieved successes (6 / 2 / 2)",
+        "every insight in the list"
+      ],
+      "src": "code agent/react.py L169-L188; human.py L74-L90",
+      "url": "https://github.com/LeapLabTHU/ExpeL/blob/e41ec9a24823e7b560c561ab191441b56d9bcefc/agent/react.py#L169-L188"
+    },
+    "compression": [
+      {
+        "what": "insights vs the experience they summarise",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported. The list is capped by prompt (10 or 8 rules in the README runs) whatever the number of trajectories.",
+        "src": "code README L202-L206",
+        "url": "https://github.com/LeapLabTHU/ExpeL/blob/e41ec9a24823e7b560c561ab191441b56d9bcefc/README.md#L202-L206"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Folds",
+        "paper": "'four-fold validation' (§5.1), described as training on one half and evaluating on the other, and vice versa (App. D.1)",
+        "code": "k_folds: 2 in every benchmark config",
+        "src": "configs/benchmark/hotpotqa.yaml L6-L8",
+        "url": "https://github.com/LeapLabTHU/ExpeL/blob/e41ec9a24823e7b560c561ab191441b56d9bcefc/configs/benchmark/hotpotqa.yaml#L6-L8"
+      },
+      {
+        "topic": "Downvote",
+        "paper": "DOWNVOTE subtracts 1",
+        "code": "REMOVE subtracts 1, or 3 once the list holds 5 more rules than the cap; the prompt also discourages ADD when the list is full",
+        "src": "agent/expel.py L314, L728-L731; human.py L32-L34",
+        "url": "https://github.com/LeapLabTHU/ExpeL/blob/e41ec9a24823e7b560c561ab191441b56d9bcefc/agent/expel.py#L728-L731"
+      },
+      {
+        "topic": "Which trajectories can be retrieved",
+        "paper": "top-k successful trajectories by task similarity",
+        "code": "only the same ALFWorld task type; hand-written few-shots are in the pool; trajectories longer than the longest hand-written example are skipped; WebShop drops ones with invalid actions",
+        "src": "agent/expel.py L507-L568",
+        "url": "https://github.com/LeapLabTHU/ExpeL/blob/e41ec9a24823e7b560c561ab191441b56d9bcefc/agent/expel.py#L507-L568"
+      },
+      {
+        "topic": "Insight model",
+        "paper": "gpt-4-0613",
+        "code": "default agent.llm is gpt-3.5-turbo; the README runs set agent.llm=gpt-4",
+        "src": "configs/agent/expel.yaml L2; README L202-L206",
+        "url": "https://github.com/LeapLabTHU/ExpeL/blob/e41ec9a24823e7b560c561ab191441b56d9bcefc/README.md#L202-L206"
+      }
+    ],
+    "open_questions": [
+      "Training and evaluation tasks are two halves of the same small sets (100 HotpotQA, 134 ALFWorld, 100 WebShop), so retrieved successes are near neighbours by construction; how this transfers to a different task distribution is only probed by the HotpotQA → FEVER insight transfer.",
+      "ExpeL reads more context than ReAct (4,310 vs 1,320 tokens per HotpotQA trajectory, Table 6); no baseline gets the same budget of hand-picked examples."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 216",
+        "body": "<text class=\"fig-t\" x=\"46\" y=\"16\" text-anchor=\"middle\">Training tasks</text><rect class=\"gi-ev\" x=\"8\" y=\"28\" width=\"76\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"16\" y1=\"36\" x2=\"74\" y2=\"36\"/><rect class=\"gi-ev\" x=\"8\" y=\"50\" width=\"76\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"16\" y1=\"58\" x2=\"74\" y2=\"58\"/><rect class=\"gi-ev\" x=\"8\" y=\"72\" width=\"76\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"16\" y1=\"80\" x2=\"74\" y2=\"80\"/><path class=\"gi-a\" d=\"M84 58 L97 58\"/><polygon class=\"gi-ah\" points=\"104,58 97,54 97,62\"/><rect class=\"gi-llm\" x=\"104\" y=\"34\" width=\"92\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"150\" y=\"55\" text-anchor=\"middle\">Reflexion runs</text><text class=\"fig-s\" x=\"150\" y=\"68\" text-anchor=\"middle\">≤ 3 retries a task</text><path class=\"gi-a\" d=\"M196 58 L209 58\"/><polygon class=\"gi-ah\" points=\"216,58 209,54 209,62\"/><text class=\"fig-t\" x=\"276\" y=\"16\" text-anchor=\"middle\">Experience pool</text><rect class=\"gi-f\" x=\"216\" y=\"26\" width=\"120\" height=\"100\" rx=\"8\"/><rect class=\"gi-hi\" x=\"224\" y=\"34\" width=\"104\" height=\"20\" rx=\"5\"/><text class=\"fig-s\" x=\"232\" y=\"48\" text-anchor=\"start\">successes</text><rect class=\"gi-ev d\" x=\"224\" y=\"60\" width=\"104\" height=\"20\" rx=\"5\"/><text class=\"fig-s\" x=\"232\" y=\"74\" text-anchor=\"start\">failures</text><text class=\"fig-s\" x=\"276\" y=\"98\" text-anchor=\"middle\">trajectories kept</text><text class=\"fig-s\" x=\"276\" y=\"111\" text-anchor=\"middle\">as they ran</text><path class=\"gi-a\" d=\"M276 126 L276 168\"/><path class=\"gi-a\" d=\"M276 168 L313 168\"/><polygon class=\"gi-ah\" points=\"320,168 313,164 313,172\"/><rect class=\"gi-v fig-soft\" x=\"320\" y=\"148\" width=\"116\" height=\"42\" rx=\"8\"/><text class=\"fig-t\" x=\"378\" y=\"166\" text-anchor=\"middle\">Faiss index</text><text class=\"fig-s\" x=\"378\" y=\"179\" text-anchor=\"middle\">successes, by task text</text><text class=\"fig-s\" x=\"378\" y=\"206\" text-anchor=\"middle\">all-mpnet-base-v2 embedding</text><path class=\"gi-a\" d=\"M336 58 L353 58\"/><polygon class=\"gi-ah\" points=\"360,58 353,54 353,62\"/><rect class=\"gi-llm\" x=\"360\" y=\"34\" width=\"96\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"408\" y=\"55\" text-anchor=\"middle\">Insight LLM</text><text class=\"fig-s\" x=\"408\" y=\"68\" text-anchor=\"middle\">GPT-4</text><text class=\"fig-s\" x=\"408\" y=\"96\" text-anchor=\"middle\">fail vs success of a task;</text><text class=\"fig-s\" x=\"408\" y=\"108\" text-anchor=\"middle\">groups of 8 successes</text><path class=\"gi-a\" d=\"M456 58 L463 58\"/><polygon class=\"gi-ah\" points=\"470,58 463,54 463,62\"/><text class=\"fig-t\" x=\"512\" y=\"16\" text-anchor=\"middle\">Insights</text><rect class=\"gi-f\" x=\"470\" y=\"26\" width=\"84\" height=\"100\" rx=\"8\"/><rect class=\"gi-ev\" x=\"476\" y=\"34\" width=\"58\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"484\" y1=\"43\" x2=\"524\" y2=\"43\"/><rect class=\"gi-w\" x=\"536\" y=\"36\" width=\"14\" height=\"14\" rx=\"2\"/><text class=\"gi-lbl\" x=\"543\" y=\"46\" text-anchor=\"middle\">4</text><rect class=\"gi-ev\" x=\"476\" y=\"56\" width=\"58\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"484\" y1=\"65\" x2=\"524\" y2=\"65\"/><rect class=\"gi-w\" x=\"536\" y=\"58\" width=\"14\" height=\"14\" rx=\"2\"/><text class=\"gi-lbl\" x=\"543\" y=\"68\" text-anchor=\"middle\">3</text><rect class=\"gi-ev\" x=\"476\" y=\"78\" width=\"58\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"484\" y1=\"87\" x2=\"524\" y2=\"87\"/><rect class=\"gi-w\" x=\"536\" y=\"80\" width=\"14\" height=\"14\" rx=\"2\"/><text class=\"gi-lbl\" x=\"543\" y=\"90\" text-anchor=\"middle\">2</text><rect class=\"gi-ev\" x=\"476\" y=\"100\" width=\"58\" height=\"18\" rx=\"5\"/><line class=\"gi-t\" x1=\"484\" y1=\"109\" x2=\"524\" y2=\"109\"/><rect class=\"gi-w\" x=\"536\" y=\"102\" width=\"14\" height=\"14\" rx=\"2\"/><text class=\"gi-lbl\" x=\"543\" y=\"112\" text-anchor=\"middle\">1</text><text class=\"fig-s\" x=\"500\" y=\"140\" text-anchor=\"middle\">ADD +2, AGREE +1,</text><text class=\"fig-s\" x=\"500\" y=\"152\" text-anchor=\"middle\">EDIT +1, REMOVE −1;</text><text class=\"fig-s\" x=\"500\" y=\"164\" text-anchor=\"middle\">deleted at 0</text>",
+        "text": [
+          "Training tasks are attempted with ReAct and Reflexion retries, and every attempt goes into an experience pool.",
+          "GPT-4 turns fail/success pairs and groups of successes into a vote-counted list of insights; successes are also indexed by task text for retrieval."
+        ],
+        "src": "paper §4.1-4.2, Alg. 1-2, Table 4; code agent/expel.py L287-L496, L696-L743",
+        "url": "https://github.com/LeapLabTHU/ExpeL/blob/e41ec9a24823e7b560c561ab191441b56d9bcefc/agent/expel.py#L287-L402"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 262",
+        "body": "<rect class=\"gi-f\" x=\"6\" y=\"40\" width=\"76\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"44\" y=\"61\" text-anchor=\"middle\">New task</text><text class=\"fig-s\" x=\"44\" y=\"74\" text-anchor=\"middle\">one attempt</text><path class=\"gi-a\" d=\"M82 64 L93 64\"/><polygon class=\"gi-ah\" points=\"100,64 93,60 93,68\"/><rect class=\"gi-v fig-soft\" x=\"100\" y=\"40\" width=\"92\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"146\" y=\"61\" text-anchor=\"middle\">kNN search</text><text class=\"fig-s\" x=\"146\" y=\"74\" text-anchor=\"middle\">task vs task</text><text class=\"fig-s\" x=\"146\" y=\"102\" text-anchor=\"middle\">same ALFWorld type</text><path class=\"gi-a\" d=\"M192 64 L203 64\"/><polygon class=\"gi-ah\" points=\"210,64 203,60 203,68\"/><rect class=\"gi-f\" x=\"210\" y=\"40\" width=\"80\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"250\" y=\"61\" text-anchor=\"middle\">k × 4</text><text class=\"fig-s\" x=\"250\" y=\"74\" text-anchor=\"middle\">candidates</text><path class=\"gi-a\" d=\"M290 64 L301 64\"/><polygon class=\"gi-ah\" points=\"308,64 301,60 301,68\"/><rect class=\"gi-f\" x=\"308\" y=\"40\" width=\"88\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"352\" y=\"61\" text-anchor=\"middle\">keep k</text><text class=\"fig-s\" x=\"352\" y=\"74\" text-anchor=\"middle\">skip long / same</text><text class=\"fig-s\" x=\"352\" y=\"102\" text-anchor=\"middle\">k = 6 HotpotQA</text><text class=\"fig-s\" x=\"352\" y=\"114\" text-anchor=\"middle\">k = 2 ALFWorld</text><path class=\"gi-a\" d=\"M396 54 L419 54\"/><polygon class=\"gi-ah\" points=\"426,54 419,50 419,58\"/><text class=\"fig-t\" x=\"486\" y=\"16\" text-anchor=\"middle\">Actor prompt</text><rect class=\"gi-f\" x=\"418\" y=\"26\" width=\"136\" height=\"144\" rx=\"8\"/><rect class=\"gi-hi\" x=\"426\" y=\"34\" width=\"120\" height=\"40\" rx=\"5\"/><text class=\"fig-t\" x=\"434\" y=\"51\" text-anchor=\"start\">k past successes</text><text class=\"fig-s\" x=\"434\" y=\"65\" text-anchor=\"start\">as few-shot</text><rect class=\"gi-hi\" x=\"426\" y=\"80\" width=\"120\" height=\"26\" rx=\"5\"/><text class=\"fig-t\" x=\"434\" y=\"97\" text-anchor=\"start\">all insights</text><rect class=\"gi-ev\" x=\"426\" y=\"112\" width=\"120\" height=\"22\" rx=\"5\"/><text class=\"fig-s\" x=\"434\" y=\"127\" text-anchor=\"start\">task</text><rect class=\"gi-ev\" x=\"426\" y=\"140\" width=\"120\" height=\"22\" rx=\"5\"/><text class=\"fig-s\" x=\"434\" y=\"155\" text-anchor=\"start\">trajectory so far</text><rect class=\"gi-f\" x=\"210\" y=\"170\" width=\"110\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"265\" y=\"187\" text-anchor=\"middle\">Insight list</text><text class=\"fig-s\" x=\"265\" y=\"200\" text-anchor=\"middle\">no search: all of it</text><path class=\"gi-a d\" d=\"M320 190 L404 190 L404 93\"/><path class=\"gi-a d\" d=\"M404 93 L419 93\"/><polygon class=\"gi-ah\" points=\"426,93 419,89 419,97\"/><path class=\"gi-a\" d=\"M486 170 L486 189\"/><polygon class=\"gi-ah\" points=\"486,196 482,189 490,189\"/><rect class=\"gi-llm\" x=\"436\" y=\"196\" width=\"100\" height=\"36\" rx=\"8\"/><text class=\"fig-t\" x=\"486\" y=\"218\" text-anchor=\"middle\">ReAct actor</text><text class=\"fig-s\" x=\"486\" y=\"248\" text-anchor=\"middle\">gpt-3.5-turbo</text><text class=\"fig-s\" x=\"146\" y=\"128\" text-anchor=\"middle\">over successful</text><text class=\"fig-s\" x=\"146\" y=\"140\" text-anchor=\"middle\">trajectories only</text>",
+        "text": [
+          "A new task's text is matched against the task texts of stored successes; the first k usable ones become few-shot examples.",
+          "The whole insight list is added without search, and a ReAct actor solves the task in one attempt."
+        ],
+        "src": "paper §4.3, Alg. 3; code agent/expel.py L404-L412, L507-L570",
+        "url": "https://github.com/LeapLabTHU/ExpeL/blob/e41ec9a24823e7b560c561ab191441b56d9bcefc/agent/expel.py#L507-L570"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Retries while gathering",
+        "value": "up to 3 per training task",
+        "src": "paper Table 4",
+        "section": "construction"
+      },
+      {
+        "label": "Successes per insight call (L)",
+        "value": "8 HotpotQA, ALFWorld · 4 WebShop",
+        "src": "paper Table 4",
+        "section": "construction"
+      },
+      {
+        "label": "New insight weight",
+        "value": "2; ±1 per vote; removed at 0",
+        "src": "paper §4.2",
+        "section": "construction"
+      },
+      {
+        "label": "Few-shot trajectories retrieved (k)",
+        "value": "6 HotpotQA · 2 ALFWorld · 2 WebShop",
+        "src": "paper Table 4",
+        "section": "method"
+      },
+      {
+        "label": "Retrieval",
+        "value": "Faiss kNN, all-mpnet-base-v2, task text vs task text",
+        "src": "paper §4.2, Table 4",
+        "section": "method"
+      },
+      {
+        "label": "Evaluation",
+        "value": "one attempt, gpt-3.5-turbo-0613, temperature 0",
+        "src": "paper §5.1, App. D.5",
+        "section": "method"
+      },
+      {
+        "label": "Tokens per trajectory, HotpotQA",
+        "value": "4,310 ExpeL vs 1,320 ReAct",
+        "src": "paper Table 6",
+        "section": "results"
+      },
+      {
+        "label": "Tokens per trajectory, ALFWorld",
+        "value": "2,857 ExpeL vs 2,051 ReAct",
+        "src": "paper Table 6",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Gather experience (actor + reflection)",
+        "model": "gpt-3.5-turbo-0613 (16k variant when over the context limit)",
+        "kind": "llm",
+        "src": "paper App. D.5"
+      },
+      {
+        "role": "Extract insights",
+        "model": "gpt-4-0613",
+        "kind": "llm",
+        "src": "paper §4.2, App. D.5"
+      },
+      {
+        "role": "Retrieve past successes",
+        "model": "all-mpnet-base-v2 + Faiss kNN",
+        "kind": "retriever",
+        "src": "paper §4.2, Table 4"
+      },
+      {
+        "role": "Insight voting",
+        "model": "counts and deletion at 0",
+        "kind": "rule",
+        "src": "paper §4.2; code agent/expel.py L696-L743",
+        "url": "https://github.com/LeapLabTHU/ExpeL/blob/e41ec9a24823e7b560c561ab191441b56d9bcefc/agent/expel.py#L696-L743"
+      },
+      {
+        "role": "Evaluation actor",
+        "model": "gpt-3.5-turbo-0613, ReAct",
+        "kind": "llm",
+        "src": "paper §5.1"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "HotpotQA",
+        "ALFWorld",
+        "WebShop"
+      ],
+      "rows": [
+        [
+          "ReAct (no memory)",
+          "28",
+          "40",
+          "35"
+        ],
+        [
+          "insights only",
+          "36",
+          "50",
+          "37"
+        ],
+        [
+          "retrieval only",
+          "31",
+          "55",
+          "38"
+        ],
+        [
+          "hand-crafted insights",
+          "32.0",
+          "–",
+          "–"
+        ],
+        [
+          "insights built with reflections",
+          "29.0",
+          "–",
+          "–"
+        ],
+        [
+          "insights by gpt-3.5-turbo",
+          "32.0",
+          "–",
+          "–"
+        ],
+        [
+          "retrieve by reasoning similarity",
+          "–",
+          "48.5",
+          "–"
+        ],
+        [
+          "random past successes",
+          "–",
+          "42.5",
+          "–"
+        ],
+        [
+          "ExpeL",
+          "39",
+          "59",
+          "41"
+        ]
+      ],
+      "src": "paper Fig. 5 (first three rows and ExpeL), Table 3 (success rate %)"
+    },
+    "discussion": {
+      "takeaway": "Letting an agent practise on training tasks and then reuse both distilled insights and its own most similar successes improves single-attempt success on unseen tasks without any fine-tuning. The two parts help different domains: insights matter more on HotpotQA, retrieved examples on ALFWorld.",
+      "claims": [
+        {
+          "claim": "Learning from experience beats the ReAct and Act baselines.",
+          "evidence": "Success rate: HotpotQA 39 vs 28 (ReAct), ALFWorld 59 vs 40, WebShop 41 vs 35 (Fig. 5)."
+        },
+        {
+          "claim": "Insights and retrieval are complementary.",
+          "evidence": "Insights-only / retrieve-only: 36 / 31 on HotpotQA, 50 / 55 on ALFWorld, 37 / 38 on WebShop; both together are best (Fig. 5, §5.2)."
+        },
+        {
+          "claim": "Cross-task learning without retries can match Reflexion's retries.",
+          "evidence": "HotpotQA 39 vs Reflexion 40 at R3; ALFWorld 59 vs 54 at R3; WebShop 41 is below Reflexion's 43-48 (Fig. 5, §5.2)."
+        },
+        {
+          "claim": "More and more diverse experience helps.",
+          "evidence": "Insights from the few-shots alone give no gain over ReAct; gathering with Reflexion beats gathering with ReAct only (Fig. 6, §5.6)."
+        },
+        {
+          "claim": "Insights transfer across tasks.",
+          "evidence": "HotpotQA insights adapted to FEVER: 70 vs 63 (ReAct) and 65 without target examples (Table 1)."
+        },
+        {
+          "claim": "Design choices matter.",
+          "evidence": "Learned insights 39.0 beat hand-crafted 32.0; adding reflections drops to 29.0; gpt-3.5 insights 32.0; task-similarity retrieval 59.0 vs 48.5 reasoning similarity and 42.5 random on ALFWorld (Table 3)."
+        }
+      ],
+      "limits": [
+        "Only textual observations; images would need a VLM or captioner.",
+        "Only closed-source API LLMs were tested.",
+        "All insights fit in the context window here; lifelong use would need insight retrieval.",
+        "Prompting methods lack the theory behind RL, which may affect how good the resulting policy is."
+      ],
+      "limits_src": "paper §6",
+      "reading": [
+        "Insights are never retrieved: the whole list goes into every prompt, and the README caps it at 10 (8 on WebShop) through the extraction prompt, so the insight memory is small by design.",
+        "Retrieval matches only the task text; the trajectory, thoughts and outcomes are not compared with the new task.",
+        "Evaluation uses gpt-3.5-turbo-0613 while the insights come from gpt-4-0613, so part of the gain may be distilled GPT-4 advice; the gpt-3.5 insights ablation (32 vs 39 on HotpotQA) shows the size of that effect on one benchmark.",
+        "Reflexion baselines (R1-R3) retry the same test task with a correctness signal; ExpeL gets one attempt, so the comparison favours Reflexion's access to test feedback rather than ExpeL.",
+        "Main results are only given as bar labels (integers) and standard-error arrows in Fig. 5; Tables 2-3 and 5 give finer numbers for some settings."
+      ]
+    },
+    "abstract": {
+      "text": "ExpeL is an LLM agent that learns from its own experience without changing model weights. It first attempts a set of training tasks, retrying failures with self-reflection, and stores the resulting trajectories. An LLM then distils insights from contrasts between failures and successes and from groups of successes. At test time the agent solves each new task once, prompted with these insights and with its most similar past successes; the authors report consistent gains over ReAct on HotpotQA, ALFWorld and WebShop and positive transfer to FEVER.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2308.10144"
+    },
+    "sections": {
+      "Memory architecture": "§4",
+      "Results": "§5.2, §5.4-5.5",
+      "Ablation": "§5.6",
+      "Discussion": "§5.3, §6 Limitations",
+      "Details": "§5.1, App. D-E"
+    }
+  }
+}

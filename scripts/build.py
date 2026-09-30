@@ -2,6 +2,8 @@
 
     python3 scripts/build.py          # validate + write site/atlas.json
     python3 scripts/build.py --check  # validate only; exit 1 on errors
+    python3 scripts/build.py --partial  # while annotations are being written: drop result rows with errors (listed
+                                        # as warnings) and write the rest; errors anywhere else still stop the build
 
 Errors (exit 1): invalid JSON, missing required fields, tag values outside the controlled
 vocabularies, result rows pointing at unknown benchmarks.
@@ -53,7 +55,7 @@ CLASSIFY = {
 # Optional "mechanism" block: how the system works, step by step, with sources (see schema/SCHEMA.md).
 KEPT_AS = {"verbatim", "rewritten", "summarized", "extracted", "derived"}
 USED_FOR = {"index", "scene routing", "rerank", "verifier", "answer", "profile", "chat mode only"}
-MECH_PARTS = {"sources", "headline", "units", "write", "read", "answer_context", "compression", "numbers", "paper_vs_code", "open_questions"}
+MECH_PARTS = {"sources", "glance", "funnel", "flow", "figures", "key_numbers", "ablation", "components", "discussion", "abstract", "sections", "headline", "units", "write", "read", "answer_context", "compression", "numbers", "paper_vs_code", "open_questions"}
 TRACKS = {"main", "short", "findings", "workshop", "journal", "preprint"}
 IMG_EXT = (".png", ".jpg", ".jpeg", ".webp", ".svg")
 METRICS = {"llm-judge", "f1", "bleu-1", "em", "mc-acc", "rouge-l", "recall@k", "other"}
@@ -164,6 +166,7 @@ def setting_key(r):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true")
+    ap.add_argument("--partial", action="store_true")
     args = ap.parse_args()
     rep = Report()
 
@@ -210,8 +213,10 @@ def main():
             rep.err(where, f"reporter.id must equal file name ('{rid}')")
         arxiv = rid.rsplit("-", 1)[-1] if rid else None
         reporters.append({**doc["reporter"], "arxiv": arxiv if re.fullmatch(r"\d{4}\.\d{4,5}", arxiv or "") else None})
+        skipped = 0
         for i, r in enumerate(doc.get("rows", [])):
             w = f"{where}#{i}"
+            n_err = len(rep.errors)
             for f in ("system", "benchmark", "metric", "score"):
                 if r.get(f) is None:
                     rep.err(w, f"missing '{f}'")
@@ -225,6 +230,10 @@ def main():
                 rep.warn(w, f"system '{r.get('system')}' has no system file or extra_systems entry")
             if not isinstance(r.get("score"), (int, float)):
                 rep.err(w, "score must be a number")
+            if args.partial and len(rep.errors) > n_err:
+                del rep.errors[n_err:]
+                skipped += 1
+                continue
             key, unknown = setting_key(r)
             source = {}
             m = TABLE_REF.search(r.get("location") or "")
@@ -236,11 +245,20 @@ def main():
                     if shot.get("page"):
                         source["table_page"] = shot["page"]
             rows.append({**r, **source, "reporter": rid, "setting_key": key, "unknown_settings": unknown})
+        if skipped:
+            rep.warn(where, f"--partial: skipped {skipped} row(s) with errors")
 
     # link index entries to annotated systems by arXiv id, or by title when either side has none
     norm = lambda t: re.sub(r"[^a-z0-9]", "", (t or "").lower())
     by_arxiv = {s["paper"]["arxiv"]: s for s in systems if s.get("paper") and s["paper"].get("arxiv")}
     by_title = {norm(s["paper"].get("title")): s for s in systems if s.get("paper") and s["paper"].get("title")}
+    # venues looked up in scholarly databases (scripts/lookup_venues.py) fill in papers no list gave a venue
+    # for, or replace a list's "arXiv" tag; they are marked with their source and never override a checked one
+    looked = load(DATA / "venues_lookup.json", rep) if (DATA / "venues_lookup.json").exists() else {}
+    for p in papers_doc["papers"]:
+        v = (looked or {}).get(p["id"])
+        if v and (not p.get("venue") or p["venue"].get("track") == "preprint"):
+            p["venue"] = {"venue": v["venue"], "year": v.get("year"), "track": v.get("track", "main"), "source": v["source"], "url": v.get("url")}
     for p in papers_doc["papers"]:
         s = by_arxiv.get(p.get("arxiv")) or by_title.get(norm(p.get("title")))
         if s:
@@ -267,6 +285,36 @@ def main():
         for x in c.get("function", []):
             if x not in fn_ids:
                 rep.err(where, f"{pid}: function '{x}' not in {sorted(fn_ids)}")
+    # axis diagrams (data/axis_icons.json): keys must name a real family, axis and value; bodies must be well-formed SVG
+    import xml.etree.ElementTree as ET
+    icons = load(DATA / "axis_icons.json", rep) or {}
+    iwhere = DATA / "axis_icons.json"
+    fam_axes = {f["id"]: f.get("axes") or [] for g in taxonomy["groups"] for f in g["families"]}
+    for key, ic in icons.items():
+        fam, axis, value = (key.split("|") + ["", "", ""])[:3]
+        axes = {a["id"]: {v["id"] for v in a["values"]} for a in fam_axes.get(fam, [])}
+        if value not in axes.get(axis, set()):
+            rep.err(iwhere, f"{key}: no such family, axis or value")
+        try:
+            ET.fromstring(f'<svg xmlns="http://www.w3.org/2000/svg">{ic.get("body", "")}</svg>')
+        except ET.ParseError as e:
+            rep.err(iwhere, f"{key}: body is not well-formed SVG ({e})")
+        if not ic.get("label"):
+            rep.err(iwhere, f"{key}: needs a label for screen readers")
+    # paper emblems (data/paper_emblems.json): one small picture per paper, keyed by paper id
+    emblems = load(DATA / "paper_emblems.json", rep) or {}
+    ewhere = DATA / "paper_emblems.json"
+    paper_ids = {p["id"] for p in papers_doc["papers"]}
+    for pid, em in emblems.items():
+        if pid not in paper_ids:
+            rep.err(ewhere, f"{pid}: not a paper id")
+        try:
+            ET.fromstring(f'<svg xmlns="http://www.w3.org/2000/svg">{em.get("body", "")}</svg>')
+        except ET.ParseError as e:
+            rep.err(ewhere, f"{pid}: body is not well-formed SVG ({e})")
+    for p in papers_doc["papers"]:
+        if p["id"] in emblems:
+            p["emblem"] = emblems[p["id"]]
     unplaced = 0
     for p in papers_doc["papers"]:
         c = families.get(p["id"])
@@ -302,6 +350,7 @@ def main():
         "sources": papers_doc["sources"],
         "papers": papers_doc["papers"],
         "taxonomy": taxonomy,
+        "axis_icons": icons,
     }
     (ROOT / "site" / "atlas.json").write_text(json.dumps(atlas, ensure_ascii=False, separators=(",", ":")))
 

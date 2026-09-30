@@ -1,0 +1,588 @@
+{
+  "id": "memllm",
+  "name": "MemLLM",
+  "paper": {
+    "title": "MemLLM: Finetuning LLMs to Use Explicit Read-Write Memory",
+    "arxiv": "2404.11672",
+    "url": "https://arxiv.org/abs/2404.11672",
+    "venue": "TMLR 2025",
+    "venue_short": "TMLR",
+    "track": "journal",
+    "year": 2025,
+    "code": "https://github.com/amodaresi/MemLLM"
+  },
+  "design": {
+    "construction": {
+      "unit": "relation triple (subject, relation, object) over 96 Wikidata relation types",
+      "kept_as": "extracted triples; entity and relation names as text plus Contriever vectors",
+      "processing": "finetuned write model reads each sentence with its preceding sentences and emits a MEM_WRITE call listing the triples in that sentence",
+      "trigger": "other",
+      "writer": "memory-write model: Mistral-7B-v0.1 + LoRA"
+    },
+    "organization": {
+      "structure": "triple store: a Triples table of (subject id, relation id, object id) linked to Entities and Relations tables",
+      "stores": "Triple Memory; Entities (name, vector); Relations (name, vector)",
+      "index": "Contriever vectors of entity and relation names (HNSW in code); each (s, r, o) stored once"
+    },
+    "management": {
+      "operations": "insert; identical triples and names are stored once",
+      "conflicts": "knowledge-editing runs only: a new triple with the same entity and relation replaces the old one (§4.3)",
+      "forgetting": null,
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "the read model decides where to read and writes queries (s, r, ?) or (?, r, o) in a MEM_READ call",
+      "candidates": "entities and relations whose name vectors are close to the query's (cosine thresholds)",
+      "selection": "triples joining a candidate entity and relation whose mean similarity passes a threshold; the other entity's name is returned",
+      "budget": "at most 30 entity names per call (paper: drop the call above 30; code: keep 30 names taken from an unordered set, i.e. unranked)"
+    },
+    "use": {
+      "context": "returned entity names appended inline after the call; the call is deleted when the next one starts",
+      "reasoning": "the model keeps decoding (language modeling, or a 5-shot QA answer in editing)"
+    },
+    "control": {
+      "construction": "learned-sft",
+      "management": "fixed-rule",
+      "retrieval": "learned-sft"
+    }
+  },
+  "classify": {
+    "structure": "graph",
+    "index": "vector",
+    "management": "append-only",
+    "candidates": "dense",
+    "decides": "top-k rule",
+    "note": "Memory is an entity-relation triple store; the model writes the query, but the matching is a fixed similarity-threshold rule over name vectors (no graph walk, no reranker). Replacement of old triples happens only in the knowledge-editing experiment."
+  },
+  "tags": {
+    "fidelity": "extracted",
+    "structure": [
+      "graph"
+    ],
+    "write_time": [
+      "extract"
+    ],
+    "selection": [
+      "dense",
+      "llm-tool-call"
+    ],
+    "memory_type": [
+      "semantic"
+    ],
+    "learning": "sft",
+    "domain": [
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "Text is split into sentences; each sentence is given to the write model as the focus sentence, bracketed by tags, after the preceding sentences (up to 24 in the Wikipedia indexing script).",
+    "construction": "A LoRA-finetuned Mistral-7B emits ({MEM_WRITE--> s»r»o; ...}) with the triples stated in the focus sentence, using late stopping so it does not close the list too early.",
+    "organization": "Triples go into a Triples table that points to separate Entities and Relations tables; names are stored once as text with a Contriever vector.",
+    "update": "Identical triples are stored once. In the knowledge-editing run a new triple with the same entity and relation as an old one replaces it.",
+    "retrieval": "While generating, the read model emits ({MEM_READ( with one to a few (s, r, ?) or (?, r, o) queries; candidate entities and relations are found by cosine similarity of name vectors, matching triples are joined, and up to 30 entity names are returned.",
+    "answer": "The returned names are appended after '-->' and the model continues; the call is removed when the model starts a new one, or right away if nothing came back.",
+    "learning": "Two LoRA adapters on Mistral-7B are finetuned with the language-modeling loss on API data built from Re-DocRED, distant-supervised DocRED (filtered with Mixtral) and counterfactual Re-DocRED variants; read data is built against a memory filled by the trained write model."
+  },
+  "summary": "An LLM finetuned to call an explicit triple-store memory: a write model extracts (subject, relation, object) triples sentence by sentence, and a read model inserts MEM_READ queries mid-generation whose matched entity names are appended to the text.",
+  "verified": false,
+  "notes": "Venue: TMLR, published 04/2025 (PDF header 'Published in Transactions on Machine Learning Research (04/2025)'; reviewed on OpenReview id dghM7sOudh). The list guess 'TMLR 2025 journal' is confirmed from the arXiv v3 PDF; the OpenReview page itself sat behind a browser check and was not read. Code link from the paper abstract: github.com/amodaresi/MemLLM.\nDESIGN: §3.1 (memory structure, query rule), §3.2 (API, inference), §3.3 (training data), §4.1 (setup), App. A (late stopping), App. B (ambiguous queries), App. D (hyperparameters). Trigger is 'other': writing runs once per sentence of any input text, not per dialogue turn. Retrieval control is learned-sft because the finetuned model decides where to read and what to ask; the match itself is a fixed rule.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2404.11672v3 (PDF read 2026-09-30)",
+      "code": "https://github.com/amodaresi/MemLLM/tree/f786ae306f93602544ecd30e883b1346ebc0a2ae/",
+      "code_note": "Commit f786ae30 (2024-08-13, 'Added codes') is the only commit with code; all later history is README edits before it, and the repo has not changed since, while paper v3 is from 2025-04. It is taken as the evaluation code. Released scripts have placeholder paths (model dirs, memory server URI), so exact run settings can only be read from the constants in the eval scripts."
+    },
+    "headline": [
+      "Memory is a database of (subject, relation, object) triples that the model itself writes and queries through special text calls it learned by finetuning.",
+      "What comes back is only a list of entity names, not the triples: the model must infer from its own query what each name answers.",
+      "In the perplexity evaluation, reads happen only at positions fixed by the evaluation data (before target entities); the model's choice enters as the probability of opening a call there."
+    ],
+    "units": [
+      {
+        "name": "Triple",
+        "role": "one fact in the main Triple Memory table",
+        "made_by": "memory-write model (Mistral-7B + LoRA)",
+        "fields": [
+          {
+            "name": "subject id, relation id, object id",
+            "what": "pointers into the Entities and Relations tables; the combination is unique",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §3.1, Fig. 1; code memory_server_v3.py L51",
+            "url": "https://github.com/amodaresi/MemLLM/blob/f786ae306f93602544ecd30e883b1346ebc0a2ae/utils/memory/memory_server_v3.py#L51"
+          }
+        ]
+      },
+      {
+        "name": "Entity",
+        "role": "a subject or object name, stored once",
+        "made_by": "write model output; vector by Contriever",
+        "fields": [
+          {
+            "name": "entity name",
+            "what": "surface text the write model produced",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper §3.1; code memory_server_v3.py L52",
+            "url": "https://github.com/amodaresi/MemLLM/blob/f786ae306f93602544ecd30e883b1346ebc0a2ae/utils/memory/memory_server_v3.py#L52"
+          },
+          {
+            "name": "embedding",
+            "what": "Contriever (facebook/contriever-msmarco in code) vector of the name, HNSW-indexed",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §3.1; code memory_controller_v3.py L54-L56",
+            "url": "https://github.com/amodaresi/MemLLM/blob/f786ae306f93602544ecd30e883b1346ebc0a2ae/utils/memory/memory_controller_v3.py#L54-L56"
+          }
+        ]
+      },
+      {
+        "name": "Relation",
+        "role": "a relation type name, stored once",
+        "made_by": "write model output; vector by Contriever",
+        "fields": [
+          {
+            "name": "relation name",
+            "what": "one of the 96 Wikidata relation labels seen in training",
+            "kept_as": "extracted",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §3.1, §4.1; code memory_server_v3.py L53",
+            "url": "https://github.com/amodaresi/MemLLM/blob/f786ae306f93602544ecd30e883b1346ebc0a2ae/utils/memory/memory_server_v3.py#L53"
+          },
+          {
+            "name": "embedding",
+            "what": "Contriever vector of the relation name, HNSW-indexed",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code memory_controller_v3.py L58-L60, L70-L75",
+            "url": "https://github.com/amodaresi/MemLLM/blob/f786ae306f93602544ecd30e883b1346ebc0a2ae/utils/memory/memory_controller_v3.py#L58-L75"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Split",
+        "how": "nltk sentence split; each sentence becomes the focus, preceded by earlier sentences as context",
+        "params": {
+          "context": "up to 24 earlier sentences (Wikipedia indexing)"
+        },
+        "src": "paper §3.2; code main-wiki.py L189",
+        "url": "https://github.com/amodaresi/MemLLM/blob/f786ae306f93602544ecd30e883b1346ebc0a2ae/inference/fast_indexing/main-wiki.py#L189"
+      },
+      {
+        "step": "Extract",
+        "how": "write model emits ({MEM_WRITE--> s»r»o; ...}); greedy with late stopping: when the close token wins, remember the cut point and keep decoding until the score has not improved 5 times, then cut at the best point",
+        "params": {
+          "K": "5"
+        },
+        "out": "an empty list is allowed (trained on sentences without relations)",
+        "src": "paper §3.2, App. A; code memllm.py L8-L33, L93-L123",
+        "url": "https://github.com/amodaresi/MemLLM/blob/f786ae306f93602544ecd30e883b1346ebc0a2ae/inference/memllm.py#L8-L33"
+      },
+      {
+        "step": "Store",
+        "how": "look up names; embed and insert new entity and relation names; insert triples with INSERT OR IGNORE so duplicates are dropped",
+        "out": "full Wikipedia: 111M triples, about 21M entity and relation rows",
+        "src": "paper §3.1, §4.2, Fig. 4; code memory_controller_v3.py L78-L130",
+        "url": "https://github.com/amodaresi/MemLLM/blob/f786ae306f93602544ecd30e883b1346ebc0a2ae/utils/memory/memory_controller_v3.py#L78-L130"
+      }
+    ],
+    "read": [
+      {
+        "step": "Open a call",
+        "round": 1,
+        "how": "the read model emits '({' while generating; the model learned where from training data that places a read just before a target entity",
+        "src": "paper §3.2-3.3; code memllm.py L219-L247",
+        "url": "https://github.com/amodaresi/MemLLM/blob/f786ae306f93602544ecd30e883b1346ebc0a2ae/inference/memllm.py#L219-L247"
+      },
+      {
+        "step": "Write queries",
+        "round": 1,
+        "input": "text so far",
+        "how": "model generates MEM_READ(s»r»; »r»o; ...)--> ; training data holds up to 3 queries per call",
+        "params": {
+          "queries per call": "≤ 3 in training data"
+        },
+        "src": "paper §3.2, Alg. 1 L27; code memllm.py L252-L288",
+        "url": "https://github.com/amodaresi/MemLLM/blob/f786ae306f93602544ecd30e883b1346ebc0a2ae/inference/memllm.py#L252-L288"
+      },
+      {
+        "step": "Match names",
+        "round": 1,
+        "scores": "query entity name and query relation name vs stored names",
+        "how": "HNSW search on Contriever vectors; keep entities within distance 0.15 (of the nearest 300) and relations within 0.15 (of the nearest 25)",
+        "params": {
+          "entity cos": "> 0.85 (paper 0.7)",
+          "relation cos": "> 0.85 (paper 0.7)"
+        },
+        "src": "paper §3.1, App. D; code memory_controller_v3.py L153-L157, evaluate_v4_mistral.py L54-L55",
+        "url": "https://github.com/amodaresi/MemLLM/blob/f786ae306f93602544ecd30e883b1346ebc0a2ae/evaluation/ppl-based/evaluate_v4_mistral.py#L54-L55"
+      },
+      {
+        "step": "Join triples",
+        "round": 1,
+        "how": "for each entity x relation pair with mean distance < 0.1, fetch matching triples by SQL; if any exact name match exists (distance < 0.001), keep only those",
+        "params": {
+          "mean sim": "> 0.9 (paper 0.85)"
+        },
+        "src": "code memory_controller_v3.py L173-L197, evaluate_v4_mistral.py L120",
+        "url": "https://github.com/amodaresi/MemLLM/blob/f786ae306f93602544ecd30e883b1346ebc0a2ae/utils/memory/memory_controller_v3.py#L173-L197"
+      },
+      {
+        "step": "Cap and append",
+        "round": 1,
+        "how": "collect the other entity's name from every triple, dedupe with a Python set and keep 30 of them (set order, so no ranking); if none, drop the call and continue without memory",
+        "params": {
+          "Q_thr": "30"
+        },
+        "src": "paper §3.2; code memllm.py L289-L318",
+        "url": "https://github.com/amodaresi/MemLLM/blob/f786ae306f93602544ecd30e883b1346ebc0a2ae/inference/memllm.py#L289-L318"
+      }
+    ],
+    "answer_context": {
+      "sees": "the text so far plus the latest call with up to 30 entity names",
+      "format": "…text ({MEM_READ(q1;q2)--> e1;e2;…}) continuation",
+      "excludes": [
+        "the matched triples and their relations",
+        "which query each name answers",
+        "earlier read calls",
+        "the source sentences of the facts"
+      ],
+      "includes": [
+        "entity names returned by the latest read"
+      ],
+      "note": "An empty result or a new '({' removes the call from the context.",
+      "src": "paper §3.2; code memllm.py L248-L253, L300-L317",
+      "url": "https://github.com/amodaresi/MemLLM/blob/f786ae306f93602544ecd30e883b1346ebc0a2ae/inference/memllm.py#L248-L317"
+    },
+    "compression": [
+      {
+        "what": "stored records vs one proposition per fact",
+        "kept": 21,
+        "of": 111,
+        "unit": "M records",
+        "basis": "Full Wikipedia: 111M extracted triples need about 21M entity/relation rows with vectors, versus 111M embedded propositions for an equivalent RAG store (§4.2, Fig. 4).",
+        "src": "paper §4.2, Fig. 4",
+        "url": "https://arxiv.org/pdf/2404.11672"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "TARGET PPL, memory from full Wikipedia",
+        "value": "2.986 (memory disabled 3.510; Mistral-7B 3.550)",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "TARGET PPL, memory from Re-DocRED eval documents only",
+        "value": "2.821",
+        "src": "paper Table 2 row 3"
+      },
+      {
+        "label": "TARGET PPL, gold triples + gold queries",
+        "value": "1.364",
+        "src": "paper Table 2 row 7"
+      },
+      {
+        "label": "ZsRE 1000 edits AVG",
+        "value": "0.84 (WISE 0.79, GRACE 0.67)",
+        "src": "paper Table 3"
+      },
+      {
+        "label": "Reliability errors (216)",
+        "value": "45 write, 95 read, 63 not used",
+        "src": "paper §4.3"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Match thresholds, perplexity run",
+        "paper": "entity and relation cosine ≥ 0.7, triple mean ≥ 0.85 (App. D)",
+        "code": "distance < 0.15 for entities and relations (cos > 0.85) and mean distance < 0.1 (mean cos > 0.9)",
+        "src": "evaluate_v4_mistral.py L54-L55, L120",
+        "url": "https://github.com/amodaresi/MemLLM/blob/f786ae306f93602544ecd30e883b1346ebc0a2ae/evaluation/ppl-based/evaluate_v4_mistral.py#L54-L120"
+      },
+      {
+        "topic": "Match thresholds, editing run",
+        "paper": "τe 0.85, τt 0.2, τr 0.6 (App. D)",
+        "code": "entity 0.15 and relation 0.8 distance match; mean distance < 0.5 (τr 0.5)",
+        "src": "eval_zsre.py L55-L56, L106",
+        "url": "https://github.com/amodaresi/MemLLM/blob/f786ae306f93602544ecd30e883b1346ebc0a2ae/evaluation/model-editing/eval_zsre.py#L55-L106"
+      },
+      {
+        "topic": "More than 30 results",
+        "paper": "the call is discarded as too broad",
+        "code": "30 names are kept from the deduplicated (unordered) result set, so the cut is not by similarity; the Q_THR check in the controller is commented out",
+        "src": "memllm.py L298, L437; memory_controller_v3.py L182-L183",
+        "url": "https://github.com/amodaresi/MemLLM/blob/f786ae306f93602544ecd30e883b1346ebc0a2ae/inference/memllm.py#L298"
+      },
+      {
+        "topic": "Exact names",
+        "paper": "matching by vector similarity",
+        "code": "if any exact name match exists, only exact matches are returned",
+        "src": "memory_controller_v3.py L194-L195",
+        "url": "https://github.com/amodaresi/MemLLM/blob/f786ae306f93602544ecd30e883b1346ebc0a2ae/utils/memory/memory_controller_v3.py#L194-L195"
+      },
+      {
+        "topic": "Editing protocol",
+        "paper": "1000 sequential edits, compared with WISE's numbers",
+        "code": "each edit is scored right after it is written, with only earlier edits in memory; reliability = edit string contained in the output; prompts with 'sex' or 'gender' are dropped",
+        "src": "eval_zsre.py L237-L250; gather_zsre_result.py L12-L15",
+        "url": "https://github.com/amodaresi/MemLLM/blob/f786ae306f93602544ecd30e883b1346ebc0a2ae/evaluation/model-editing/eval_zsre.py#L237-L250"
+      }
+    ],
+    "open_questions": [
+      "Rows 1-3 of Table 2 differ in both memory size and whether the memory holds facts from the evaluated documents themselves, so the small gap does not isolate scaling.",
+      "The editing comparison mixes protocols: baselines copied from WISE are scored after all 1000 edits with token-level accuracy, MemLLM by answer containment in a script that scores each edit right after writing it."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 236",
+        "body": "<text class=\"fig-t\" x=\"58\" y=\"16\" text-anchor=\"middle\">Document</text><rect class=\"gi-ev\" x=\"14\" y=\"26\" width=\"88\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"22\" y1=\"34.0\" x2=\"88\" y2=\"34.0\"/><rect class=\"gi-ev\" x=\"14\" y=\"46\" width=\"88\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"22\" y1=\"54.0\" x2=\"88\" y2=\"54.0\"/><rect class=\"gi-ev\" x=\"14\" y=\"66\" width=\"88\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"22\" y1=\"74.0\" x2=\"88\" y2=\"74.0\"/><rect class=\"gi-hi\" x=\"14\" y=\"88\" width=\"88\" height=\"22\" rx=\"5\"/><text class=\"fig-s\" x=\"58\" y=\"103\" text-anchor=\"middle\">focus sentence</text><rect class=\"gi-ev d\" x=\"14\" y=\"116\" width=\"88\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"22\" y1=\"124.0\" x2=\"88\" y2=\"124.0\"/><text class=\"fig-s\" x=\"58\" y=\"148\" text-anchor=\"middle\">earlier sentences</text><text class=\"fig-s\" x=\"58\" y=\"161\" text-anchor=\"middle\">as context (≤ 24)</text><path class=\"gi-a\" d=\"M104.0 99.0 L121.0 99.0\"/><polygon class=\"gi-ah\" points=\"128.0,99.0 121.0,103.0 121.0,95.0\"/><rect class=\"gi-llm\" x=\"128\" y=\"75\" width=\"92\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"174.0\" y=\"97.0\" text-anchor=\"middle\">Write model</text><text class=\"fig-s\" x=\"174.0\" y=\"110.0\" text-anchor=\"middle\">Mistral-7B + LoRA</text><text class=\"fig-s\" x=\"174\" y=\"142\" text-anchor=\"middle\">one call per sentence</text><text class=\"fig-s\" x=\"174\" y=\"155\" text-anchor=\"middle\">late stopping, K = 5</text><path class=\"gi-a\" d=\"M220.0 99.0 L233.0 99.0\"/><polygon class=\"gi-ah\" points=\"240.0,99.0 233.0,103.0 233.0,95.0\"/><rect class=\"gi-ev\" x=\"240\" y=\"66\" width=\"94\" height=\"66\" rx=\"8\"/><text class=\"fig-t\" x=\"287\" y=\"84\" text-anchor=\"middle\">MEM_WRITE</text><text class=\"fig-s\" x=\"287\" y=\"101\" text-anchor=\"middle\">s » r » o ;</text><text class=\"fig-s\" x=\"287\" y=\"115\" text-anchor=\"middle\">s » r » o ;</text><text class=\"fig-s\" x=\"287\" y=\"150\" text-anchor=\"middle\">96 relation types</text><path class=\"gi-a\" d=\"M334.0 99.0 L357.0 99.0\"/><polygon class=\"gi-ah\" points=\"364.0,99.0 357.0,103.0 357.0,95.0\"/><text class=\"fig-s\" x=\"349\" y=\"90\" text-anchor=\"middle\">store</text><text class=\"fig-t\" x=\"460\" y=\"16\" text-anchor=\"middle\">Memory: three tables</text><rect class=\"gi-f\" x=\"386\" y=\"26\" width=\"148\" height=\"54\" rx=\"8\"/><text class=\"fig-t\" x=\"394\" y=\"41\" text-anchor=\"start\">Triples</text><rect class=\"gi-r\" x=\"394\" y=\"50\" width=\"40\" height=\"20\" rx=\"3\"/><text class=\"fig-s\" x=\"414\" y=\"64\" text-anchor=\"middle\">s id</text><rect class=\"gi-r\" x=\"440\" y=\"50\" width=\"40\" height=\"20\" rx=\"3\"/><text class=\"fig-s\" x=\"460\" y=\"64\" text-anchor=\"middle\">r id</text><rect class=\"gi-r\" x=\"486\" y=\"50\" width=\"40\" height=\"20\" rx=\"3\"/><text class=\"fig-s\" x=\"506\" y=\"64\" text-anchor=\"middle\">o id</text><text class=\"fig-s\" x=\"526\" y=\"41\" text-anchor=\"end\">unique</text><line class=\"gi-e\" x1=\"414\" y1=\"70\" x2=\"408\" y2=\"112\"/><line class=\"gi-e\" x1=\"506\" y1=\"70\" x2=\"436\" y2=\"112\"/><line class=\"gi-e\" x1=\"460\" y1=\"70\" x2=\"504\" y2=\"112\"/><rect class=\"gi-f\" x=\"366\" y=\"112\" width=\"88\" height=\"72\" rx=\"8\"/><text class=\"fig-t\" x=\"374\" y=\"128\" text-anchor=\"start\">Entities</text><text class=\"fig-s\" x=\"374\" y=\"143\" text-anchor=\"start\">name (text)</text><rect class=\"gi-v\" x=\"374\" y=\"151\" width=\"11\" height=\"11\" rx=\"2\"/><rect class=\"gi-v\" x=\"387\" y=\"151\" width=\"11\" height=\"11\" rx=\"2\"/><rect class=\"gi-v\" x=\"400\" y=\"151\" width=\"11\" height=\"11\" rx=\"2\"/><rect class=\"gi-v\" x=\"413\" y=\"151\" width=\"11\" height=\"11\" rx=\"2\"/><rect class=\"gi-v\" x=\"426\" y=\"151\" width=\"11\" height=\"11\" rx=\"2\"/><text class=\"fig-s\" x=\"374\" y=\"177\" text-anchor=\"start\">Contriever vector</text><rect class=\"gi-f\" x=\"464\" y=\"112\" width=\"88\" height=\"72\" rx=\"8\"/><text class=\"fig-t\" x=\"472\" y=\"128\" text-anchor=\"start\">Relations</text><text class=\"fig-s\" x=\"472\" y=\"143\" text-anchor=\"start\">name (text)</text><rect class=\"gi-v\" x=\"472\" y=\"151\" width=\"11\" height=\"11\" rx=\"2\"/><rect class=\"gi-v\" x=\"485\" y=\"151\" width=\"11\" height=\"11\" rx=\"2\"/><rect class=\"gi-v\" x=\"498\" y=\"151\" width=\"11\" height=\"11\" rx=\"2\"/><rect class=\"gi-v\" x=\"511\" y=\"151\" width=\"11\" height=\"11\" rx=\"2\"/><rect class=\"gi-v\" x=\"524\" y=\"151\" width=\"11\" height=\"11\" rx=\"2\"/><text class=\"fig-s\" x=\"472\" y=\"177\" text-anchor=\"start\">Contriever vector</text><text class=\"fig-s\" x=\"460\" y=\"204\" text-anchor=\"middle\">full Wikipedia: 111M triples,</text><text class=\"fig-s\" x=\"460\" y=\"217\" text-anchor=\"middle\">~21M entity + relation rows</text>",
+        "text": [
+          "A finetuned write model reads one focus sentence at a time, with earlier sentences as context, and emits the triples it states.",
+          "Triples are stored once as three ids that point to Entities and Relations tables holding each name and its Contriever vector."
+        ],
+        "src": "paper §3.1-3.2, Fig. 1-2, App. A; code memllm.py L126-L167, memory_controller_v3.py L78-L130",
+        "url": "https://github.com/amodaresi/MemLLM/blob/f786ae306f93602544ecd30e883b1346ebc0a2ae/utils/memory/memory_controller_v3.py#L78-L130"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 246",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"34\" width=\"66\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"37.0\" y=\"54.0\" text-anchor=\"middle\">Text so far</text><text class=\"fig-s\" x=\"37.0\" y=\"67.0\" text-anchor=\"middle\">decoding</text><path class=\"gi-a\" d=\"M70.0 56.0 L73.0 56.0\"/><polygon class=\"gi-ah\" points=\"80.0,56.0 73.0,60.0 73.0,52.0\"/><rect class=\"gi-llm\" x=\"80\" y=\"34\" width=\"86\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"123.0\" y=\"54.0\" text-anchor=\"middle\">Read model</text><text class=\"fig-s\" x=\"123.0\" y=\"67.0\" text-anchor=\"middle\">emits “({”</text><path class=\"gi-a\" d=\"M166.0 56.0 L169.0 56.0\"/><polygon class=\"gi-ah\" points=\"176.0,56.0 169.0,60.0 169.0,52.0\"/><rect class=\"gi-ev\" x=\"176\" y=\"34\" width=\"86\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"219.0\" y=\"54.0\" text-anchor=\"middle\">Queries</text><text class=\"fig-s\" x=\"219.0\" y=\"67.0\" text-anchor=\"middle\">s » r » ?</text><text class=\"fig-s\" x=\"219\" y=\"92\" text-anchor=\"middle\">or ? » r » o</text><path class=\"gi-a\" d=\"M262.0 56.0 L265.0 56.0\"/><polygon class=\"gi-ah\" points=\"272.0,56.0 265.0,60.0 265.0,52.0\"/><rect class=\"gi-v fig-soft\" x=\"272\" y=\"34\" width=\"90\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"317.0\" y=\"54.0\" text-anchor=\"middle\">Match names</text><text class=\"fig-s\" x=\"317.0\" y=\"67.0\" text-anchor=\"middle\">Contriever</text><text class=\"fig-s\" x=\"317\" y=\"92\" text-anchor=\"middle\">entity cos &gt; 0.85</text><text class=\"fig-s\" x=\"317\" y=\"105\" text-anchor=\"middle\">relation cos &gt; 0.85</text><path class=\"gi-a\" d=\"M362.0 56.0 L365.0 56.0\"/><polygon class=\"gi-ah\" points=\"372.0,56.0 365.0,60.0 365.0,52.0\"/><rect class=\"gi-f\" x=\"372\" y=\"34\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"416.0\" y=\"54.0\" text-anchor=\"middle\">Triples</text><text class=\"fig-s\" x=\"416.0\" y=\"67.0\" text-anchor=\"middle\">mean sim &gt; 0.9</text><text class=\"fig-s\" x=\"416\" y=\"92\" text-anchor=\"middle\">exact names win</text><path class=\"gi-a\" d=\"M460.0 56.0 L465.0 56.0\"/><polygon class=\"gi-ah\" points=\"472.0,56.0 465.0,60.0 465.0,52.0\"/><polygon class=\"gi-f\" points=\"510,24 548,56 510,88 472,56\"/><text class=\"fig-t\" x=\"510\" y=\"60\" text-anchor=\"middle\">Found?</text><path class=\"gi-a\" d=\"M510 88 L510 161\"/><polygon class=\"gi-ah\" points=\"510,168 506,161 514,161\"/><text class=\"fig-yes\" x=\"518\" y=\"126\" text-anchor=\"start\">Yes</text><rect class=\"gi-f\" x=\"466\" y=\"168\" width=\"88\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"510.0\" y=\"188.0\" text-anchor=\"middle\">≤ 30 names</text><text class=\"fig-s\" x=\"510.0\" y=\"201.0\" text-anchor=\"middle\">unranked cut</text><path class=\"gi-a\" d=\"M466 190 L403 190\"/><polygon class=\"gi-ah\" points=\"396,190 403,186 403,194\"/><rect class=\"gi-hi\" x=\"256\" y=\"168\" width=\"140\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"326.0\" y=\"188.0\" text-anchor=\"middle\">Appended</text><text class=\"fig-s\" x=\"326.0\" y=\"201.0\" text-anchor=\"middle\">--&gt; e1; e2; … })</text><path class=\"gi-a\" d=\"M256 190 L197 190\"/><polygon class=\"gi-ah\" points=\"190,190 197,186 197,194\"/><rect class=\"gi-llm\" x=\"70\" y=\"168\" width=\"120\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"130.0\" y=\"188.0\" text-anchor=\"middle\">Decode on</text><text class=\"fig-s\" x=\"130.0\" y=\"201.0\" text-anchor=\"middle\">reads the names</text><path class=\"gi-a\" d=\"M70 190 L37 190 L37 85\"/><polygon class=\"gi-ah\" points=\"37,78 41,85 33,85\"/><path class=\"gi-a d\" d=\"M491 72 L491 140 L130 140 L130 161\"/><polygon class=\"gi-ah\" points=\"130,168 126,161 134,161\"/><text class=\"fig-no\" x=\"310\" y=\"134\" text-anchor=\"middle\">No: call removed, decode without it</text><text class=\"fig-s\" x=\"280\" y=\"236\" text-anchor=\"middle\">the next “({” deletes this call from the context</text>",
+        "text": [
+          "While generating, the read model opens a call and writes subject or object queries; names are matched by vector similarity and joined into triples.",
+          "Up to 30 returned entity names are appended inline and the model continues; an empty result, or the next call, removes the call from the text."
+        ],
+        "src": "paper §3.1-3.2; code memllm.py L204-L321, memory_controller_v3.py L159-L197, evaluate_v4_mistral.py L54-L55, L120",
+        "url": "https://github.com/amodaresi/MemLLM/blob/f786ae306f93602544ecd30e883b1346ebc0a2ae/inference/memllm.py#L204-L321"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Relation types",
+        "value": "96 (Wikidata, from Re-DocRED)",
+        "src": "paper §4.1, Limitations",
+        "section": "construction"
+      },
+      {
+        "label": "Context for each write",
+        "value": "up to 24 earlier sentences",
+        "src": "code main-wiki.py L189",
+        "section": "construction"
+      },
+      {
+        "label": "Full Wikipedia memory",
+        "value": "111M triples · ~21M entity/relation rows",
+        "src": "paper §4.2",
+        "section": "construction"
+      },
+      {
+        "label": "Abstracts-only memory",
+        "value": "38M triples",
+        "src": "paper §4.2",
+        "section": "construction"
+      },
+      {
+        "label": "Match thresholds",
+        "value": "paper cos 0.7 · 0.7 · mean 0.85; code 0.85 · 0.85 · 0.9",
+        "src": "paper App. D; code evaluate_v4_mistral.py L54-L55, L120",
+        "section": "method"
+      },
+      {
+        "label": "Names returned per call",
+        "value": "≤ 30",
+        "src": "paper §3.2, App. D",
+        "section": "method"
+      },
+      {
+        "label": "Queries per call (training data)",
+        "value": "≤ 3",
+        "src": "paper Alg. 1",
+        "section": "method"
+      },
+      {
+        "label": "Store size vs proposition RAG",
+        "value": "< 20% of records at 111M facts",
+        "src": "paper §4.2, Fig. 4",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "OVERALL PPL",
+        "TARGET PPL",
+        "ENTITY PPL"
+      ],
+      "rows": [
+        [
+          "Mistral-7B, no memory",
+          "5.823",
+          "3.550",
+          "4.666"
+        ],
+        [
+          "MemLLM, memory disabled",
+          "4.997",
+          "3.510",
+          "4.353"
+        ],
+        [
+          "MemLLM, memory from full Wikipedia",
+          "4.905",
+          "2.986",
+          "4.187"
+        ],
+        [
+          "MemLLM, memory from Wikipedia abstracts (38M triples)",
+          "4.898",
+          "2.955",
+          "4.170"
+        ],
+        [
+          "MemLLM, memory from Re-DocRED eval docs",
+          "4.863",
+          "2.821",
+          "4.102"
+        ],
+        [
+          "own writes on eval docs + gold read position and queries",
+          "4.634",
+          "1.938",
+          "3.548"
+        ],
+        [
+          "gold triples in memory",
+          "4.811",
+          "2.596",
+          "3.993"
+        ],
+        [
+          "+ gold read position",
+          "4.674",
+          "2.232",
+          "3.728"
+        ],
+        [
+          "+ gold queries",
+          "4.431",
+          "1.364",
+          "3.149"
+        ],
+        [
+          "+ gold target always returned",
+          "4.426",
+          "1.357",
+          "3.142"
+        ],
+        [
+          "only the gold target returned",
+          "4.385",
+          "1.194",
+          "3.026"
+        ]
+      ],
+      "src": "paper Table 2, all rows (perplexity, lower is better)"
+    },
+    "components": [
+      {
+        "role": "Writes triples",
+        "model": "Mistral-7B-v0.1 + LoRA (r 16, alpha 8), memory-write adapter",
+        "kind": "llm",
+        "src": "paper §4.1, App. D"
+      },
+      {
+        "role": "Decides when to read, writes queries, uses results",
+        "model": "Mistral-7B-v0.1 + LoRA, memory-read adapter",
+        "kind": "llm",
+        "src": "paper §4.1, App. D"
+      },
+      {
+        "role": "Embeds entity and relation names",
+        "model": "Contriever (facebook/contriever-msmarco in code)",
+        "kind": "retriever",
+        "src": "paper §3.1; code evaluate_v4_mistral.py L36-L37",
+        "url": "https://github.com/amodaresi/MemLLM/blob/f786ae306f93602544ecd30e883b1346ebc0a2ae/evaluation/ppl-based/evaluate_v4_mistral.py#L36-L37"
+      },
+      {
+        "role": "Joins matches into triples",
+        "model": "SQLite lookup with similarity thresholds",
+        "kind": "rule",
+        "src": "code memory_controller_v3.py L159-L197; memory_server_v3.py L292-L309",
+        "url": "https://github.com/amodaresi/MemLLM/blob/f786ae306f93602544ecd30e883b1346ebc0a2ae/utils/memory/memory_controller_v3.py#L159-L197"
+      },
+      {
+        "role": "Filters distant-supervision training data",
+        "model": "Mixtral, 8-shot reasoning prompt (training only)",
+        "kind": "llm",
+        "src": "paper §4.1.1, App. E"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Finetuning an LLM to write and query an explicit triple store through text API calls lowers perplexity on entities that memory can supply, and the same memory handles 1000 sequential knowledge edits better than the parametric editors it is compared with.",
+      "claims": [
+        {
+          "claim": "Memory reads improve language modeling, mostly on target entities.",
+          "evidence": "TARGET PPL 2.986 with a full-Wikipedia memory vs 3.510 with memory disabled and 3.550 for Mistral-7B (Table 2, §4.2)."
+        },
+        {
+          "claim": "The approach scales with memory size.",
+          "evidence": "111M-triple Wikipedia memory is only slightly worse than a memory built from the evaluation documents alone (TARGET 2.986 vs 2.821, Table 2)."
+        },
+        {
+          "claim": "Better memory reads and writes would help further.",
+          "evidence": "Gold queries on gold triples reach TARGET 1.364; own writes with gold positions and queries 1.938 (Table 2 rows 4, 7)."
+        },
+        {
+          "claim": "Outperforms knowledge-editing methods on sequential edits.",
+          "evidence": "ZsRE, 1000 edits, Mistral-7B: AVG 0.84 vs WISE 0.79, GRACE 0.67, DEFER 0.24 (Table 3)."
+        },
+        {
+          "claim": "Structured storage is more compact than proposition-level RAG.",
+          "evidence": "Under 20% of records at 111M facts (§4.2, Fig. 4)."
+        }
+      ],
+      "limits": [
+        "Only the 96 relation types used in training can be extracted and queried.",
+        "Relations that follow from several stored triples are neither inferred nor used.",
+        "The model does not know what memory lacks: if a fact is missing it falls back on parametric knowledge or hallucinates.",
+        "RAG methods are not compared."
+      ],
+      "limits_src": "paper, Limitations",
+      "reading": [
+        "The model only sees returned entity names, not the triples; the paper's own error analysis has cases where the right name came back under the wrong relation and was ignored (§4.3).",
+        "In the perplexity code the read positions come from the evaluation data (just before annotated target entities) and the with/without-read outputs are mixed by the probability of '({'; so 'MemLLM chooses where to read' is measured only at those positions (footnote 3; evaluate_v4_mistral.py L120-L176).",
+        "Much of the OVERALL gain over Mistral-7B comes from in-domain finetuning alone (5.823 → 4.997 with memory disabled); memory adds 4.997 → 4.905.",
+        "The ZsRE baselines are copied from WISE and scored with EasyEdit token accuracy after all 1000 edits; the released MemLLM script scores answer containment and evaluates each edit right after writing it, so Table 3 does not compare like with like.",
+        "Code thresholds differ from App. D in both experiments (see paper vs code).",
+        "The reliability error breakdown (45 write, 95 read, 63 not used) adds up to 203 of the 216 errors the paper counts; the remaining 13 are not explained (§4.3)."
+      ]
+    },
+    "abstract": {
+      "text": "MemLLM gives an LLM an explicit, structured memory it can both write to and read from. Facts are kept as (subject, relation, object) triples in database tables, with entity and relation names embedded for fuzzy matching. Two LoRA adapters on Mistral-7B are finetuned on data built from relation-annotated Wikipedia text: one writes the triples found in each sentence, the other issues memory queries during generation and uses the returned entities. On Re-DocRED the memory lowers perplexity, especially on entities, and on ZsRE it handles 1000 sequential edits better than model-editing baselines.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2404.11672"
+    },
+    "sections": {
+      "Memory architecture": "§3.1-3.2",
+      "Results": "§4.2, §4.3",
+      "Ablation": "§4.2 (Table 2 rows 4-9)",
+      "Discussion": "§5, Limitations",
+      "Details": "§3.3, §4.1, App. A-D"
+    }
+  }
+}

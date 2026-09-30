@@ -1,0 +1,655 @@
+{
+  "id": "xmem",
+  "name": "XMem",
+  "paper": {
+    "title": "XMem: Long-Term Video Object Segmentation with an Atkinson-Shiffrin Memory Model",
+    "arxiv": "2207.07115",
+    "url": "https://arxiv.org/abs/2207.07115",
+    "venue": "ECCV 2022",
+    "venue_short": "ECCV",
+    "track": "main",
+    "year": 2022,
+    "code": "https://github.com/hkchengrex/XMem"
+  },
+  "design": {
+    "construction": {
+      "unit": "one feature element per pixel at stride 16: a 64-d key with a shrinkage scalar and a 512-d value per object",
+      "kept_as": "learned features of past frames and their predicted masks (no pixels kept)",
+      "processing": "every 5th frame the query key is copied as a memory key and a value encoder turns image + predicted mask into the value; the GRU state is updated every frame",
+      "trigger": "other",
+      "writer": "trained networks: ResNet-50 query encoder, ResNet-18 value encoder, GRU"
+    },
+    "organization": {
+      "structure": "three tiers after Atkinson-Shiffrin: sensory (GRU state), working (recent memory frames), long-term (compact prototypes)",
+      "stores": "sensory h (64 channels); working memory: first frame + latest frames, 5 to 10 frames; long-term memory: up to 10,000 prototype elements",
+      "index": "memory keys compared with query keys by an anisotropic L2 similarity (shrinkage per memory key, selection per query channel)"
+    },
+    "management": {
+      "operations": "when working memory reaches 10 frames, the 5 oldest frames other than the first become candidates: the 128 most-used elements are kept as prototypes and their values are rebuilt as a similarity-weighted average of all candidate values (potentiation)",
+      "conflicts": null,
+      "forgetting": "least-frequently-used eviction of long-term prototypes once 10,000 elements are reached; usage = accumulated top-k attention / time in memory",
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "the current frame's key at every pixel, with its selection weights",
+      "candidates": "all working and long-term memory keys",
+      "selection": "top 30 by similarity per query pixel, softmax, weighted sum of the values",
+      "budget": "top-k 30 per query pixel; the memory holds T·HW + L elements (T ≤ 10 frames, L ≤ 10,000)"
+    },
+    "use": {
+      "context": "readout feature F (512 channels per pixel) together with the sensory state h and the encoder's skip features",
+      "reasoning": "one decoder pass per frame gives the mask; objects are merged by soft aggregation"
+    },
+    "control": {
+      "construction": "learned-sft",
+      "management": "fixed-rule",
+      "retrieval": "learned-sft"
+    }
+  },
+  "classify": {
+    "structure": "tiers",
+    "index": "vector",
+    "management": "consolidate",
+    "candidates": "dense",
+    "decides": "top-k rule",
+    "note": "Reading is attention over every stored key; the similarity is learned, and the top-30 cut per query pixel is a fixed rule."
+  },
+  "tags": {
+    "fidelity": "compressed",
+    "structure": [
+      "tiered"
+    ],
+    "write_time": [
+      "learned",
+      "consolidate"
+    ],
+    "selection": [
+      "dense"
+    ],
+    "memory_type": [
+      "working",
+      "episodic"
+    ],
+    "learning": "sft",
+    "domain": [
+      "multimodal"
+    ]
+  },
+  "stages": {
+    "ingestion": "Given the first frame and its object mask, XMem processes the video frame by frame and predicts a mask for each new frame.",
+    "construction": "Every 5th frame the frame's key (copied from the query encoder) and a value (image + predicted mask through the value encoder) are added to working memory; the GRU sensory state is refreshed every frame, with a deep update from the value encoder on memory frames.",
+    "organization": "Three stores: a sensory GRU state, a working memory of the first frame plus recent memory frames (5-10), and a long-term memory of compact prototypes (up to 10,000 elements).",
+    "update": "When working memory reaches 10 frames, the 5 oldest non-first frames are consolidated: the 128 most-used elements become prototypes whose values average all candidate values by key similarity; least-used prototypes are evicted when long-term memory is full.",
+    "retrieval": "Each pixel of the query frame compares its key with every working and long-term key by anisotropic L2 similarity, keeps the top 30, and reads a softmax-weighted sum of their values.",
+    "answer": "The decoder combines the readout, the sensory state and skip features into a mask per object.",
+    "learning": "All networks are trained end to end on static-image pretraining, then YouTubeVOS and DAVIS (optionally BL30K), with 8-frame sequences so the sensory memory learns."
+  },
+  "summary": "Video object segmentation with three feature memories (sensory, working, long-term); working-memory frames are consolidated into a small set of usage-selected prototypes so GPU memory stays bounded on very long videos.",
+  "verified": false,
+  "notes": "VENUE: ECCV 2022 main (listed on the ECVA open-access page, paper 568, ECCV_2022 papers; arXiv comment 'Accepted to ECCV 2022'). PDF read from arXiv 2207.07115v2. CODE: hkchengrex/XMem at f3b841d (Nov 2024; the inference and memory files are unchanged since 2023 apart from GUI and compatibility fixes). Not an LLM memory: keys/values are CNN features, 'answer' is the segmentation mask. Result rows use answer_model 'none (end-to-end VOS network)' so rows of one table stay comparable. DESIGN: §3.1-3.6, §4, App. D; code inference/memory_manager.py, kv_memory_store.py, model/memory_util.py.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2207.07115v2 (PDF read 2026-09-30); ECCV 2022 version on ecva.net",
+      "code": "https://github.com/hkchengrex/XMem/tree/f3b841d50df058910bbf690229ddc15fb1aef7d6/",
+      "code_note": "Latest commit (15 Nov 2024, docs only). The inference core and memory manager have had no algorithmic change since the July 2022 release; later commits touch the GUI, MPS support and numpy compatibility. The paper's footnote points to this repository."
+    },
+    "sections": {
+      "Memory architecture": "§3",
+      "Results": "§4.1-4.2, App. F",
+      "Ablation": "§4.3, App. D",
+      "Discussion": "§4.4, §5",
+      "Details": "§3.6, §4, App. D-I"
+    },
+    "abstract": {
+      "text": "XMem segments a target object through long videos with three feature memories modelled on the Atkinson-Shiffrin theory: a sensory memory updated every frame, a high-resolution working memory of recent frames, and a compact long-term memory. When working memory fills up, its most-used elements are consolidated into long-term prototypes, which keeps GPU memory bounded without compressing new features right away. A new similarity function with per-key confidence and per-channel selection governs how the query reads memory. XMem clearly beats earlier methods on long videos while matching the best methods on standard short-video benchmarks.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2207.07115"
+    },
+    "headline": [
+      "New frames enter working memory at full resolution; only when it holds 10 frames are the 5 oldest (never the first) squeezed into 128 prototypes, a 6328% compression.",
+      "Which elements survive is decided by usage: how much attention each element received while in working memory.",
+      "Reading is plain attention with a top-30 cut per pixel over working and long-term memory together; the sensory GRU state goes straight to the decoder."
+    ],
+    "units": [
+      {
+        "name": "Working-memory element",
+        "role": "one pixel (stride 16) of a memory frame",
+        "made_by": "query encoder (key) and value encoder (value), every 5th frame",
+        "fields": [
+          {
+            "name": "key",
+            "what": "64-d feature of the frame, copied from the query encoder",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §3.4, §3.6; code inference_core.py L57-L59, L96-L100",
+            "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/inference/inference_core.py#L57-L100"
+          },
+          {
+            "name": "shrinkage s",
+            "what": "per-key confidence ≥ 1 that sharpens or widens the key's influence",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §3.2, Eq. 2; code modules.py L208",
+            "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/model/modules.py#L198-L211"
+          },
+          {
+            "name": "selection e",
+            "what": "per-channel weights of the frame; used only when the element is chosen as a prototype, to weight the potentiation similarity",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §3.6; code memory_manager.py L256-L261",
+            "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/inference/memory_manager.py#L256-L261"
+          },
+          {
+            "name": "value",
+            "what": "512-d feature per object from the image and the predicted mask",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.4; code network.py L72-L85",
+            "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/model/network.py#L72-L85"
+          },
+          {
+            "name": "usage",
+            "what": "accumulated top-k attention divided by the number of reads since insertion; ranks elements for consolidation (and, in long-term memory, eviction)",
+            "kept_as": "derived",
+            "used_for": [
+              "rerank"
+            ],
+            "src": "paper §3.3; code kv_memory_store.py L92-L99, L158-L164",
+            "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/inference/kv_memory_store.py#L92-L164"
+          }
+        ]
+      },
+      {
+        "name": "Long-term prototype",
+        "role": "a consolidated element kept for the rest of the video unless evicted",
+        "made_by": "consolidation rule (top usage) + potentiation (similarity-weighted average)",
+        "fields": [
+          {
+            "name": "key",
+            "what": "key of a high-usage candidate element, kept as is",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code memory_manager.py L248-L255",
+            "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/inference/memory_manager.py#L248-L255"
+          },
+          {
+            "name": "value",
+            "what": "softmax-weighted average of all candidate values by key similarity to the prototype",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.3, Eq. 3; code memory_manager.py L261-L279",
+            "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/inference/memory_manager.py#L261-L279"
+          },
+          {
+            "name": "shrinkage",
+            "what": "averaged the same way as the value",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code memory_manager.py L282",
+            "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/inference/memory_manager.py#L282"
+          }
+        ]
+      },
+      {
+        "name": "Sensory memory",
+        "role": "short-term state that tracks position and motion",
+        "made_by": "GRU on decoder features every frame; a second GRU on value-encoder features on memory frames (deep update)",
+        "fields": [
+          {
+            "name": "h",
+            "what": "64-channel hidden state per object at stride 16, zero at the start",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.5, Fig. 6; code memory_manager.py L192-L203",
+            "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/inference/memory_manager.py#L192-L203"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Sensory update",
+        "how": "GRU refreshes h from multi-scale decoder features every frame; on memory frames a separate GRU uses value-encoder features instead (deep update)",
+        "src": "paper §3.5; code inference_core.py L49-L71, L103-L105",
+        "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/inference/inference_core.py#L49-L105"
+      },
+      {
+        "step": "Add memory frame",
+        "how": "every r-th frame (and any frame with a given mask) the key and a new value are appended to working memory",
+        "params": {
+          "r": "5 (10 on Long-time Video)"
+        },
+        "src": "paper §3.4, §4.1-4.2; code inference_core.py L49, L96-L101",
+        "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/inference/inference_core.py#L49-L101"
+      },
+      {
+        "step": "Pick prototypes",
+        "how": "when working memory holds 10 frames, the first frame and the latest 4 stay; the 5 frames in between are candidates and the 128 elements with the highest usage become prototype keys",
+        "params": {
+          "T min": "5",
+          "T max": "10",
+          "P": "128"
+        },
+        "out": "compression 6328% from working to long-term memory",
+        "src": "paper §3.3, §4; code memory_manager.py L182-L189, L211-L255",
+        "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/inference/memory_manager.py#L182-L255"
+      },
+      {
+        "step": "Potentiate",
+        "how": "each prototype's value becomes a softmax average of all candidate values, weighted by key similarity to the prototype (no top-k here); candidates are then deleted from working memory",
+        "src": "paper §3.3, Eq. 3; code memory_manager.py L233-L284",
+        "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/inference/memory_manager.py#L233-L284"
+      },
+      {
+        "step": "Evict",
+        "how": "before adding prototypes, if long-term memory is within 128 of its limit, the least-used prototypes are removed",
+        "params": {
+          "LT max": "10,000"
+        },
+        "out": "about 3,900 frames' worth of information at r = 10 (App. D)",
+        "src": "paper §3.3, App. D; code memory_manager.py L186-L187, kv_memory_store.py L135-L156",
+        "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/inference/kv_memory_store.py#L135-L156"
+      }
+    ],
+    "read": [
+      {
+        "step": "Encode query",
+        "round": 1,
+        "input": "current frame",
+        "how": "ResNet-50 features at stride 16; 3×3 convolutions give the key q and the selection e (sigmoid)",
+        "src": "paper §3.6; code modules.py L198-L211",
+        "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/model/modules.py#L198-L211"
+      },
+      {
+        "step": "Similarity",
+        "round": 1,
+        "scores": "query key vs every working and long-term key",
+        "how": "anisotropic L2: negative squared distance weighted per channel by e and scaled per key by s",
+        "src": "paper §3.2, Eq. 2, App. I; code memory_util.py L7-L39",
+        "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/model/memory_util.py#L7-L39"
+      },
+      {
+        "step": "Top-k softmax",
+        "round": 1,
+        "how": "for each query pixel keep the 30 highest similarities, softmax them, zero the rest; the attention mass is added to each element's usage",
+        "params": {
+          "k": "30"
+        },
+        "src": "paper §4; code memory_util.py L41-L65, memory_manager.py L70-L119",
+        "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/model/memory_util.py#L41-L65"
+      },
+      {
+        "step": "Readout",
+        "round": 1,
+        "how": "weighted sum of the selected values gives F (512 channels per pixel)",
+        "src": "paper §3.2, Eq. 1; code memory_manager.py L144-L150",
+        "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/inference/memory_manager.py#L144-L150"
+      },
+      {
+        "step": "Decode",
+        "round": 1,
+        "how": "decoder fuses F with the sensory state h and the query encoder's skip features, upsamples to stride 4 and outputs a logit per object; objects are merged by soft aggregation",
+        "src": "paper §3.6; code inference_core.py L63-L71",
+        "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/inference/inference_core.py#L63-L71"
+      }
+    ],
+    "answer_context": {
+      "sees": "readout F from working + long-term memory, sensory state h, and the query frame's own features",
+      "format": "feature maps concatenated in the decoder; no text",
+      "excludes": [
+        "memory elements outside each pixel's top 30",
+        "selection terms of stored elements",
+        "raw pixels of past frames"
+      ],
+      "includes": [
+        "first-frame features (always kept in working memory)"
+      ],
+      "src": "paper §3.2, §3.6; code inference_core.py L63-L66",
+      "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/inference/inference_core.py#L63-L66"
+    },
+    "compression": [
+      {
+        "what": "long-term prototypes vs working-memory candidates per consolidation",
+        "kept": 1,
+        "of": 63.28,
+        "unit": "elements",
+        "basis": "§4 states a 6328% compression ratio for T min 5, T max 10, P 128 (Table 6: 12625% at P 64, 3164% at P 256).",
+        "src": "paper §4, Table 6",
+        "url": "https://arxiv.org/pdf/2207.07115v2"
+      },
+      {
+        "what": "maximum GPU memory, Long-time Video 3× (LT max 10,000)",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "1,515 MB for XMem (App. D, Table S1); the paper does not give a no-consolidation baseline in the same units, so no ratio.",
+        "src": "paper App. D, Table S1",
+        "url": "https://arxiv.org/pdf/2207.07115v2"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "GPU memory cap",
+        "value": "never above 1.4 GB with LT max 10,000",
+        "src": "paper §4"
+      },
+      {
+        "label": "Frames before memory runs out without eviction (6 GB)",
+        "value": "up to 34,000",
+        "src": "paper §3.3"
+      },
+      {
+        "label": "Long-time Video 3×, LT max 500 / 1,000 / 10,000",
+        "value": "87.2 / 89.5 / 90.0 J&F at 35.3 / 34.1 / 23.4 FPS",
+        "src": "paper Table S1"
+      },
+      {
+        "label": "Speed",
+        "value": "22.6 FPS on DAVIS 2017 and YouTubeVOS 2018; 29.6 on DAVIS 2016 (V100)",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "Training",
+        "value": "about 35 hours on two RTX A6000",
+        "src": "paper §3.6"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Similarity scale",
+        "paper": "Eq. 2 without a temperature",
+        "code": "similarity is also divided by √64 before the softmax",
+        "src": "memory_util.py L34-L37",
+        "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/model/memory_util.py#L34-L37"
+      },
+      {
+        "topic": "Long-term usage counting",
+        "paper": "long-term usage (for eviction) is always tracked",
+        "code": "tracked only when the video is long enough to fill long-term memory (frames / 5 × 128 ≥ 10,000); shorter videos never evict anyway",
+        "src": "eval.py L152-L159",
+        "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/eval.py#L152-L159"
+      },
+      {
+        "topic": "Memory insertion rate on Long-time Video",
+        "paper": "r = 10 on Long-time Video, 5 elsewhere",
+        "code": "eval.py defaults to 5; the r = 10 run is a command-line flag given in docs/INFERENCE.md",
+        "src": "eval.py L57; docs/INFERENCE.md L45-L48",
+        "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/docs/INFERENCE.md#L45-L48"
+      }
+    ],
+    "open_questions": [
+      "Without long-term memory the model scores slightly higher on the short sets (85.9 vs 85.7 on YouTubeVOS 2018, Table 4), so consolidation buys bounded memory and speed, not accuracy, on short videos.",
+      "Long-time Video has only three videos; the 3× variant plays them back and forth, so it tests memory size rather than new content.",
+      "Usage-based and random prototype selection differ by 0.3 J&F at P = 128 (Table 6), within the reported spread; potentiation (87.9 → 90.0) matters more than the selection rule."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 240",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"104\" width=\"76\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"42.0\" y=\"126.0\" text-anchor=\"middle\">Frame t</text><text class=\"fig-s\" x=\"42.0\" y=\"139.0\" text-anchor=\"middle\">image + mask</text><path class=\"gi-a\" d=\"M42 104 L42 46 L97 46\"/><polygon class=\"gi-ah\" points=\"104,46 97,42 97,50\"/><text class=\"fig-s\" x=\"48\" y=\"38\" text-anchor=\"start\">every frame</text><rect class=\"gi-w\" x=\"104\" y=\"24\" width=\"216\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"212.0\" y=\"44.0\" text-anchor=\"middle\">Sensory memory</text><text class=\"fig-s\" x=\"212.0\" y=\"57.0\" text-anchor=\"middle\">GRU state h, 64 channels</text><path class=\"gi-a\" d=\"M80 128 L93 128\"/><polygon class=\"gi-ah\" points=\"100,128 93,124 93,132\"/><rect class=\"gi-ev\" x=\"100\" y=\"84\" width=\"222\" height=\"98\" rx=\"10\"/><text class=\"fig-t\" x=\"211\" y=\"100\" text-anchor=\"middle\">Working memory</text><text class=\"fig-s\" x=\"211\" y=\"113\" text-anchor=\"middle\">key + value added every 5th frame</text><rect class=\"gi-ev d\" x=\"126\" y=\"120\" width=\"102\" height=\"30\" rx=\"6\"/><rect class=\"gi-hi\" x=\"108\" y=\"124\" width=\"14\" height=\"22\" rx=\"2\"/><rect class=\"gi-v\" x=\"128\" y=\"124\" width=\"14\" height=\"22\" rx=\"2\"/><rect class=\"gi-v\" x=\"148\" y=\"124\" width=\"14\" height=\"22\" rx=\"2\"/><rect class=\"gi-v\" x=\"168\" y=\"124\" width=\"14\" height=\"22\" rx=\"2\"/><rect class=\"gi-v\" x=\"188\" y=\"124\" width=\"14\" height=\"22\" rx=\"2\"/><rect class=\"gi-v\" x=\"208\" y=\"124\" width=\"14\" height=\"22\" rx=\"2\"/><rect class=\"gi-v\" x=\"228\" y=\"124\" width=\"14\" height=\"22\" rx=\"2\"/><rect class=\"gi-v\" x=\"248\" y=\"124\" width=\"14\" height=\"22\" rx=\"2\"/><rect class=\"gi-v\" x=\"268\" y=\"124\" width=\"14\" height=\"22\" rx=\"2\"/><rect class=\"gi-v\" x=\"288\" y=\"124\" width=\"14\" height=\"22\" rx=\"2\"/><text class=\"fig-s\" x=\"115\" y=\"164\" text-anchor=\"middle\">1st</text><text class=\"fig-s\" x=\"177\" y=\"164\" text-anchor=\"middle\">5 candidates</text><text class=\"fig-s\" x=\"276\" y=\"164\" text-anchor=\"middle\">latest 4</text><text class=\"fig-s\" x=\"211\" y=\"177\" text-anchor=\"middle\">kept at 5 to 10 frames</text><path class=\"gi-a d\" d=\"M262 84 L262 75\"/><polygon class=\"gi-ah\" points=\"262,68 266,75 258,75\"/><text class=\"fig-s\" x=\"268\" y=\"80\" text-anchor=\"start\">deep update</text><path class=\"gi-a\" d=\"M322 134 L329 134\"/><polygon class=\"gi-ah\" points=\"336,134 329,130 329,138\"/><rect class=\"gi-f\" x=\"336\" y=\"112\" width=\"98\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"385.0\" y=\"132.0\" text-anchor=\"middle\">Consolidate</text><text class=\"fig-s\" x=\"385.0\" y=\"145.0\" text-anchor=\"middle\">top 128 by usage</text><text class=\"fig-s\" x=\"385\" y=\"170\" text-anchor=\"middle\">values rebuilt by</text><text class=\"fig-s\" x=\"385\" y=\"182\" text-anchor=\"middle\">potentiation</text><text class=\"fig-s\" x=\"385\" y=\"100\" text-anchor=\"middle\">at 10 frames</text><path class=\"gi-a\" d=\"M434 134 L441 134\"/><polygon class=\"gi-ah\" points=\"448,134 441,130 441,138\"/><rect class=\"gi-ev\" x=\"448\" y=\"84\" width=\"106\" height=\"98\" rx=\"10\"/><text class=\"fig-t\" x=\"501\" y=\"100\" text-anchor=\"middle\">Long-term</text><circle class=\"gi-n\" cx=\"466\" cy=\"118\" r=\"4\"/><circle class=\"gi-n\" cx=\"483\" cy=\"118\" r=\"4\"/><circle class=\"gi-n\" cx=\"500\" cy=\"118\" r=\"4\"/><circle class=\"gi-n\" cx=\"517\" cy=\"118\" r=\"4\"/><circle class=\"gi-n\" cx=\"534\" cy=\"118\" r=\"4\"/><circle class=\"gi-n\" cx=\"466\" cy=\"134\" r=\"4\"/><circle class=\"gi-n\" cx=\"483\" cy=\"134\" r=\"4\"/><circle class=\"gi-n\" cx=\"500\" cy=\"134\" r=\"4\"/><circle class=\"gi-n\" cx=\"517\" cy=\"134\" r=\"4\"/><circle class=\"gi-n\" cx=\"534\" cy=\"134\" r=\"4\"/><circle class=\"gi-n\" cx=\"466\" cy=\"150\" r=\"4\"/><circle class=\"gi-n\" cx=\"483\" cy=\"150\" r=\"4\"/><circle class=\"gi-n\" cx=\"500\" cy=\"150\" r=\"4\"/><circle class=\"gi-n\" cx=\"517\" cy=\"150\" r=\"4\"/><circle class=\"gi-n\" cx=\"534\" cy=\"150\" r=\"4\"/><text class=\"fig-s\" x=\"501\" y=\"177\" text-anchor=\"middle\">≤ 10,000 prototypes</text><path class=\"gi-a d\" d=\"M501 182 L501 197\"/><polygon class=\"gi-ah\" points=\"501,204 505,197 497,197\"/><text class=\"fig-s\" x=\"554\" y=\"218\" text-anchor=\"end\">least used are evicted when full</text><text class=\"fig-s\" x=\"4\" y=\"218\" text-anchor=\"start\">All stores hold feature maps at 1/16 resolution,</text><text class=\"fig-s\" x=\"4\" y=\"231\" text-anchor=\"start\">not pixels: 64-d keys, 512-d values per object.</text>",
+        "text": [
+          "Every frame updates a GRU state; every 5th frame adds its key and a mask-aware value to working memory.",
+          "At 10 frames the 5 oldest (never the first) are cut to the 128 most-attended elements, whose values average the candidates; long-term memory evicts its least-used prototypes when full."
+        ],
+        "src": "paper §3.3-3.5, §4; code memory_manager.py L152-L284, inference_core.py L42-L107",
+        "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/inference/memory_manager.py#L152-L284"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 228",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"30\" width=\"54\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"31.0\" y=\"50.0\" text-anchor=\"middle\">Frame</text><text class=\"fig-s\" x=\"31.0\" y=\"63.0\" text-anchor=\"middle\">query</text><path class=\"gi-a\" d=\"M58 52 L63 52\"/><polygon class=\"gi-ah\" points=\"70,52 63,48 63,56\"/><rect class=\"gi-w\" x=\"70\" y=\"30\" width=\"72\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"106.0\" y=\"50.0\" text-anchor=\"middle\">Encoder</text><text class=\"fig-s\" x=\"106.0\" y=\"63.0\" text-anchor=\"middle\">ResNet-50</text><path class=\"gi-a\" d=\"M142 52 L147 52\"/><polygon class=\"gi-ah\" points=\"154,52 147,48 147,56\"/><rect class=\"gi-f\" x=\"154\" y=\"30\" width=\"82\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"195.0\" y=\"50.0\" text-anchor=\"middle\">Similarity</text><text class=\"fig-s\" x=\"195.0\" y=\"63.0\" text-anchor=\"middle\">anisotropic L2</text><path class=\"gi-a\" d=\"M236 52 L241 52\"/><polygon class=\"gi-ah\" points=\"248,52 241,48 241,56\"/><rect class=\"gi-f\" x=\"248\" y=\"30\" width=\"70\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"283.0\" y=\"50.0\" text-anchor=\"middle\">Top 30</text><text class=\"fig-s\" x=\"283.0\" y=\"63.0\" text-anchor=\"middle\">softmax</text><path class=\"gi-a\" d=\"M318 52 L323 52\"/><polygon class=\"gi-ah\" points=\"330,52 323,48 323,56\"/><rect class=\"gi-v fig-soft\" x=\"330\" y=\"30\" width=\"66\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"363.0\" y=\"50.0\" text-anchor=\"middle\">Readout</text><text class=\"fig-s\" x=\"363.0\" y=\"63.0\" text-anchor=\"middle\">Σ values</text><path class=\"gi-a\" d=\"M396 52 L401 52\"/><polygon class=\"gi-ah\" points=\"408,52 401,48 401,56\"/><rect class=\"gi-w\" x=\"408\" y=\"30\" width=\"72\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"444.0\" y=\"50.0\" text-anchor=\"middle\">Decoder</text><text class=\"fig-s\" x=\"444.0\" y=\"63.0\" text-anchor=\"middle\">+ skips</text><path class=\"gi-a\" d=\"M480 52 L485 52\"/><polygon class=\"gi-ah\" points=\"492,52 485,48 485,56\"/><rect class=\"gi-hi\" x=\"492\" y=\"30\" width=\"62\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"523.0\" y=\"50.0\" text-anchor=\"middle\">Mask</text><text class=\"fig-s\" x=\"523.0\" y=\"63.0\" text-anchor=\"middle\">per object</text><rect class=\"gi-ev\" x=\"154\" y=\"132\" width=\"164\" height=\"50\" rx=\"10\"/><text class=\"fig-t\" x=\"236\" y=\"152\" text-anchor=\"middle\">Long-term + working</text><text class=\"fig-s\" x=\"236\" y=\"166\" text-anchor=\"middle\">keys, shrinkage, values</text><path class=\"gi-a\" d=\"M190 132 L190 81\"/><polygon class=\"gi-ah\" points=\"190,74 194,81 186,81\"/><text class=\"fig-s\" x=\"196\" y=\"108\" text-anchor=\"start\">keys</text><path class=\"gi-a\" d=\"M300 132 L300 108 L363 108 L363 81\"/><polygon class=\"gi-ah\" points=\"363,74 367,81 359,81\"/><text class=\"fig-s\" x=\"306\" y=\"102\" text-anchor=\"start\">values</text><path class=\"gi-a d\" d=\"M283 74 L283 94 L246 94 L246 125\"/><polygon class=\"gi-ah\" points=\"246,132 250,125 242,125\"/><text class=\"fig-s\" x=\"252\" y=\"124\" text-anchor=\"start\">usage</text><rect class=\"gi-w\" x=\"408\" y=\"132\" width=\"72\" height=\"50\" rx=\"8\"/><text class=\"fig-t\" x=\"444.0\" y=\"155.0\" text-anchor=\"middle\">Sensory</text><text class=\"fig-s\" x=\"444.0\" y=\"168.0\" text-anchor=\"middle\">GRU state h</text><path class=\"gi-a\" d=\"M444 132 L444 81\"/><polygon class=\"gi-ah\" points=\"444,74 448,81 440,81\"/><path class=\"gi-a d\" d=\"M523 74 L523 183\"/><polygon class=\"gi-ah\" points=\"523,190 527,183 519,183\"/><text class=\"fig-s\" x=\"554\" y=\"204\" text-anchor=\"end\">every 5th frame: new key</text><text class=\"fig-s\" x=\"554\" y=\"217\" text-anchor=\"end\">+ value into working memory</text><text class=\"fig-s\" x=\"4\" y=\"204\" text-anchor=\"start\">Each query pixel reads a softmax over its 30 most</text><text class=\"fig-s\" x=\"4\" y=\"217\" text-anchor=\"start\">similar memory elements; the rest get zero weight.</text>",
+        "text": [
+          "Each pixel of the new frame is matched against all working and long-term keys; the 30 most similar give a weighted sum of values.",
+          "The decoder adds the sensory state to produce the mask, and the attention received updates each element's usage."
+        ],
+        "src": "paper §3.2, §3.6; code memory_manager.py L57-L150, memory_util.py L7-L65",
+        "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/inference/memory_manager.py#L57-L150"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Memory frame every",
+        "value": "5 frames (10 on Long-time Video)",
+        "src": "paper §4.1-4.2",
+        "section": "construction"
+      },
+      {
+        "label": "Working memory",
+        "value": "5 to 10 frames, first frame always kept",
+        "src": "paper §3.3, §4",
+        "section": "construction"
+      },
+      {
+        "label": "Prototypes per consolidation",
+        "value": "128 of 5 frames (6328%)",
+        "src": "paper §4",
+        "section": "construction"
+      },
+      {
+        "label": "Long-term limit",
+        "value": "10,000 elements, LFU eviction",
+        "src": "paper §3.3, §4",
+        "section": "construction"
+      },
+      {
+        "label": "Feature sizes",
+        "value": "key 64, value 512, sensory 64 channels",
+        "src": "paper §3.6",
+        "section": "method"
+      },
+      {
+        "label": "Top-k per query pixel",
+        "value": "30",
+        "src": "paper §4",
+        "section": "method"
+      },
+      {
+        "label": "GPU memory",
+        "value": "≤ 1.4 GB (1,515 MB peak on Long-time 3×)",
+        "src": "paper §4, Table S1",
+        "section": "results"
+      },
+      {
+        "label": "Speed",
+        "value": "22.6 FPS DAVIS 2017, V100",
+        "src": "paper Table 2",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Query encoder (key, shrinkage, selection)",
+        "model": "ResNet-50 without the last stage + 3×3 conv heads",
+        "kind": "retriever",
+        "src": "paper §3.6"
+      },
+      {
+        "role": "Value encoder",
+        "model": "ResNet-18 on image + mask",
+        "kind": "retriever",
+        "src": "paper §3.6"
+      },
+      {
+        "role": "Top-30 read",
+        "model": "anisotropic L2 + top-k softmax",
+        "kind": "rule",
+        "src": "paper §3.2, §4; code memory_util.py L41-L65",
+        "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/model/memory_util.py#L41-L65"
+      },
+      {
+        "role": "Consolidation and eviction",
+        "model": "usage ranking, similarity-weighted averaging, LFU",
+        "kind": "rule",
+        "src": "paper §3.3; code memory_manager.py L211-L284",
+        "url": "https://github.com/hkchengrex/XMem/blob/f3b841d50df058910bbf690229ddc15fb1aef7d6/inference/memory_manager.py#L211-L284"
+      },
+      {
+        "role": "Sensory memory",
+        "model": "GRU (two: per-frame and deep update)",
+        "kind": "rule",
+        "src": "paper §3.5"
+      },
+      {
+        "role": "Decoder",
+        "model": "upsampling CNN with skip connections (STM-style)",
+        "kind": "rule",
+        "src": "paper §3.6"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "YouTubeVOS 2018 (G)",
+        "DAVIS 2017 (J&F)",
+        "Long-time 1× (J&F)",
+        "Long-time 3× (J&F)"
+      ],
+      "rows": [
+        [
+          "Full XMem",
+          "85.7",
+          "86.2",
+          "89.8",
+          "90.0"
+        ],
+        [
+          "no sensory memory",
+          "84.4",
+          "85.1",
+          "87.9",
+          "—"
+        ],
+        [
+          "no working memory (sensory only)",
+          "72.7",
+          "77.6",
+          "38.7",
+          "—"
+        ],
+        [
+          "no long-term memory (all frames kept)",
+          "85.9",
+          "86.3",
+          "n/a",
+          "—"
+        ],
+        [
+          "shrinkage term only",
+          "85.1",
+          "85.6",
+          "—",
+          "—"
+        ],
+        [
+          "selection term only",
+          "84.8",
+          "84.8",
+          "—",
+          "—"
+        ],
+        [
+          "neither scaling term",
+          "85.0",
+          "85.1",
+          "—",
+          "—"
+        ],
+        [
+          "no potentiation",
+          "—",
+          "—",
+          "—",
+          "87.9"
+        ],
+        [
+          "eager compression (AFB-URR style)",
+          "—",
+          "—",
+          "87.8",
+          "87.3"
+        ],
+        [
+          "sparse insertion (50 frames)",
+          "—",
+          "—",
+          "89.8",
+          "87.3"
+        ],
+        [
+          "local window (50 frames)",
+          "—",
+          "—",
+          "86.2",
+          "85.5"
+        ],
+        [
+          "no deep update",
+          "85.3",
+          "85.4",
+          "—",
+          "—"
+        ]
+      ],
+      "src": "paper Tables 4-8 (Long-time rows are means of 5 insertion offsets)"
+    },
+    "discussion": {
+      "takeaway": "Keeping several memories at different time scales, and consolidating working memory into a few heavily used prototypes only when it fills, lets video segmentation run on long videos with bounded GPU memory and no loss on short ones.",
+      "claims": [
+        {
+          "claim": "A single feature memory ties accuracy to memory cost; separate stores break that link.",
+          "evidence": "Fig. 1: methods with growing memory must insert sparsely and drop on long videos. §1"
+        },
+        {
+          "claim": "Clearly better than prior work on long videos.",
+          "evidence": "Long-time Video 3×: 90.0 J&F vs 84.6 STCN and 83.8 AFB-URR; 1×→3× change +0.2. Table 1"
+        },
+        {
+          "claim": "On par with the best short-video methods, and faster.",
+          "evidence": "YouTubeVOS 2018 85.7 vs AOT 85.5; DAVIS 2017 val 86.2 vs STCN 85.4; 22.6 FPS on DAVIS 2017 vs 20.2 STCN and 18.0 AOT. Table 2"
+        },
+        {
+          "claim": "Consolidation beats other long-video strategies.",
+          "evidence": "Long-time 3×: 90.0 vs 87.3 eager compression, 87.3 sparse insertion, 85.5 local window. Table 7"
+        },
+        {
+          "claim": "Potentiation matters.",
+          "evidence": "87.9 → 90.0 on Long-time 3×. Table 6"
+        },
+        {
+          "claim": "Both similarity scaling terms help together.",
+          "evidence": "86.2 with both vs 85.1 with neither on DAVIS 2017. Table 5"
+        }
+      ],
+      "limits": [
+        "Fails on very fast objects or heavy motion blur, where even the per-frame sensory memory cannot keep up (§4.4, App. C).",
+        "A stronger sensory memory with a larger receptive field might help (§4.4)."
+      ],
+      "limits_src": "paper §4.4, App. C",
+      "reading": [
+        "Removing long-term memory slightly raises short-video scores (85.9 G, 86.3 J&F); the long-term store pays off only on long videos, where the ablation cannot run it without memory limits (n/a).",
+        "Table 1 baselines were re-run with reduced memory insertion to fit in memory, with 5 offsets; baseline numbers on the short sets (Table 2-3) are not said to be re-run except AOT on YouTubeVOS and the re-timed FPS.",
+        "r differs by dataset (10 on Long-time Video, 5 on the short sets; 3 in the multi-scale runs of App. H).",
+        "The selection term is stored with working-memory elements but only used to potentiate prototypes; long-term prototypes keep no selection term.",
+        "Default long-term size (10,000) is far above what Long-time Video needs: 1,000 elements already give 89.5 vs 90.0 (Table S1)."
+      ]
+    }
+  }
+}
