@@ -1,0 +1,497 @@
+{
+  "id": "early-experience",
+  "name": "Early Experience",
+  "paper": {
+    "title": "Agent Learning via Early Experience",
+    "arxiv": "2510.08558",
+    "url": "https://arxiv.org/abs/2510.08558",
+    "venue": "ICML 2026",
+    "venue_short": "ICML",
+    "track": "main",
+    "year": 2026,
+    "code": "https://github.com/OSU-NLP-Group/EarlyExperience"
+  },
+  "design": {
+    "construction": {
+      "unit": "one training example built from the agent's own step off an expert state: (state, alternative action) → observed next state (IWM), or state → reflection + expert action (SR)",
+      "kept_as": "IWM: next-state text as observed (summarised by the model on WebShop, SearchQA and WebArena); SR: LLM-written reflection plus the expert action",
+      "processing": "at each expert state the initial policy proposes K non-expert actions (or they are sampled from the admissible list); each is executed and its next state recorded; for SR an LLM compares expert and alternative outcomes and explains the expert choice",
+      "trigger": "offline-batch",
+      "writer": "SFT of the policy LLM (Llama-3.2-3B, Qwen-2.5-7B, Llama-3.1-8B; LoRA for 70B); reflections written by the same policy model (Llama-3.1-8B-Instruct for all models on TravelPlanner)"
+    },
+    "organization": {
+      "structure": "parametric: everything is trained into the policy's weights; no external store",
+      "stores": "rollout set D_rollout and reflection set D_refl exist only as training data",
+      "index": null
+    },
+    "management": {
+      "operations": "IWM: one epoch of next-state prediction, then imitation on expert data with the remaining step budget; SR: reflection data mixed with expert data in one SFT run",
+      "conflicts": "SR drops reflections whose concluded action is not the expert action (BFCLv3, WebArena); Tau-Bench drops a few 'low-quality' reflections without saying by what test",
+      "forgetting": null,
+      "timing": "offline"
+    },
+    "retrieval": {
+      "query": null,
+      "candidates": "no retrieval: the policy reads only the current state",
+      "selection": null,
+      "budget": null
+    },
+    "use": {
+      "context": "current task and state only; learned dynamics and reflections act through the weights",
+      "reasoning": "one action per step; SR-trained models write a reflection before the action"
+    },
+    "control": {
+      "construction": "fixed-rule",
+      "management": "fixed-rule",
+      "retrieval": "none"
+    }
+  },
+  "classify": {
+    "structure": "none",
+    "index": "none",
+    "management": "consolidate",
+    "candidates": "read everything",
+    "decides": "reads everything",
+    "note": "Parametric memory: the agent's own off-expert experience is distilled into the policy by SFT before deployment, and nothing is stored or looked up at test time. 'Consolidate' stands for this offline distillation."
+  },
+  "tags": {
+    "fidelity": "mixed",
+    "structure": [
+      "parametric"
+    ],
+    "write_time": [
+      "summarize",
+      "learned"
+    ],
+    "selection": [
+      "model-reads"
+    ],
+    "memory_type": [
+      "procedural",
+      "semantic"
+    ],
+    "learning": "sft",
+    "domain": [
+      "web",
+      "embodied",
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "Starts from expert demonstrations split into (state, expert action) pairs, 1,395 to 21,031 per environment (App. C).",
+    "construction": "At each expert state the initial policy proposes K alternative actions (or they are drawn from the admissible list); each is executed and the resulting next state is recorded as (state, action, next state). For SR, an LLM is shown the expert action, its outcome and the alternatives with their outcomes, and writes a reflection explaining the expert choice.",
+    "organization": "",
+    "update": "",
+    "retrieval": "",
+    "answer": "The fine-tuned policy acts from the current state alone; an SR-trained policy writes its reasoning, then the action.",
+    "learning": "IWM trains next-state prediction for one epoch, then imitation on expert data within the same step budget as the IL baseline; SR trains on reflection + expert action mixed with expert data. Checkpoints can then start GRPO where a reward exists."
+  },
+  "summary": "Turns the agent's own non-expert actions at expert states into reward-free supervision (predicting the next state, or reflecting on why the expert action was better) and trains it into the policy, as a bridge between imitation learning and RL.",
+  "verified": false,
+  "notes": "VENUE: ICML 2026 main (the PDF v3 carries the PMLR 306 ICML header; OpenReview N3dXUHY5dD lists 'ICML 2026 regular'). CODE: the paper links no code. OSU-NLP-Group/EarlyExperience (author group, created 2026-06, after the paper) ships only method notes, per-env READMEs and a Hugging Face dataset, with a unified training setup and different numbers; it is recorded as a data/notes release, not the evaluation code. MEMORY FRAMING: there is no retrieval-time memory; the 'memory' is the agent's own interaction experience written into the weights. RESULTS: Table 1 'SearchQA (F1)' equals the Musique column of Table 7, so those rows are stored under musique. Table 7 also covers Gemma-3-4B, which is absent from Table 1.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2510.08558v3 (PDF read 2026-09-30)",
+      "code": "https://github.com/OSU-NLP-Group/EarlyExperience/tree/3810f05ef7d98465e3abefd38d1c0e7441d4dee0/",
+      "code_note": "No code is linked in the paper. The authors' group later released method notes, per-environment READMEs and SFT data (commit 3810f05e, 2026-07-08). The repo contains no training or evaluation code, uses a unified training setup, and its README reports numbers that differ from the paper, so every mechanism detail below comes from the paper."
+    },
+    "headline": [
+      "No reward is used: the only new signal is the next state the environment returns after the agent's own non-expert action.",
+      "Nothing is retrieved at test time. The experience reaches the agent only through SFT of its weights.",
+      "IWM does not add training steps: one epoch of next-state prediction comes out of the imitation budget."
+    ],
+    "units": [
+      {
+        "name": "IWM example",
+        "role": "one transition from an expert state under a non-expert (or the expert) action",
+        "made_by": "executing policy-proposed or sampled actions in the environment",
+        "fields": [
+          {
+            "name": "state",
+            "what": "the expert state s_i as text (task, history, observation)",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §4.1-4.2",
+            "url": "https://arxiv.org/pdf/2510.08558"
+          },
+          {
+            "name": "action",
+            "what": "an alternative action a_i^j, or the expert action",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §4.2, App. C.1",
+            "url": "https://arxiv.org/pdf/2510.08558"
+          },
+          {
+            "name": "next state",
+            "what": "observation after the action; model-written summary on WebShop (avg. 345 characters), SearchQA and WebArena",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §4.2, App. C.2, C.5, C.8",
+            "url": "https://arxiv.org/pdf/2510.08558"
+          }
+        ]
+      },
+      {
+        "name": "SR example",
+        "role": "one expert state with a reflection that justifies the expert action",
+        "made_by": "an LLM prompted with the expert and alternative outcomes (App. B.1)",
+        "fields": [
+          {
+            "name": "state",
+            "what": "the expert state s_i",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §4.3",
+            "url": "https://arxiv.org/pdf/2510.08558"
+          },
+          {
+            "name": "reflection",
+            "what": "chain of thought comparing the expert action's outcome with the alternatives' outcomes",
+            "kept_as": "rewritten",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §4.3, App. B.1",
+            "url": "https://arxiv.org/pdf/2510.08558"
+          },
+          {
+            "name": "expert action",
+            "what": "the target action after the reflection",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §4.3 Eq. 4",
+            "url": "https://arxiv.org/pdf/2510.08558"
+          },
+          {
+            "name": "alternative outcomes",
+            "what": "the alternatives and their next states appear in the reflection prompt but not in the training input",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "paper App. B.1, Eq. 4",
+            "url": "https://arxiv.org/pdf/2510.08558"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Expert pairs",
+        "how": "split expert trajectories into (state, expert action) pairs",
+        "out": "21,031 ALFWorld; 15,464 WebShop; 14,506 ScienceWorld; 7,691 SearchQA; 7,044 WebArena; 5,239 Tau-Bench; 1,395 TravelPlanner",
+        "src": "paper App. C",
+        "url": "https://arxiv.org/pdf/2510.08558"
+      },
+      {
+        "step": "Propose alternatives",
+        "how": "sample K non-expert actions per expert state from the initial policy or the admissible list",
+        "params": {
+          "K": "ALFWorld 8, ScienceWorld 3, BFCLv3 10, Tau-Bench 5, WebArena 5, SearchQA 30, TravelPlanner all valid"
+        },
+        "src": "paper §4.1, App. C",
+        "url": "https://arxiv.org/pdf/2510.08558"
+      },
+      {
+        "step": "Execute",
+        "how": "run each alternative in the environment from that state and record the next state",
+        "out": "189,279 ALFWorld triplets; 122,954 WebShop; 42,264 WebArena; >70,000 TravelPlanner",
+        "src": "paper App. C.1, C.2, C.7, C.8",
+        "url": "https://arxiv.org/pdf/2510.08558"
+      },
+      {
+        "step": "Reflect (SR)",
+        "how": "prompt an LLM with state, expert action and outcome, and 2-5 alternatives with outcomes (up to 30 on TravelPlanner); it explains why the expert action is better",
+        "out": "6,235 WebShop; 5,233 Tau-Bench; 3,190 WebArena; 1,200 BFCLv3 examples",
+        "src": "paper §4.3, App. B.1, C",
+        "url": "https://arxiv.org/pdf/2510.08558"
+      },
+      {
+        "step": "Train",
+        "how": "IWM: next-state loss (Eq. 3) for 1 epoch, then imitation; SR: loss on reflection + expert action (Eq. 4) mixed with expert data",
+        "src": "paper §4.2-4.3, App. B.2",
+        "url": "https://arxiv.org/pdf/2510.08558"
+      }
+    ],
+    "read": [
+      {
+        "step": "Act",
+        "round": 0,
+        "input": "current task and state",
+        "scores": "nothing is matched",
+        "how": "the fine-tuned policy generates the next action (SR models reason first)",
+        "src": "paper §5.1, App. B.2",
+        "url": "https://arxiv.org/pdf/2510.08558"
+      }
+    ],
+    "answer_context": {
+      "sees": "the current task and state only",
+      "format": "same prompt format as imitation learning, per environment (App. C examples)",
+      "excludes": [
+        "rollout transitions",
+        "reflections",
+        "expert demonstrations"
+      ],
+      "src": "paper §5.2, App. B.2",
+      "url": "https://arxiv.org/pdf/2510.08558",
+      "includes": [
+        "task instruction",
+        "current observation and history as in the environment's prompt"
+      ]
+    },
+    "compression": [
+      {
+        "what": "WebShop next-state summary vs raw page",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported. Only the summary length (avg. 345 characters) is given.",
+        "src": "paper App. C.2",
+        "url": "https://arxiv.org/pdf/2510.08558"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Mean gain over IL, Table 1",
+        "value": "IWM +0.9 to +18.4, SR +0.6 to +15.0 points",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "WebShop with 1/8 of the demonstrations",
+        "value": "beats IL trained on all of them",
+        "src": "paper §6.1, Fig. 4a"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "IWM alternatives on ALFWorld",
+        "paper": "8 non-expert actions sampled per state",
+        "code": "release notes: all admissible alternatives, exhaustive",
+        "src": "envs/alfworld/README.md L42",
+        "url": "https://github.com/OSU-NLP-Group/EarlyExperience/blob/3810f05ef7d98465e3abefd38d1c0e7441d4dee0/envs/alfworld/README.md#L42"
+      },
+      {
+        "topic": "Who writes reflections",
+        "paper": "the same policy model (Llama-3.1-8B-Instruct on TravelPlanner)",
+        "code": "release notes: 'an LLM'; unified setup across envs",
+        "src": "envs/alfworld/README.md L15; README.md",
+        "url": "https://github.com/OSU-NLP-Group/EarlyExperience/blob/3810f05ef7d98465e3abefd38d1c0e7441d4dee0/envs/alfworld/README.md#L15"
+      },
+      {
+        "topic": "Training setup and numbers",
+        "paper": "per-env hyperparameters (App. C); Llama/Qwen 3B-8B",
+        "code": "unified setup, Qwen2.5-7B/14B, different numbers (e.g. ALFWorld IL 58.6, SR 74.2)",
+        "src": "README.md 'Main results'",
+        "url": "https://github.com/OSU-NLP-Group/EarlyExperience/blob/3810f05ef7d98465e3abefd38d1c0e7441d4dee0/README.md"
+      }
+    ],
+    "open_questions": [
+      "IWM includes the expert transitions in its world-model data, so how much of its gain comes from alternative actions versus from predicting expert next states is not separated.",
+      "SR reflections see the expert's own next state; the paper does not test reflections without the expert outcome."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 250",
+        "body": "<text class=\"fig-t\" x=\"46\" y=\"16\" text-anchor=\"middle\">Expert trajectory</text><circle class=\"gi-n\" cx=\"46\" cy=\"44\" r=\"11\"/><text class=\"gi-lbl\" x=\"46\" y=\"48\" text-anchor=\"middle\">s1</text><circle class=\"gi-hi\" cx=\"46\" cy=\"104\" r=\"11\"/><text class=\"gi-lbl\" x=\"46\" y=\"108\" text-anchor=\"middle\">s2</text><circle class=\"gi-n\" cx=\"46\" cy=\"164\" r=\"11\"/><text class=\"gi-lbl\" x=\"46\" y=\"168\" text-anchor=\"middle\">s3</text><path class=\"gi-a\" d=\"M46 56 L46 85\"/><polygon class=\"gi-ah\" points=\"46,92 42,85 50,85\"/><path class=\"gi-a\" d=\"M46 116 L46 145\"/><polygon class=\"gi-ah\" points=\"46,152 42,145 50,145\"/><text class=\"fig-s\" x=\"54\" y=\"78\" text-anchor=\"start\">expert action</text><text class=\"fig-s\" x=\"54\" y=\"136\" text-anchor=\"start\">expert action</text><text class=\"fig-s\" x=\"46\" y=\"196\" text-anchor=\"middle\">N expert states</text><text class=\"fig-s\" x=\"46\" y=\"209\" text-anchor=\"middle\">(1.4k-21k per env)</text><path class=\"gi-a\" d=\"M58 104 L79 104\"/><polygon class=\"gi-ah\" points=\"86,104 79,100 79,108\"/><rect class=\"gi-llm\" x=\"86\" y=\"90\" width=\"62\" height=\"28\" rx=\"6\"/><text class=\"fig-t\" x=\"117\" y=\"108\" text-anchor=\"middle\">policy</text><text class=\"fig-s\" x=\"117\" y=\"162\" text-anchor=\"middle\">proposes K</text><text class=\"fig-s\" x=\"117\" y=\"174\" text-anchor=\"middle\">other actions</text><rect class=\"gi-r\" x=\"172\" y=\"36\" width=\"50\" height=\"20\" rx=\"4\"/><text class=\"fig-s\" x=\"197\" y=\"50\" text-anchor=\"middle\">alt 1</text><rect class=\"gi-r\" x=\"172\" y=\"94\" width=\"50\" height=\"20\" rx=\"4\"/><text class=\"fig-s\" x=\"197\" y=\"108\" text-anchor=\"middle\">alt 2</text><rect class=\"gi-r\" x=\"172\" y=\"152\" width=\"50\" height=\"20\" rx=\"4\"/><text class=\"fig-s\" x=\"197\" y=\"166\" text-anchor=\"middle\">alt K</text><path class=\"gi-a\" d=\"M148 100 L167.2 56.4\"/><polygon class=\"gi-ah\" points=\"170,50 170.8,58.0 163.5,54.8\"/><path class=\"gi-a\" d=\"M148 104 L163 104\"/><polygon class=\"gi-ah\" points=\"170,104 163,100 163,108\"/><path class=\"gi-a\" d=\"M148 108 L167.2 151.6\"/><polygon class=\"gi-ah\" points=\"170,158 163.5,153.2 170.8,150.0\"/><text class=\"fig-s\" x=\"197\" y=\"134\" text-anchor=\"middle\">⋮</text><text class=\"fig-s\" x=\"197\" y=\"16\" text-anchor=\"middle\">K = 2-30</text><text class=\"fig-s\" x=\"292\" y=\"16\" text-anchor=\"middle\">run in env</text><path class=\"gi-a\" d=\"M222 46 L251 46\"/><polygon class=\"gi-ah\" points=\"258,46 251,42 251,50\"/><rect class=\"gi-ev\" x=\"258\" y=\"33\" width=\"68\" height=\"26\" rx=\"6\"/><line class=\"gi-t\" x1=\"266\" y1=\"42\" x2=\"316\" y2=\"42\"/><line class=\"gi-t\" x1=\"266\" y1=\"50\" x2=\"304\" y2=\"50\"/><path class=\"gi-a\" d=\"M222 104 L251 104\"/><polygon class=\"gi-ah\" points=\"258,104 251,100 251,108\"/><rect class=\"gi-ev\" x=\"258\" y=\"91\" width=\"68\" height=\"26\" rx=\"6\"/><line class=\"gi-t\" x1=\"266\" y1=\"100\" x2=\"316\" y2=\"100\"/><line class=\"gi-t\" x1=\"266\" y1=\"108\" x2=\"304\" y2=\"108\"/><path class=\"gi-a\" d=\"M222 162 L251 162\"/><polygon class=\"gi-ah\" points=\"258,162 251,158 251,166\"/><rect class=\"gi-ev\" x=\"258\" y=\"149\" width=\"68\" height=\"26\" rx=\"6\"/><line class=\"gi-t\" x1=\"266\" y1=\"158\" x2=\"316\" y2=\"158\"/><line class=\"gi-t\" x1=\"266\" y1=\"166\" x2=\"304\" y2=\"166\"/><text class=\"fig-s\" x=\"292\" y=\"192\" text-anchor=\"middle\">next states: pages,</text><text class=\"fig-s\" x=\"292\" y=\"204\" text-anchor=\"middle\">tool outputs, errors</text><path class=\"gi-a\" d=\"M326 46 L363 46\"/><polygon class=\"gi-ah\" points=\"370,46 363,42 363,50\"/><path class=\"gi-a\" d=\"M326 104 L361.2 67.1\"/><polygon class=\"gi-ah\" points=\"366,62 364.1,69.8 358.3,64.3\"/><rect class=\"gi-f\" x=\"370\" y=\"22\" width=\"182\" height=\"62\" rx=\"8\"/><text class=\"fig-t\" x=\"461\" y=\"40\" text-anchor=\"middle\">IWM data</text><text class=\"fig-s\" x=\"461\" y=\"56\" text-anchor=\"middle\">(state, action) → next state</text><text class=\"fig-s\" x=\"461\" y=\"70\" text-anchor=\"middle\">expert step included</text><path class=\"gi-a\" d=\"M326 162 L359 162\"/><polygon class=\"gi-ah\" points=\"366,162 359,158 359,166\"/><path class=\"gi-a\" d=\"M326 108 L360.9 141.2\"/><polygon class=\"gi-ah\" points=\"366,146 358.2,144.1 363.7,138.3\"/><rect class=\"gi-llm\" x=\"370\" y=\"128\" width=\"40\" height=\"18\" rx=\"4\"/><text class=\"gi-lbl\" x=\"390\" y=\"141\" text-anchor=\"middle\">LLM</text><rect class=\"gi-hi\" x=\"370\" y=\"150\" width=\"182\" height=\"58\" rx=\"8\"/><text class=\"fig-t\" x=\"461\" y=\"168\" text-anchor=\"middle\">SR data</text><text class=\"fig-s\" x=\"461\" y=\"184\" text-anchor=\"middle\">why the expert action beats</text><text class=\"fig-s\" x=\"461\" y=\"197\" text-anchor=\"middle\">the others + expert action</text><text class=\"fig-s\" x=\"416\" y=\"141\" text-anchor=\"start\">reflects on the outcomes</text><text class=\"fig-s\" x=\"280\" y=\"236\" text-anchor=\"middle\">no reward is used: the observed next states are the only new signal</text>",
+        "text": [
+          "At each state of an expert trajectory the agent tries K other actions (2 to 30, or all valid ones, by environment) and records what the environment returns.",
+          "These transitions become IWM data; for SR an LLM reads the outcomes and explains why the expert action was better."
+        ],
+        "src": "paper §4, Fig. 2, App. B.1, App. C",
+        "url": "https://arxiv.org/pdf/2510.08558"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 250",
+        "body": "<rect class=\"gi-f\" x=\"6\" y=\"30\" width=\"96\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"54\" y=\"48\" text-anchor=\"middle\">IWM data</text><text class=\"fig-s\" x=\"54\" y=\"61\" text-anchor=\"middle\">+ expert data</text><path class=\"gi-a\" d=\"M102 50 L115 50\"/><polygon class=\"gi-ah\" points=\"122,50 115,46 115,54\"/><rect class=\"gi-v fig-soft\" x=\"122\" y=\"30\" width=\"162\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"203\" y=\"47\" text-anchor=\"middle\">1: predict next state</text><text class=\"fig-s\" x=\"203\" y=\"61\" text-anchor=\"middle\">then 2: imitate expert</text><rect class=\"gi-hi\" x=\"6\" y=\"100\" width=\"96\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"54\" y=\"118\" text-anchor=\"middle\">SR data</text><text class=\"fig-s\" x=\"54\" y=\"131\" text-anchor=\"middle\">mixed with expert</text><path class=\"gi-a\" d=\"M102 120 L115 120\"/><polygon class=\"gi-ah\" points=\"122,120 115,116 115,124\"/><rect class=\"gi-v fig-soft\" x=\"122\" y=\"100\" width=\"162\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"203\" y=\"117\" text-anchor=\"middle\">SFT: reflection, then</text><text class=\"fig-s\" x=\"203\" y=\"131\" text-anchor=\"middle\">expert action</text><text class=\"fig-s\" x=\"145\" y=\"90\" text-anchor=\"start\">same step budget as imitation</text><path class=\"gi-a\" d=\"M284 50 L309 50\"/><polygon class=\"gi-ah\" points=\"316,50 309,46 309,54\"/><path class=\"gi-a\" d=\"M284 120 L309 120\"/><polygon class=\"gi-ah\" points=\"316,120 309,116 309,124\"/><rect class=\"gi-f\" x=\"316\" y=\"24\" width=\"76\" height=\"200\" rx=\"8\"/><text class=\"fig-t\" x=\"354\" y=\"40\" text-anchor=\"middle\">policy</text><text class=\"fig-s\" x=\"354\" y=\"53\" text-anchor=\"middle\">weights</text><rect class=\"gi-w\" x=\"328\" y=\"64\" width=\"14\" height=\"16\" rx=\"2\"/><rect class=\"gi-w\" x=\"346\" y=\"64\" width=\"14\" height=\"16\" rx=\"2\"/><rect class=\"gi-w\" x=\"364\" y=\"64\" width=\"14\" height=\"16\" rx=\"2\"/><rect class=\"gi-w\" x=\"328\" y=\"86\" width=\"14\" height=\"16\" rx=\"2\"/><rect class=\"gi-w\" x=\"346\" y=\"86\" width=\"14\" height=\"16\" rx=\"2\"/><rect class=\"gi-w\" x=\"364\" y=\"86\" width=\"14\" height=\"16\" rx=\"2\"/><rect class=\"gi-w\" x=\"328\" y=\"108\" width=\"14\" height=\"16\" rx=\"2\"/><rect class=\"gi-w\" x=\"346\" y=\"108\" width=\"14\" height=\"16\" rx=\"2\"/><rect class=\"gi-w\" x=\"364\" y=\"108\" width=\"14\" height=\"16\" rx=\"2\"/><rect class=\"gi-w\" x=\"328\" y=\"130\" width=\"14\" height=\"16\" rx=\"2\"/><rect class=\"gi-w\" x=\"346\" y=\"130\" width=\"14\" height=\"16\" rx=\"2\"/><rect class=\"gi-w\" x=\"364\" y=\"130\" width=\"14\" height=\"16\" rx=\"2\"/><rect class=\"gi-w\" x=\"328\" y=\"152\" width=\"14\" height=\"16\" rx=\"2\"/><rect class=\"gi-w\" x=\"346\" y=\"152\" width=\"14\" height=\"16\" rx=\"2\"/><rect class=\"gi-w\" x=\"364\" y=\"152\" width=\"14\" height=\"16\" rx=\"2\"/><rect class=\"gi-w\" x=\"328\" y=\"174\" width=\"14\" height=\"16\" rx=\"2\"/><rect class=\"gi-w\" x=\"346\" y=\"174\" width=\"14\" height=\"16\" rx=\"2\"/><rect class=\"gi-w\" x=\"364\" y=\"174\" width=\"14\" height=\"16\" rx=\"2\"/><rect class=\"gi-f\" x=\"6\" y=\"178\" width=\"96\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"54\" y=\"196\" text-anchor=\"middle\">test state</text><text class=\"fig-s\" x=\"54\" y=\"209\" text-anchor=\"middle\">task + page</text><path class=\"gi-a\" d=\"M102 198 L309 198\"/><polygon class=\"gi-ah\" points=\"316,198 309,194 309,202\"/><text class=\"fig-s\" x=\"209\" y=\"190\" text-anchor=\"middle\">no lookup, no memory in the prompt</text><path class=\"gi-a\" d=\"M392 198 L413 198\"/><polygon class=\"gi-ah\" points=\"420,198 413,194 413,202\"/><rect class=\"gi-hi\" x=\"420\" y=\"178\" width=\"134\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"487\" y=\"196\" text-anchor=\"middle\">action</text><text class=\"fig-s\" x=\"487\" y=\"209\" text-anchor=\"middle\">(SR: thought first)</text><rect class=\"gi-ev d\" x=\"420\" y=\"92\" width=\"134\" height=\"56\" rx=\"8\"/><text class=\"fig-t\" x=\"487\" y=\"112\" text-anchor=\"middle\">optional GRPO</text><text class=\"fig-s\" x=\"487\" y=\"126\" text-anchor=\"middle\">starts from these weights</text><text class=\"fig-s\" x=\"487\" y=\"139\" text-anchor=\"middle\">3 envs with rewards</text><path class=\"gi-a d\" d=\"M392 120 L413 120\"/><polygon class=\"gi-ah\" points=\"420,120 413,116 413,124\"/><text class=\"fig-s\" x=\"487\" y=\"48\" text-anchor=\"middle\">experience is read only</text><text class=\"fig-s\" x=\"487\" y=\"61\" text-anchor=\"middle\">through the trained weights</text><text class=\"fig-s\" x=\"200\" y=\"244\" text-anchor=\"middle\">one next-token loss throughout; the same weights predict states and actions</text>",
+        "text": [
+          "The collected experience is trained into the policy: IWM first predicts next states then imitates the expert; SR learns reflection plus expert action.",
+          "At test time nothing is retrieved; the policy acts from the current state, and GRPO can start from these weights where rewards exist."
+        ],
+        "src": "paper §4.2-4.3, §5.4, App. B.2",
+        "url": "https://arxiv.org/pdf/2510.08558"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Expert state-action pairs",
+        "value": "1,395 (TravelPlanner) to 21,031 (ALFWorld)",
+        "src": "paper App. C",
+        "section": "construction"
+      },
+      {
+        "label": "Alternatives per state (IWM)",
+        "value": "3 to 30, or all valid actions",
+        "src": "paper App. C",
+        "section": "construction"
+      },
+      {
+        "label": "IWM set, ALFWorld",
+        "value": "189,279 triplets (9 × expert pairs)",
+        "src": "paper App. C.1",
+        "section": "construction"
+      },
+      {
+        "label": "Alternatives per SR prompt",
+        "value": "2 to 5; up to 30 on TravelPlanner",
+        "src": "paper App. C",
+        "section": "construction"
+      },
+      {
+        "label": "IWM stage 1",
+        "value": "1 epoch, inside the IL step budget",
+        "src": "paper App. B.2",
+        "section": "method"
+      },
+      {
+        "label": "Retrieval at test time",
+        "value": "none",
+        "src": "paper §4",
+        "section": "method"
+      },
+      {
+        "label": "Best gains over IL",
+        "value": "WebShop +18.4 (IWM, 3B), TravelPlanner +15.0 (SR)",
+        "src": "paper Table 1",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Policy that proposes alternatives and is trained",
+        "model": "Llama-3.2-3B / Qwen-2.5-7B / Llama-3.1-8B Instruct (LoRA for Llama-3.3-70B, Qwen-2.5-72B)",
+        "kind": "llm",
+        "src": "paper §5.1, §6.4"
+      },
+      {
+        "role": "Writes reflections",
+        "model": "the same policy model; Llama-3.1-8B-Instruct on TravelPlanner",
+        "kind": "llm",
+        "src": "paper §4.3, App. C.7"
+      },
+      {
+        "role": "Summarises next states",
+        "model": "the same model (WebArena); model-written summaries on WebShop and SearchQA",
+        "kind": "llm",
+        "src": "paper App. C.2, C.5, C.8"
+      },
+      {
+        "role": "Optional RL after SFT",
+        "model": "GRPO (Verl-Agent, Search-R1 codebases)",
+        "kind": "rule",
+        "src": "paper §5.4, App. C"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "WebShop",
+        "ALFWorld"
+      ],
+      "rows": [
+        [
+          "Prompt",
+          "0.0",
+          "25.0"
+        ],
+        [
+          "Prompt + Long CoT",
+          "1.6",
+          "28.4"
+        ],
+        [
+          "Imitation learning",
+          "47.3",
+          "80.5"
+        ],
+        [
+          "IL + Long CoT",
+          "0.0",
+          "25.8"
+        ],
+        [
+          "IL + STaR rationales",
+          "25.0",
+          "74.2"
+        ],
+        [
+          "IL + DPO (best before collapse)",
+          "53.1",
+          "82.8"
+        ],
+        [
+          "Ours-IWM",
+          "58.6",
+          "85.9"
+        ],
+        [
+          "Ours-SR",
+          "58.2",
+          "85.2"
+        ]
+      ],
+      "src": "paper Table 3 (Llama-3.1-8B, success rate %)"
+    },
+    "discussion": {
+      "takeaway": "An agent can learn from the outcomes of its own non-expert actions without any reward, either by predicting those outcomes or by explaining why the expert's choice was better. Both beat imitation learning in all eight environments and give a better starting point for RL.",
+      "claims": [
+        {
+          "claim": "Early experience improves over imitation learning in every setting.",
+          "evidence": "Table 1: 8 benchmarks × 3 models; IWM +0.9 to +18.4, SR +0.6 to +15.0 points over IL (§5.2)."
+        },
+        {
+          "claim": "It helps out of domain.",
+          "evidence": "Table 2: ALFWorld OOD IWM +14.8 (Llama-3.1-8B); BFCLv3 OOD SR +8.5 (3B); SearchQA OOD +2.2 to +4.9 (§5.3)."
+        },
+        {
+          "claim": "It is a better starting point for RL.",
+          "evidence": "Fig. 3, Tables 4, 5, 7: after identical GRPO, e.g. ALFWorld 99.2 (SR) vs 92.2 (IL) for 3B; WebShop 92.2 (IWM) vs 82.0 (IL) (§5.4)."
+        },
+        {
+          "claim": "It saves demonstrations.",
+          "evidence": "WebShop with 1/8 and ALFWorld with 1/2 of the demonstrations already beat IL on all of them (Fig. 4a, §6.1)."
+        },
+        {
+          "claim": "Grounded reflections beat ungrounded ones and preference training.",
+          "evidence": "Table 3: STaR-style rationales drop WebShop from 47.3 to 25.0; DPO reaches 53.1 but collapses; IWM 58.6, SR 58.2 (§6.3)."
+        }
+      ],
+      "limits": [
+        "The paper has no limitations section; the impact statement notes that needing less data also lowers the barrier to training agents for malicious use.",
+        "Open action spaces (free-form search queries in SearchQA, fine-grained web actions in WebArena) are named the hardest regime (§5.2)."
+      ],
+      "limits_src": "paper §5.2, Impact Statement",
+      "reading": [
+        "Table 1's 'SearchQA (F1)' numbers are the Musique column of Table 7, while Figure 3 uses the four-dataset average; the two are different measures under one name.",
+        "Table 2's SearchQA OOD values are not the mean of the other three Table 7 columns, and the paper does not say how they are formed.",
+        "Expert data differ by environment: optimal walkthroughs (ALFWorld, ScienceWorld), human or leaderboard-agent trajectories (WebShop, WebArena), and LLM-synthesised trajectories filtered by success (Tau-Bench, SearchQA, BFCLv3, TravelPlanner).",
+        "The number of alternatives, how they are drawn (policy samples vs uniform from the admissible list) and whether next states are summarised all change per environment, so the effect of each choice is only tested for K (Fig. 4b, two environments).",
+        "SR on TravelPlanner uses reflections written by Llama-3.1-8B-Instruct for all three trained models, so the 3B and Qwen results there are partly distillation from a different model.",
+        "Absolute scores stay low on WebArena-Lite: at most 8.5% success for the 3B-8B models, so gains of 1.2-3.6 points there rest on a 165-task set."
+      ]
+    },
+    "abstract": {
+      "text": "Most language agents are trained by imitating expert demonstrations, which cover few situations, while RL needs rewards that many environments do not provide. This paper proposes 'early experience': at states from expert trajectories the agent tries its own alternative actions and records what happens, using those future states as supervision with no reward. Two methods use this data: implicit world modeling, which trains the policy to predict next states, and self-reflection, which trains it to explain why the expert action beats the alternatives before acting. Across eight environments and several model families both improve over imitation learning, generalise better out of domain, and give stronger starting points for later RL.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2510.08558"
+    },
+    "sections": {
+      "Memory architecture": "§3-4",
+      "Results": "§5.2-5.4",
+      "Ablation": "§6.1-6.4",
+      "Discussion": "§7, Impact Statement",
+      "Details": "App. B, C"
+    }
+  }
+}

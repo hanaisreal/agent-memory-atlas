@@ -1550,5 +1550,287 @@
   "name": "KG-GPT",
   "url": "https://arxiv.org/abs/2310.11220",
   "note": "Segments the query and lets an LLM pick matching KG relations per segment, starting from given entities (Kim et al., 2023)."
+ },
+ {
+  "id": "cad",
+  "name": "CAD (context-aware decoding)",
+  "url": "https://aclanthology.org/2024.naacl-short.69/",
+  "note": "Contrastive decoding that amplifies the difference between output distributions with and without the retrieved context (Shi et al., NAACL 2024)."
+ },
+ {
+  "id": "adacad",
+  "name": "AdaCAD",
+  "url": "https://github.com/hannight/adacad",
+  "note": "Context-aware decoding whose contrast weight adapts to the measured conflict between context and parametric knowledge (Han et al., NAACL 2025)."
+ },
+ {
+  "id": "adaptive-rag",
+  "name": "Adaptive-RAG",
+  "url": "https://github.com/starsuzi/Adaptive-RAG",
+  "note": "A trained classifier predicts question complexity and chooses the retrieval strategy (Jeong et al., NAACL 2024); CARE uses a binary retrieve / no-retrieve variant."
+ },
+ {
+  "id": "skr-knn",
+  "name": "SKR-kNN",
+  "url": "https://github.com/THUNLP-MT/SKR",
+  "note": "Self-knowledge guided retrieval: kNN over embeddings of training questions the LLM got right or wrong without retrieval decides whether to retrieve (Wang et al., EMNLP 2023)."
+ },
+ {
+  "id": "priori-judgment",
+  "name": "Priori Judgment",
+  "url": "https://github.com/RUCAIBox/LLM-Knowledge-Boundary",
+  "note": "The LLM is prompted to say whether it can answer (with the passage shown); 'unknown' falls back to the closed-book answer (Ren et al., COLING 2025)."
+ },
+ {
+  "id": "retrobust",
+  "name": "RetRobust",
+  "url": "https://github.com/oriyor/ret-robust",
+  "note": "Fine-tunes the LLM with irrelevant and distracting retrieved contexts so it learns to ignore them (Yoran et al., ICLR 2024)."
+ },
+ {
+  "id": "direct-ft",
+  "name": "Direct FT (conflict-aware fine-tuning of the LLM)",
+  "url": "https://arxiv.org/abs/2508.15253",
+  "note": "Baseline built in the CARE paper: CARE's positive / hard-negative training applied to the base LLM with LoRA instead of a context assessor."
+ },
+ {
+  "id": "base-model-prompting",
+  "name": "Instruct model, prompted",
+  "url": null,
+  "note": "The instruction-tuned base model used zero-shot as the agent, with no training on the environment ('Prompt' rows in Early Experience)."
+ },
+ {
+  "id": "expert-sft",
+  "name": "Imitation learning (SFT on expert trajectories)",
+  "url": null,
+  "note": "Behaviour cloning: next-token SFT of the same base model on expert (state, action) pairs; the IL baseline in Early Experience, with the same step budget."
+ },
+ {
+  "id": "star",
+  "name": "STaR-style rationales",
+  "url": null,
+  "note": "Zelikman et al. (2022): fine-tune on model-written rationales for the expert action, without looking at alternative actions or their outcomes."
+ },
+ {
+  "id": "dpo",
+  "name": "DPO",
+  "url": null,
+  "note": "Direct Preference Optimization (Rafailov et al., 2023); in Early Experience the expert action is 'chosen' and a rolled-out non-expert action 'rejected'."
+ },
+ {
+  "id": "gemini-2.5-pro",
+  "name": "Gemini 2.5 Pro",
+  "url": null,
+  "note": "Proprietary LLM prompted as an agent; Early Experience copies its ALFWorld and WebShop numbers from Feng et al. (2025)."
+ },
+ {
+  "id": "gpt-4-turbo",
+  "name": "GPT-4-Turbo",
+  "url": null,
+  "note": "Proprietary LLM prompted as a web agent; Early Experience copies its WebArena-Lite number from Qi et al. (2025)."
+ },
+ {
+  "id": "crl-reset",
+  "name": "Reset (train from scratch)",
+  "url": null,
+  "note": "Continual-RL baseline: re-initialise the network at every new task (DQN-Reset / SAC 'independent' in FAME); reference for forward transfer."
+ },
+ {
+  "id": "crl-finetune",
+  "name": "Finetune",
+  "url": null,
+  "note": "Continual-RL baseline: keep training the same network from task to task with no protection against forgetting."
+ },
+ {
+  "id": "crl-average",
+  "name": "Average (TD-target averaging)",
+  "url": null,
+  "note": "FAME's Meta-World baseline: the critic's TD target is averaged over the agents of all past tasks."
+ },
+ {
+  "id": "dqn-multihead",
+  "name": "DQN MultiHead",
+  "url": null,
+  "note": "DQN with one output head per task, given the task identity (baseline from Anand & Precup, 2023)."
+ },
+ {
+  "id": "dqn-largebuffer",
+  "name": "DQN LargeBuffer",
+  "url": null,
+  "note": "DQN with a larger replay buffer that keeps past-task data (500k transitions in FAME's code)."
+ },
+ {
+  "id": "pt-dqn",
+  "name": "PT-DQN",
+  "url": "https://arxiv.org/abs/2312.11669",
+  "note": "Permanent + transient value functions (Anand & Precup, NeurIPS 2023): a slow permanent network plus a fast transient one per task."
+ },
+ {
+  "id": "packnet",
+  "name": "PackNet",
+  "url": null,
+  "note": "Mallya & Lazebnik (CVPR 2018): prunes and freezes a subset of weights per task; zero forgetting, needs task identity."
+ },
+ {
+  "id": "progressivenet",
+  "name": "Progressive Networks",
+  "url": null,
+  "note": "Rusu et al. (2016): adds a new column per task with lateral connections to frozen earlier columns."
+ },
+ {
+  "id": "componet",
+  "name": "CompoNet",
+  "url": "https://arxiv.org/abs/2506.14811",
+  "note": "Self-composing policies (Malagon et al., ICML 2024): a growing set of policy modules combined by attention."
+ },
+ {
+  "id": "rmt",
+  "name": "RMT (Recurrent Memory Transformer)",
+  "url": "https://arxiv.org/abs/2207.06881",
+  "note": "Segment-level recurrence through memory tokens written by a forward pass; two-segment version in GradMem."
+ },
+ {
+  "id": "armt",
+  "name": "ARMT (Associative Recurrent Memory Transformer)",
+  "url": "https://arxiv.org/abs/2407.04841",
+  "note": "RMT with per-layer associative memory matrices updated DeltaNet-style."
+ },
+ {
+  "id": "mamba",
+  "name": "Mamba / Mamba-2",
+  "url": "https://arxiv.org/abs/2405.21060",
+  "note": "Selective state-space sequence model; its recurrent state acts as memory. GradMem uses Mamba-2 (130M) and a 4-layer version."
+ },
+ {
+  "id": "pythia",
+  "name": "Pythia",
+  "url": "https://arxiv.org/abs/2304.01373",
+  "note": "Pretrained decoder LM suite; Pythia-160m fine-tuned with full context as an upper bound in GradMem."
+ },
+ {
+  "id": "ui-tars",
+  "name": "UI-TARS",
+  "url": "https://arxiv.org/abs/2509.02544",
+  "note": "Native GUI agent model (7B and 72B rows in SE-GA). SE-GA cites the UI-TARS-2 technical report (arXiv 2509.02544) for it."
+ },
+ {
+  "id": "qwen2.5-vl",
+  "name": "Qwen2.5-VL",
+  "url": "https://arxiv.org/abs/2502.13923",
+  "note": "Open vision-language model; 7B and 72B rows; SE-GA's base model."
+ },
+ {
+  "id": "aria-ui",
+  "name": "Aria-UI",
+  "url": "https://arxiv.org/abs/2412.16256",
+  "note": "GUI grounding model (23B per SE-GA Table 1)."
+ },
+ {
+  "id": "seeclick",
+  "name": "SeeClick",
+  "url": "https://aclanthology.org/2024.acl-long.505/",
+  "note": "GUI grounding agent (9.6B); also introduced ScreenSpot."
+ },
+ {
+  "id": "uground",
+  "name": "UGround",
+  "url": "https://arxiv.org/abs/2510.03853",
+  "note": "GUI grounding baseline (7B). SE-GA cites arXiv 2510.03853 for it and also lists Gou et al., arXiv 2410.05243 ('universal visual grounding for GUI agents') in its references."
+ },
+ {
+  "id": "os-atlas",
+  "name": "OS-Atlas",
+  "url": "https://arxiv.org/abs/2410.23218",
+  "note": "Foundation action model for GUI agents (7B)."
+ },
+ {
+  "id": "aguvis",
+  "name": "Aguvis",
+  "url": "https://arxiv.org/abs/2412.04454",
+  "note": "Pure-vision GUI agent (7B)."
+ },
+ {
+  "id": "os-genesis",
+  "name": "OS-Genesis",
+  "url": "https://aclanthology.org/2025.acl-long.277/",
+  "note": "GUI agent trained on reverse-synthesised trajectories (7B)."
+ },
+ {
+  "id": "gui-critic-r1",
+  "name": "GUI-Critic-R1",
+  "url": "https://arxiv.org/abs/2506.04614",
+  "note": "Pre-operative error-diagnosis critic for GUI automation (7B row on AndroidWorld)."
+ },
+ {
+  "id": "claude-3-opus",
+  "name": "Claude 3 Opus (as named by SE-GA)",
+  "url": "https://www.anthropic.com/news/3-5-models-and-computer-use",
+  "note": "SE-GA §5.2 names the baseline Claude3-Opus but cites Anthropic's 2024 'Our 3.5 models and computer use' post; the tables just say Claude."
+ },
+ {
+  "id": "video-llava",
+  "name": "Video-LLaVA",
+  "url": "https://arxiv.org/abs/2311.10122",
+  "note": "Open video LVLM (7B); baseline host model in Video-RAG Table 1."
+ },
+ {
+  "id": "long-llava",
+  "name": "Long-LLaVA (aws-prototyping/long-llava-qwen2-7b)",
+  "url": "https://huggingface.co/aws-prototyping/long-llava-qwen2-7b",
+  "note": "The Hugging Face model cited as [45] in Video-RAG, not the LongLLaVA hybrid-architecture paper (arXiv 2409.02889)."
+ },
+ {
+  "id": "vita-1.5",
+  "name": "VITA-1.5",
+  "url": "https://arxiv.org/abs/2501.01957",
+  "note": "Open omni-modal LVLM; row in Video-RAG Table 1."
+ },
+ {
+  "id": "video-xl",
+  "name": "Video-XL",
+  "url": "https://arxiv.org/abs/2409.14485",
+  "note": "Long-video LVLM; row in Video-RAG Table 2 (MLVU)."
+ },
+ {
+  "id": "aria",
+  "name": "Aria",
+  "url": "https://arxiv.org/abs/2410.05993",
+  "note": "Open multimodal mixture-of-experts model; row in Video-RAG Tables 2-3."
+ },
+ {
+  "id": "oryx",
+  "name": "Oryx MLLM",
+  "url": "https://arxiv.org/abs/2409.12961",
+  "note": "Row in Video-RAG Table 2 (MLVU)."
+ },
+ {
+  "id": "pllava",
+  "name": "PLLaVA",
+  "url": "https://arxiv.org/abs/2404.16994",
+  "note": "Row in Video-RAG Table 3 (LongVideoBench)."
+ },
+ {
+  "id": "sharegpt4video",
+  "name": "ShareGPT4Video",
+  "url": "https://arxiv.org/abs/2406.04325",
+  "note": "Row in Video-RAG Table 3 (LongVideoBench)."
+ },
+ {
+  "id": "llava-next",
+  "name": "LLaVA-NeXT (Mistral-7B)",
+  "url": "https://llava-vl.github.io/blog/2024-01-30-llava-next/",
+  "note": "Image LVLM; row in Video-RAG Table 3."
+ },
+ {
+  "id": "videochat2",
+  "name": "VideoChat2 (Mistral-7B)",
+  "url": null,
+  "note": "Row in Video-RAG Table 3; the paper gives no reference for it (only VideoChat, arXiv 2305.06355, is cited)."
+ },
+ {
+  "id": "orca",
+  "name": "Orca",
+  "url": "https://www.usenix.org/conference/osdi22/presentation/yu",
+  "note": "LLM serving system with iteration-level scheduling (OSDI 2022). Not public; vLLM compares against its own reimplementation in three reservation variants (Max, Pow2, Oracle)."
  }
 ]

@@ -1,0 +1,687 @@
+{
+  "id": "se-ga",
+  "name": "SE-GA",
+  "paper": {
+    "title": "SE-GA: Memory-Augmented Self-Evolution for GUI Agents",
+    "arxiv": "2605.16883",
+    "url": "https://arxiv.org/abs/2605.16883",
+    "venue": "ICML 2026",
+    "venue_short": "ICML",
+    "track": "main",
+    "year": 2026,
+    "code": "https://github.com/jinshilong-dev/SE-GA"
+  },
+  "design": {
+    "construction": {
+      "unit": "step record ⟨screen, action, next screen⟩; experience entry ⟨trajectory, reflective summary, text key, image key⟩; rule text",
+      "kept_as": "steps and trajectories as recorded; an agent-written summary per trajectory",
+      "processing": "append every executed step; after a task the agent writes a reflective summary of the trajectory; entries are embedded (text and image)",
+      "trigger": "other",
+      "writer": "the GUI agent itself for summaries; how semantic rules are produced is not described"
+    },
+    "organization": {
+      "structure": "three typed stores: episodic step list, semantic rules, experiential trajectories",
+      "stores": "M_EPI (current task), M_SEM (persistent rules), M_EXP (past trajectories)",
+      "index": "text embeddings for rules and intents, visual embedding for the task screen (code: text-embedding-3-small, CLIP ViT-B/32)"
+    },
+    "management": {
+      "operations": "append only; successful trajectories accumulate in M_EXP during inference and are later distilled into weights by MASE",
+      "conflicts": null,
+      "forgetting": null,
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "instruction Q; current screenshot o_t for the visual term",
+      "candidates": "episodic: last H steps; semantic: cosine(Q, rule key); experiential: λ·text + (1−λ)·visual similarity",
+      "selection": "top-K per store; only the summaries g(τ) of retrieved experiences enter the context",
+      "budget": "code defaults: H = 10 steps, 3 rules, 3 experiences, λ = 0.7; the paper gives no values"
+    },
+    "use": {
+      "context": "recent step records, rules and experience summaries, with the instruction and screenshot",
+      "reasoning": "the policy VLM writes a progress check, a rationale and a history summary, then one action per step"
+    },
+    "control": {
+      "construction": "prompted-llm",
+      "management": "none",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "typed stores",
+    "index": "vector",
+    "management": "append-only",
+    "candidates": "dense",
+    "decides": "top-k rule",
+    "note": "The episodic part is a recency window, not a search; the experiential key mixes text and image similarity. Memory contents are also used as training data (MASE)."
+  },
+  "tags": {
+    "fidelity": "mixed",
+    "structure": [
+      "typed-stores"
+    ],
+    "write_time": [
+      "summarize"
+    ],
+    "selection": [
+      "dense"
+    ],
+    "memory_type": [
+      "working",
+      "semantic",
+      "procedural"
+    ],
+    "learning": "mixed",
+    "domain": [
+      "gui"
+    ]
+  },
+  "stages": {
+    "ingestion": "Each executed GUI step is recorded as (observation, action, next observation) in the episodic store of the current task.",
+    "construction": "After a task, the trajectory is stored in experiential memory with an agent-written reflective summary, a text key and a visual key. Semantic memory holds general interaction rules; the paper does not say how they are written.",
+    "organization": "Three separate stores: episodic (current task), semantic (rules), experiential (past trajectories).",
+    "update": "Append-only: new trajectories keep accumulating during inference; nothing is merged or deleted.",
+    "retrieval": "Per step: the last H episodic steps; the top-K rules by cosine to the instruction; the top-K experiences by a λ-weighted mix of instruction-to-intent and screenshot-to-task similarity, keeping only their summaries.",
+    "answer": "The retrieved memory, instruction and screenshot go to the policy VLM (Qwen2.5-VL-7B based), which reasons and outputs one action.",
+    "learning": "MASE turns collected trajectories into training data: hindsight goal-shifting relabels failed trajectories with the sub-goal they reached; the policy gets grounding SFT and then GRPO with token-level ratios, an adaptive upper clip and a format/type/parameter reward."
+  },
+  "summary": "GUI agent with three memories (recent steps, general rules, past trajectories retrieved by text plus screenshot similarity) whose collected trajectories are relabelled by hindsight goal-shifting and distilled into the policy with SFT and GRPO.",
+  "verified": false,
+  "notes": "Venue: ICML 2026 main track, verified from the PDF footer ('Proceedings of the 43rd International Conference on Machine Learning, PMLR 306, 2026') and the ICML virtual poster page (icml.cc/virtual/2026/poster/65853). Text from arXiv v1 PDF (pdftotext). Code read at commit 497d00ad (2026-06-02, HEAD).\nDESIGN: §4.1 (TTME), §4.2 and §5.1 (MASE), App. B-C; code gui_sega/ttme/memory/*. The paper gives no values for H, K, λ or the encoders; the values here are the code defaults. control.construction = prompted-llm because the agent writes the reflective summary; rule creation is not described. The released code has no benchmark inference or evaluation script, so how TTME is wired into the evaluated runs cannot be checked. Baselines: App. A.5 says UI-TARS, GPT-4o, Gemini, Claude 3, InternVL, Aria-UI, Aguvis, UGround and SeeClick numbers come from 'the UI-TARS paper'; its UI-TARS reference is the UI-TARS-2 report (arXiv 2509.02544).",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2605.16883 v1 (PDF read 2026-09-30)",
+      "code": "https://github.com/jinshilong-dev/SE-GA/tree/497d00adc5f6abd3686a976572e0a43fab04c22e/",
+      "code_note": "HEAD of the official repository (7 commits, 2026-05-10 to 2026-06-02; the last two only add model links). It contains the TTME memory classes with a toy example and the MASE training scripts, but no inference or evaluation code for the benchmarks."
+    },
+    "sections": {
+      "Memory architecture": "§4.1",
+      "Results": "§5.3",
+      "Ablation": "§5.4, App. C.3-C.6",
+      "Discussion": "§6, Impact Statement",
+      "Details": "§4.2, §5.1-5.2, App. A-B"
+    },
+    "abstract": {
+      "text": "SE-GA targets GUI agents that lose track of long tasks and cannot learn from their own runs. At test time it keeps three memories: the recent steps of the current task, general interaction rules, and past trajectories with reflective summaries that are retrieved by instruction and screenshot similarity. The trajectories it collects are then used to retrain the policy: failed runs are relabelled with the sub-goal they did reach, and the model goes through grounding SFT followed by a modified GRPO. With a 7B Qwen2.5-VL base, the authors report 89.0 on ScreenSpot, 75.8 success on AndroidControl-High and 39.0 on AndroidWorld.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2605.16883"
+    },
+    "headline": [
+      "Memory feeds the agent at each step (recent steps, rules, experience summaries) and also becomes training data for the policy.",
+      "The paper gives no window size, top-K, λ or encoders; the code defaults are H = 10, 3 rules, 3 experiences, λ = 0.7, text-embedding-3-small and CLIP ViT-B/32.",
+      "Only the ablation separates memory from training: removing TTME drops AndroidControl-High success from 73.8 to 61.4."
+    ],
+    "units": [
+      {
+        "name": "Episodic step",
+        "role": "one executed step of the current task",
+        "made_by": "rule (appended after each action)",
+        "fields": [
+          {
+            "name": "observation",
+            "what": "screen before the action (a text description in the code)",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §4.1.1 Eq. 1; code episodic_memory.py L28-L34",
+            "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/episodic_memory.py#L28-L34"
+          },
+          {
+            "name": "action",
+            "what": "the action taken",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper Eq. 1",
+            "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/episodic_memory.py#L28-L34"
+          },
+          {
+            "name": "next observation",
+            "what": "screen after the action",
+            "kept_as": "verbatim",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper Eq. 1",
+            "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/episodic_memory.py#L28-L34"
+          }
+        ]
+      },
+      {
+        "name": "Semantic rule",
+        "role": "general interaction rule, e.g. log in before private pages",
+        "made_by": "not described (hand-written rules in the code example)",
+        "fields": [
+          {
+            "name": "description",
+            "what": "rule text",
+            "kept_as": "rewritten",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §4.1.2 Eq. 3; code semantic_memory.py L35-L39",
+            "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/semantic_memory.py#L35-L39"
+          },
+          {
+            "name": "key",
+            "what": "embedding; the paper writes φ(Q_hist), the code embeds the rule text",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper Eq. 3; code semantic_memory.py L36-L37",
+            "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/semantic_memory.py#L36-L37"
+          }
+        ]
+      },
+      {
+        "name": "Experience",
+        "role": "one past task trajectory and what the agent learned from it",
+        "made_by": "the agent (summary); rule (keys)",
+        "fields": [
+          {
+            "name": "trajectory τ",
+            "what": "raw step sequence of a past task; in the code its text is what the intent key embeds",
+            "kept_as": "verbatim",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper Eq. 5; code experiential_memory.py L49-L50",
+            "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/experiential_memory.py#L49-L50"
+          },
+          {
+            "name": "reflective summary g(τ)",
+            "what": "agent-written lesson from the trajectory; the only part read",
+            "kept_as": "summarized",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §4.1.3; code experiential_memory.py L102-L114",
+            "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/experiential_memory.py#L102-L114"
+          },
+          {
+            "name": "intent key",
+            "what": "text embedding compared with the instruction",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper Eq. 6",
+            "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/experiential_memory.py#L80-L84"
+          },
+          {
+            "name": "task key",
+            "what": "visual embedding compared with the current screenshot; must be supplied by the caller in the code",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper Eq. 6; code experiential_memory.py L55, L86-L95",
+            "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/experiential_memory.py#L86-L95"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Record step",
+        "how": "append ⟨o, a, o'⟩ to the current task's episodic list after every action",
+        "src": "paper §4.1.1; code ttme.py L72-L73",
+        "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/ttme.py#L72-L73"
+      },
+      {
+        "step": "Store experience",
+        "how": "after a task, keep the trajectory with a reflective summary written by the agent and two keys (text intent, visual task)",
+        "note": "the summary prompt and the choice of which runs to keep are not given; App. C.6 compares success-only with top-k retrieval, implying failed runs are stored too",
+        "src": "paper §4.1.3 Eq. 5, App. C.6; code ttme.py L78-L85",
+        "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/ttme.py#L78-L85"
+      },
+      {
+        "step": "Hold rules",
+        "how": "semantic rules are stored with an embedding key",
+        "note": "how rules are obtained is not described; the code example loads six hand-written rules",
+        "src": "paper §4.1.2; code memory_example.py L47-L57",
+        "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory_example.py#L47-L57"
+      },
+      {
+        "step": "Relabel for training (MASE)",
+        "how": "a failed trajectory whose prefix reaches another valid sub-goal is relabelled as a success for that sub-goal (hindsight goal-shifting)",
+        "out": "4,007 trajectories in total (11.89 steps on average); 2K samples for grounding SFT and 2K for self-evolution",
+        "src": "paper §5.1 Eq. 17, Table 5",
+        "url": "https://arxiv.org/pdf/2605.16883"
+      },
+      {
+        "step": "Train (MASE)",
+        "how": "grounding SFT, then GRPO with token-level ratios, an adaptive upper clip and a format + type + parameter reward; LoRA r 32",
+        "src": "paper §4.2, App. B; code train_grpo.py",
+        "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/mase/train_grpo.py#L84-L103"
+      }
+    ],
+    "read": [
+      {
+        "step": "Recent steps",
+        "round": 1,
+        "input": "none (recency)",
+        "how": "take the last H steps of the current task",
+        "params": {
+          "H": "10 (code default; not given in the paper)"
+        },
+        "src": "paper Eq. 2; code episodic_memory.py L36-L51, ttme.py L32",
+        "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/episodic_memory.py#L36-L51"
+      },
+      {
+        "step": "Rules",
+        "round": 1,
+        "input": "instruction Q",
+        "scores": "rule key",
+        "how": "cosine similarity, top-K",
+        "params": {
+          "K": "3 (code default)"
+        },
+        "src": "paper Eq. 4; code semantic_memory.py L45-L73",
+        "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/semantic_memory.py#L45-L73"
+      },
+      {
+        "step": "Experiences",
+        "round": 1,
+        "input": "instruction Q and screenshot o_t",
+        "scores": "intent key (text) and task key (image)",
+        "how": "λ·cos(text) + (1−λ)·cos(image); text only when no image key exists",
+        "params": {
+          "K": "3 (code default)",
+          "λ": "0.7 (code default)"
+        },
+        "src": "paper Eq. 6; code experiential_memory.py L59-L100",
+        "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/experiential_memory.py#L59-L100"
+      },
+      {
+        "step": "Assemble and act",
+        "round": 1,
+        "how": "the three contexts are joined under one header and given to the policy with the instruction and screenshot",
+        "src": "paper §4.1.3; code ttme.py L102-L121",
+        "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/ttme.py#L102-L121"
+      }
+    ],
+    "answer_context": {
+      "sees": "last 10 steps, 3 rules and 3 experience summaries (code defaults), plus instruction and screenshot",
+      "format": "\"[Retrieved Memory M_retrieved]\", then \"Step i: Observation: ... | Action: ... | Result: ...\", \"[Semantic Memory - Universal Interaction Rules] Rule i: ...\", \"[Experiential Memory - Past Task Strategies] Experience i: ...\"",
+      "excludes": [
+        "raw past trajectories",
+        "steps older than the window"
+      ],
+      "includes": [
+        "recent step records",
+        "rule texts",
+        "reflective summaries g(τ)"
+      ],
+      "note": "The inference prompt in App. B.3 has slots only for the instruction and a 'Previous History Summary'; the released training prompts carry only a summary of the last 10 steps, not rules or experiences.",
+      "src": "code ttme.py L102-L121, episodic_memory.py L41-L51",
+      "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/ttme.py#L102-L121"
+    },
+    "compression": [
+      {
+        "what": "experience summary vs its trajectory",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported; only the summary enters the context.",
+        "src": "paper §4.1.3",
+        "url": "https://arxiv.org/pdf/2605.16883"
+      },
+      {
+        "what": "episodic window vs full task history",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "The paper gives no H; the code default is 10 steps against 11.89 steps per training trajectory on average (Table 5).",
+        "src": "code ttme.py L32; paper Table 5",
+        "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/ttme.py#L32"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Retrieval strategy (AC-High / GUIOdyssey SR): top-k",
+        "value": "75.8 / 83.9",
+        "src": "paper Table 9"
+      },
+      {
+        "label": "Mixed success/failure sampling",
+        "value": "76.2 / 82.1",
+        "src": "paper Table 9"
+      },
+      {
+        "label": "Success-only experiences",
+        "value": "70.0 / 72.5",
+        "src": "paper Table 9"
+      },
+      {
+        "label": "Self-evolution rounds 1 → 3, AndroidControl-High SR",
+        "value": "55.9 → 71.3 → 75.8",
+        "src": "paper Table 8"
+      },
+      {
+        "label": "Self-evolution rounds 1 → 3, AndroidWorld",
+        "value": "28.6 → 34.5 → 39.0",
+        "src": "paper Table 8"
+      },
+      {
+        "label": "Extended ablation (Table 7): w/o MASE Stage I / Stage II / both, 3rd SR column",
+        "value": "44.0 / 59.7 / 49.3 (full 73.8)",
+        "src": "paper Table 7"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Memory hyperparameters",
+        "paper": "H, K, λ and encoders not given",
+        "code": "H 10, rules top 3, experiences top 3, λ 0.7, text-embedding-3-small, CLIP ViT-B/32",
+        "src": "ttme.py L30-L41",
+        "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/ttme.py#L30-L41"
+      },
+      {
+        "topic": "Intent key",
+        "paper": "k_intent for matching the instruction",
+        "code": "defaults to the embedding of the trajectory text",
+        "src": "experiential_memory.py L49-L50",
+        "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/experiential_memory.py#L49-L50"
+      },
+      {
+        "topic": "Memory in training",
+        "paper": "SFT conditions on the memory M (Eq. 7)",
+        "code": "training prompts contain the task, a JSON summary of up to 10 previous steps and the screenshot; no rules or experiences",
+        "src": "mase/data.py L92-L105",
+        "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/mase/data.py#L92-L105"
+      },
+      {
+        "topic": "Scroll reward",
+        "paper": "IoU with a threshold τ_IoU (Eq. 15)",
+        "code": "0.4 if the predicted scroll direction matches, else 0",
+        "src": "mase/rewards.py L199-L205",
+        "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/mase/rewards.py#L199-L205"
+      },
+      {
+        "topic": "Reward weights",
+        "paper": "w_f·R_format + w_a·(w_t·R_type + w_p·R_param), binary type reward",
+        "code": "format 0.1 + thinking similarity 0.2 + Levenshtein type 0.3 + action 0.4",
+        "src": "mase/rewards.py L114-L219; train_grpo.py L97",
+        "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/mase/rewards.py#L114-L219"
+      },
+      {
+        "topic": "Adaptive clip",
+        "paper": "upper bound decays with a cosine schedule (Eq. 11)",
+        "code": "linear formula evaluated once at trainer start (step 0), so the upper bound stays at 0.3",
+        "src": "trl/trainer/grpo_trainer.py L515-L518",
+        "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/trl/trainer/grpo_trainer.py#L515-L518"
+      },
+      {
+        "topic": "Training stages and settings",
+        "paper": "two stages; Stage I lr 2e-6, batch 16; Stage II lr 2e-5, batch 256, group 16",
+        "code": "three stages (grounding SFT, planning SFT, GRPO); lr 1e-6 / 1e-6 / 3e-6, GRPO 16 generations",
+        "src": "configs/default.yaml",
+        "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/configs/default.yaml#L1-L113"
+      }
+    ],
+    "open_questions": [
+      "The ablation removes TTME as a whole, so the separate value of episodic steps, rules and experiences is not measured; a recency window of 10 steps alone may account for much of the gain.",
+      "No run compares the same trained policy with and without experiential memory on AndroidWorld, where the paper credits both memory and self-evolution.",
+      "Baseline numbers are largely copied from another paper while SE-GA is trained on AITW, AMEX and GUIOdyssey trajectories; overlap between training sources and GUIOdyssey test episodes is not discussed."
+    ],
+    "glance": [
+      {
+        "q": "What is one memory item?",
+        "a": "A step record for the current task, a rule text, or a past trajectory with an agent-written summary.",
+        "src": "paper §4.1",
+        "url": "https://arxiv.org/pdf/2605.16883"
+      },
+      {
+        "q": "How is experience retrieved?",
+        "a": "By a weighted mix of instruction-to-intent text similarity and screenshot-to-task image similarity (λ 0.7 in the code); the top 3 summaries are shown.",
+        "src": "paper Eq. 6; code experiential_memory.py L59-L114",
+        "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/experiential_memory.py#L59-L114"
+      },
+      {
+        "q": "Is there reranking or an LLM in retrieval?",
+        "a": "No. Episodic memory is a recency window; the other two are cosine top-k.",
+        "src": "code ttme.py L87-L100",
+        "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/ttme.py#L87-L100"
+      },
+      {
+        "q": "Does memory change the model?",
+        "a": "Yes, indirectly: collected trajectories are relabelled and used for SFT and GRPO (MASE).",
+        "src": "paper §4.2, §5.1",
+        "url": "https://arxiv.org/pdf/2605.16883"
+      }
+    ],
+    "flow": [
+      {
+        "n": 1,
+        "round": 1,
+        "title": "Take recent steps",
+        "actor": "rule",
+        "method": "rule: sliding window",
+        "in": "current task's step list",
+        "out": "last H steps",
+        "sees": "No query; simply the most recent steps.",
+        "params": {
+          "H": "10 (code)"
+        },
+        "src": "episodic_memory.py L36-L51",
+        "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/episodic_memory.py#L36-L51",
+        "short": "Recent steps",
+        "count": "→ 10 steps"
+      },
+      {
+        "n": 2,
+        "round": 1,
+        "title": "Match rules",
+        "actor": "retriever",
+        "method": "bi-encoder cosine",
+        "model": "text-embedding-3-small (code)",
+        "in": "instruction",
+        "out": "3 rules",
+        "sees": "Instruction embedding vs each rule's key.",
+        "params": {
+          "K": "3 (code)"
+        },
+        "src": "semantic_memory.py L45-L73",
+        "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/semantic_memory.py#L45-L73",
+        "short": "Rules",
+        "count": "→ 3"
+      },
+      {
+        "n": 3,
+        "round": 1,
+        "title": "Match experiences",
+        "actor": "retriever",
+        "method": "weighted text + image cosine",
+        "model": "text-embedding-3-small; CLIP ViT-B/32 (code)",
+        "in": "instruction and screenshot",
+        "out": "3 summaries",
+        "sees": "Instruction vs intent key and screenshot vs task key; only the summaries are passed on.",
+        "params": {
+          "K": "3 (code)",
+          "λ": "0.7 (code)"
+        },
+        "src": "experiential_memory.py L59-L114",
+        "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/experiential_memory.py#L59-L114",
+        "short": "Experiences",
+        "count": "→ 3"
+      },
+      {
+        "n": 4,
+        "round": 0,
+        "title": "Act",
+        "actor": "llm",
+        "method": "VLM generation",
+        "model": "SE-GA-7B (Qwen2.5-VL-7B after MASE)",
+        "in": "memory, instruction, screenshot",
+        "out": "one action",
+        "sees": "The joined memory block, the instruction and the current screenshot; outputs reasoning then an action.",
+        "params": {},
+        "src": "paper §3, App. B.3; code ttme.py L102-L121",
+        "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/ttme.py#L102-L121",
+        "short": "Act",
+        "count": "→ action"
+      }
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 262",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"20\" width=\"74\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"41.0\" y=\"39.0\" text-anchor=\"middle\">Each step</text><text class=\"fig-s\" x=\"41.0\" y=\"52.0\" text-anchor=\"middle\">act on screen</text><path class=\"gi-a\" d=\"M78 42 L89 42\"/><polygon class=\"gi-ah\" points=\"96,42 89,38 89,46\"/><rect class=\"gi-ev\" x=\"96\" y=\"20\" width=\"118\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"155\" y=\"38\" text-anchor=\"middle\">step record</text><text class=\"fig-s\" x=\"155\" y=\"52\" text-anchor=\"middle\">screen, action, next</text><path class=\"gi-a\" d=\"M214 42 L225 42\"/><polygon class=\"gi-ah\" points=\"232,42 225,38 225,46\"/><rect class=\"gi-f\" x=\"232\" y=\"12\" width=\"150\" height=\"60\" rx=\"8\"/><text class=\"fig-t\" x=\"244\" y=\"29\" text-anchor=\"start\">Episodic</text><text class=\"fig-s\" x=\"372\" y=\"29\" text-anchor=\"end\">this task</text><rect class=\"gi-ev\" x=\"244\" y=\"38\" width=\"40\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"251\" y1=\"45.0\" x2=\"270\" y2=\"45.0\"/><rect class=\"gi-ev\" x=\"290\" y=\"38\" width=\"40\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"297\" y1=\"45.0\" x2=\"316\" y2=\"45.0\"/><rect class=\"gi-ev\" x=\"336\" y=\"38\" width=\"36\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"343\" y1=\"45.0\" x2=\"358\" y2=\"45.0\"/><rect class=\"gi-f\" x=\"4\" y=\"104\" width=\"74\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"41.0\" y=\"123.0\" text-anchor=\"middle\">Task ends</text><text class=\"fig-s\" x=\"41.0\" y=\"136.0\" text-anchor=\"middle\">trajectory τ</text><path class=\"gi-a\" d=\"M78 126 L89 126\"/><polygon class=\"gi-ah\" points=\"96,126 89,122 89,130\"/><rect class=\"gi-llm\" x=\"96\" y=\"104\" width=\"118\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"155.0\" y=\"123.0\" text-anchor=\"middle\">Agent reflects</text><text class=\"fig-s\" x=\"155.0\" y=\"136.0\" text-anchor=\"middle\">writes summary g(τ)</text><path class=\"gi-a\" d=\"M214 126 L225 126\"/><polygon class=\"gi-ah\" points=\"232,126 225,122 225,130\"/><rect class=\"gi-f\" x=\"232\" y=\"90\" width=\"150\" height=\"76\" rx=\"8\"/><text class=\"fig-t\" x=\"244\" y=\"107\" text-anchor=\"start\">Experiential</text><rect class=\"gi-hi\" x=\"244\" y=\"114\" width=\"126\" height=\"18\" rx=\"5\"/><text class=\"fig-s\" x=\"252\" y=\"127\" text-anchor=\"start\">summary g(τ) → read</text><text class=\"fig-s\" x=\"244\" y=\"146\" text-anchor=\"start\">raw trajectory τ</text><text class=\"fig-s\" x=\"244\" y=\"159\" text-anchor=\"start\">keys: text + CLIP image</text><rect class=\"gi-ev d\" x=\"232\" y=\"190\" width=\"150\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"307\" y=\"208\" text-anchor=\"middle\">Semantic rules</text><text class=\"fig-s\" x=\"307\" y=\"222\" text-anchor=\"middle\">how rules are made: not said</text><text class=\"fig-t\" x=\"482\" y=\"20\" text-anchor=\"middle\">MASE (training)</text><path class=\"gi-a\" d=\"M382 126 L401 126\"/><polygon class=\"gi-ah\" points=\"408,126 401,122 401,130\"/><rect class=\"gi-f\" x=\"408\" y=\"104\" width=\"148\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"482.0\" y=\"123.0\" text-anchor=\"middle\">Hindsight relabel</text><text class=\"fig-s\" x=\"482.0\" y=\"136.0\" text-anchor=\"middle\">failed τ → reached sub-goal</text><path class=\"gi-a\" d=\"M482 148 L482 163\"/><polygon class=\"gi-ah\" points=\"482,170 486,163 478,163\"/><rect class=\"gi-llm\" x=\"408\" y=\"170\" width=\"148\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"482.0\" y=\"189.0\" text-anchor=\"middle\">SFT, then GRPO</text><text class=\"fig-s\" x=\"482.0\" y=\"202.0\" text-anchor=\"middle\">2K + 2K samples</text><path class=\"gi-a\" d=\"M482 214 L482 221\"/><polygon class=\"gi-ah\" points=\"482,228 486,221 478,221\"/><rect class=\"gi-w\" x=\"432\" y=\"230\" width=\"14\" height=\"12\" rx=\"2\"/><rect class=\"gi-w\" x=\"449\" y=\"230\" width=\"14\" height=\"12\" rx=\"2\"/><rect class=\"gi-w\" x=\"466\" y=\"230\" width=\"14\" height=\"12\" rx=\"2\"/><rect class=\"gi-w\" x=\"483\" y=\"230\" width=\"14\" height=\"12\" rx=\"2\"/><rect class=\"gi-w\" x=\"500\" y=\"230\" width=\"14\" height=\"12\" rx=\"2\"/><rect class=\"gi-w\" x=\"517\" y=\"230\" width=\"14\" height=\"12\" rx=\"2\"/><text class=\"fig-s\" x=\"482\" y=\"256\" text-anchor=\"middle\">policy weights (LoRA)</text><text class=\"fig-s\" x=\"482\" y=\"40\" text-anchor=\"middle\">memory data becomes</text><text class=\"fig-s\" x=\"482\" y=\"53\" text-anchor=\"middle\">training data</text><text class=\"fig-s\" x=\"482\" y=\"66\" text-anchor=\"middle\">4,007 trajectories</text><text class=\"fig-s\" x=\"120\" y=\"190\" text-anchor=\"middle\">Episodic keeps every step;</text><text class=\"fig-s\" x=\"120\" y=\"203\" text-anchor=\"middle\">the read side cuts a window</text>",
+        "text": [
+          "Every step is appended to the task's episodic list; a finished trajectory is stored with an agent-written summary and text and image keys.",
+          "The collected trajectories are relabelled by hindsight goal-shifting and used to fine-tune the policy (MASE)."
+        ],
+        "src": "paper §4.1, §4.2, §5.1; code ttme.py",
+        "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/ttme.py#L72-L85"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 256",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"88\" width=\"80\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"44.0\" y=\"107.0\" text-anchor=\"middle\">Instruction</text><text class=\"fig-s\" x=\"44.0\" y=\"120.0\" text-anchor=\"middle\">Q</text><rect class=\"gi-f\" x=\"4\" y=\"170\" width=\"80\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"44.0\" y=\"189.0\" text-anchor=\"middle\">Screenshot</text><text class=\"fig-s\" x=\"44.0\" y=\"202.0\" text-anchor=\"middle\">o_t</text><rect class=\"gi-f\" x=\"122\" y=\"14\" width=\"150\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"197.0\" y=\"33.0\" text-anchor=\"middle\">Episodic window</text><text class=\"fig-s\" x=\"197.0\" y=\"46.0\" text-anchor=\"middle\">last H = 10 steps</text><rect class=\"gi-v fig-soft\" x=\"122\" y=\"88\" width=\"150\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"197.0\" y=\"107.0\" text-anchor=\"middle\">Rules, top 3</text><text class=\"fig-s\" x=\"197.0\" y=\"120.0\" text-anchor=\"middle\">cosine(Q, rule key)</text><rect class=\"gi-v fig-soft\" x=\"122\" y=\"162\" width=\"150\" height=\"52\" rx=\"8\"/><text class=\"fig-t\" x=\"197.0\" y=\"185.0\" text-anchor=\"middle\">Experience, top 3</text><text class=\"fig-s\" x=\"197.0\" y=\"198.0\" text-anchor=\"middle\">0.7·text + 0.3·image</text><path class=\"gi-a\" d=\"M84 110 L115 110\"/><polygon class=\"gi-ah\" points=\"122,110 115,106 115,114\"/><path class=\"gi-a\" d=\"M84 110 L104 110 L104 178 L115 178\"/><polygon class=\"gi-ah\" points=\"122,178 115,174 115,182\"/><path class=\"gi-a\" d=\"M84 200 L115 200\"/><polygon class=\"gi-ah\" points=\"122,200 115,196 115,204\"/><rect class=\"gi-ev\" x=\"304\" y=\"20\" width=\"112\" height=\"190\" rx=\"8\"/><text class=\"fig-t\" x=\"360\" y=\"40\" text-anchor=\"middle\">M_retrieved</text><rect class=\"gi-f\" x=\"314\" y=\"52\" width=\"92\" height=\"36\" rx=\"6\"/><text class=\"fig-t\" x=\"360\" y=\"68\" text-anchor=\"middle\">recent steps</text><text class=\"fig-s\" x=\"360\" y=\"81\" text-anchor=\"middle\">obs, action, result</text><rect class=\"gi-f\" x=\"314\" y=\"96\" width=\"92\" height=\"36\" rx=\"6\"/><text class=\"fig-t\" x=\"360\" y=\"112\" text-anchor=\"middle\">3 rules</text><text class=\"fig-s\" x=\"360\" y=\"125\" text-anchor=\"middle\">text</text><rect class=\"gi-hi\" x=\"314\" y=\"140\" width=\"92\" height=\"36\" rx=\"6\"/><text class=\"fig-t\" x=\"360\" y=\"156\" text-anchor=\"middle\">3 summaries</text><text class=\"fig-s\" x=\"360\" y=\"169\" text-anchor=\"middle\">g(τ) only</text><text class=\"fig-s\" x=\"360\" y=\"196\" text-anchor=\"middle\">raw τ not shown</text><path class=\"gi-a\" d=\"M272 36 L288 36 L288 70 L307 70\"/><polygon class=\"gi-ah\" points=\"314,70 307,66 307,74\"/><path class=\"gi-a\" d=\"M272 110 L307 110\"/><polygon class=\"gi-ah\" points=\"314,110 307,106 307,114\"/><path class=\"gi-a\" d=\"M272 188 L288 188 L288 158 L307 158\"/><polygon class=\"gi-ah\" points=\"314,158 307,154 307,162\"/><path class=\"gi-a\" d=\"M416 115 L431 115\"/><polygon class=\"gi-ah\" points=\"438,115 431,111 431,119\"/><rect class=\"gi-llm\" x=\"438\" y=\"93\" width=\"118\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"497.0\" y=\"112.0\" text-anchor=\"middle\">Policy VLM</text><text class=\"fig-s\" x=\"497.0\" y=\"125.0\" text-anchor=\"middle\">SE-GA-7B</text><path class=\"gi-a\" d=\"M84 204 L96 204 L96 232 L497 232 L497 144\"/><polygon class=\"gi-ah\" points=\"497,137 493,144 501,144\"/><text class=\"fig-s\" x=\"300\" y=\"246\" text-anchor=\"middle\">the screenshot also goes to the policy</text><path class=\"gi-a\" d=\"M497 93 L497 71\"/><polygon class=\"gi-ah\" points=\"497,64 493,71 501,71\"/><rect class=\"gi-hi\" x=\"446\" y=\"20\" width=\"102\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"497.0\" y=\"39.0\" text-anchor=\"middle\">Action</text><text class=\"fig-s\" x=\"497.0\" y=\"52.0\" text-anchor=\"middle\">one per step</text>",
+        "text": [
+          "At each step the agent takes its recent steps, the rules closest to the instruction and the experiences closest to the instruction and screenshot.",
+          "Only experience summaries are shown; the window size, top-k and λ are code defaults."
+        ],
+        "src": "paper §4.1; code ttme.py L87-L121",
+        "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/ttme.py#L87-L121"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Training trajectories",
+        "value": "4,007, 11.89 steps on average (1-31)",
+        "src": "paper Table 5",
+        "section": "construction"
+      },
+      {
+        "label": "MASE data",
+        "value": "2K grounding + 2K self-evolution samples",
+        "src": "paper §5.1",
+        "section": "construction"
+      },
+      {
+        "label": "Episodic window",
+        "value": "10 steps (code default)",
+        "src": "code ttme.py L32",
+        "section": "method"
+      },
+      {
+        "label": "Rules / experiences read",
+        "value": "3 / 3 (code defaults)",
+        "src": "code ttme.py L33-L34",
+        "section": "method"
+      },
+      {
+        "label": "Text vs image weight",
+        "value": "λ = 0.7 (code default)",
+        "src": "code ttme.py L35",
+        "section": "method"
+      },
+      {
+        "label": "Max prompt length in RL",
+        "value": "6,144 tokens",
+        "src": "paper Table 6",
+        "section": "method"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "AC-Low SR",
+        "AC-High SR",
+        "GUIOdyssey SR"
+      ],
+      "rows": [
+        [
+          "Full SE-GA",
+          "88.6",
+          "73.8",
+          "83.9"
+        ],
+        [
+          "without TTME (memory)",
+          "83.0",
+          "61.4",
+          "74.9"
+        ],
+        [
+          "without MASE (training)",
+          "74.3",
+          "59.7",
+          "60.4"
+        ]
+      ],
+      "src": "paper Table 4 (7B); AC-High SR of the full model is 73.8 here but 75.8 in Table 2"
+    },
+    "components": [
+      {
+        "role": "Instruction and rule/intent embeddings",
+        "model": "text-embedding-3-small (code default)",
+        "kind": "retriever",
+        "src": "code utils.py L27-L43",
+        "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/utils.py#L27-L43"
+      },
+      {
+        "role": "Screenshot embedding",
+        "model": "CLIP ViT-B/32 via sentence-transformers (code default)",
+        "kind": "retriever",
+        "src": "code utils.py L46-L62",
+        "url": "https://github.com/jinshilong-dev/SE-GA/blob/497d00adc5f6abd3686a976572e0a43fab04c22e/gui_sega/ttme/memory/utils.py#L46-L62"
+      },
+      {
+        "role": "Episodic window",
+        "model": "last H steps",
+        "kind": "rule",
+        "src": "paper Eq. 2"
+      },
+      {
+        "role": "Reflective summaries and actions",
+        "model": "SE-GA-7B (Qwen2.5-VL-7B base)",
+        "kind": "llm",
+        "src": "paper §4.1.3, §5"
+      }
+    ],
+    "discussion": {
+      "takeaway": "A GUI agent gains most on long, multi-step tasks when it both carries structured memory at test time and is retrained on its own relabelled trajectories.",
+      "claims": [
+        {
+          "claim": "State of the art among 7B GUI agents.",
+          "evidence": "ScreenSpot 89.0 (above UI-TARS-72B 88.4); AndroidControl-High SR 75.8; GUIOdyssey 83.9; AndroidWorld 39.0 vs UI-TARS-7B 33.0. Tables 1-3"
+        },
+        {
+          "claim": "TTME matters most on long-horizon tasks.",
+          "evidence": "Without TTME: AC-Low SR 88.6 → 83.0, AC-High SR 73.8 → 61.4. Table 4, App. C.3"
+        },
+        {
+          "claim": "MASE builds the base capability.",
+          "evidence": "Without MASE: AC-High SR 59.7, GUIOdyssey SR 60.4 (full 73.8, 83.9). Table 4"
+        },
+        {
+          "claim": "Repeated self-evolution keeps improving.",
+          "evidence": "Rounds 1-3: GUIOdyssey 52.3 → 75.1 → 83.9; AndroidWorld 28.6 → 34.5 → 39.0. Table 8"
+        },
+        {
+          "claim": "Failed trajectories are useful memory.",
+          "evidence": "Success-only retrieval 70.0 / 72.5 vs top-k 75.8 / 83.9 (AC-High / GUIOdyssey). Table 9"
+        }
+      ],
+      "limits": [
+        "Retrieval cost grows as experiential memory accumulates and may slow real-time use.",
+        "Training data is limited to about 4K trajectories.",
+        "No explicit sub-goal decomposition for very long workflows; cross-platform transfer untested."
+      ],
+      "limits_src": "paper Impact Statement, §6",
+      "reading": [
+        "Table 4 reports 73.8 for the full model on AndroidControl-High SR while Table 2 reports 75.8 for the same setting; Table 7 labels its columns AndroidControl-High and GUIOdyssey but repeats Table 4's AndroidControl-Low and -High values.",
+        "Most baseline rows are copied from another paper (App. A.5), so they may differ from SE-GA in prompts and evaluation scripts; the paper does not say where the Qwen2.5-VL, OS-Atlas, OS-Genesis and GUI-Critic-R1 numbers come from.",
+        "The paper gives no memory hyperparameters and the released code has no evaluation pipeline, so the TTME settings behind the reported numbers cannot be confirmed.",
+        "The memory described for training (Eq. 7) and the released training prompts differ: the prompts carry only a short history of up to 10 steps.",
+        "ScreenSpot is single-screen grounding, so its gain cannot come from memory; the paper attributes it to the reward design."
+      ]
+    }
+  }
+}

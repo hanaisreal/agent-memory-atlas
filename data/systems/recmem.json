@@ -1,0 +1,700 @@
+{
+  "id": "recmem",
+  "name": "RecMem",
+  "paper": {
+    "title": "RecMem: Recurrence-based Memory Consolidation for Efficient and Effective Long-Running LLM Agents",
+    "arxiv": "2605.16045",
+    "url": "https://arxiv.org/abs/2605.16045",
+    "venue": "ACL 2026 Findings",
+    "venue_short": "ACL",
+    "track": "findings",
+    "year": 2026,
+    "code": "https://github.com/CaiusDai/RecMem"
+  },
+  "design": {
+    "construction": {
+      "unit": "interaction unit: one user-assistant exchange (in LoCoMo, two consecutive messages) with its timestamp",
+      "kept_as": "verbatim turn until a topic recurs; then LLM-written episodes and extracted facts",
+      "processing": "embed every turn (no LLM); an LLM writes episodes and facts only when enough similar turns have piled up, or when a turn merges into an existing episode",
+      "trigger": "other",
+      "writer": "backbone LLM (GPT-4o-mini or GPT-4.1-mini), temperature 0"
+    },
+    "organization": {
+      "structure": "three flat vector stores: subconscious turns, episodes, semantic facts",
+      "stores": "subconscious (raw turns), episodic (narratives), semantic (atomic facts); one collection per conversation",
+      "index": "text-embedding-3-small, cosine (Qdrant, exact search)"
+    },
+    "management": {
+      "operations": "promote a recurring cluster into 1-3 episodes plus refined facts; merge a new turn into its nearest episode by LLM rewrite",
+      "conflicts": "the fact refiner is told to drop facts already known and to record changes as time-anchored updates; answer prompt prefers the most recent memory",
+      "forgetting": "turns that are consolidated are deleted from the subconscious store (code only; the paper says they stay)",
+      "timing": "online"
+    },
+    "retrieval": {
+      "query": "the question, embedded as is",
+      "candidates": "dense top-k from each of the three stores",
+      "selection": "fixed per-store top-k by cosine; no reranker, no threshold (semantic threshold 0)",
+      "budget": "k_sub = 10 turns, k_epi = 5 episodes, k_sem = 10 facts"
+    },
+    "use": {
+      "context": "episodes, raw turns and facts as three bulleted lists in one prompt, each sorted by similarity",
+      "reasoning": "single answer call; the LoCoMo prompt caps the answer at 5-6 words"
+    },
+    "control": {
+      "construction": "fixed-rule",
+      "management": "prompted-llm",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "tiers",
+    "index": "vector",
+    "management": "consolidate",
+    "candidates": "dense",
+    "decides": "top-k rule",
+    "note": "Tiers because turns are promoted from the subconscious store to episodes and facts; within each tier storage is flat."
+  },
+  "tags": {
+    "fidelity": "mixed",
+    "structure": [
+      "tiered"
+    ],
+    "write_time": [
+      "summarize",
+      "extract",
+      "consolidate"
+    ],
+    "selection": [
+      "dense"
+    ],
+    "memory_type": [
+      "episodic",
+      "semantic"
+    ],
+    "learning": "training-free",
+    "domain": [
+      "conversation"
+    ]
+  },
+  "stages": {
+    "ingestion": "Each user-assistant exchange becomes one unit, prefixed with its (session) timestamp and embedded with text-embedding-3-small; no LLM is called at this point.",
+    "construction": "A turn that finds enough similar turns in the subconscious store (cosine above θsim, count reaching θcount) triggers an LLM that writes 1-3 time-ordered episodes from the cluster; semantic refinement then extracts under 10 new facts that the episode left out.",
+    "organization": "Three flat vector stores per conversation: unconsolidated raw turns, episode narratives and atomic facts.",
+    "update": "Before gating, a turn is compared with its nearest episode; above the threshold an LLM decides whether it continues that topic and rewrites the episode, followed by fact refinement on that turn. In the code, consolidated or merged turns are removed from (or never enter) the subconscious store.",
+    "retrieval": "The question embedding pulls 10 raw turns, 5 episodes and 10 facts by cosine similarity.",
+    "answer": "One LLM call reads the three lists (episodes, raw turns, facts) under a prompt that explains their roles and asks to avoid double counting.",
+    "learning": ""
+  },
+  "summary": "Defers LLM consolidation: turns sit as embedded raw text until a topic recurs enough times, then an LLM writes episodes and refines facts, cutting memory-building tokens by up to 87% versus Mem0 and A-Mem.",
+  "verified": false,
+  "notes": "Venue: ACL 2026 Findings, verified on ACL Anthology (2026.findings-acl.1619); the arXiv comment and repo README say the same. Text from arXiv v1 PDF (pdftotext). Code read at commit a84252f6 (2026-05-15, the only commit, 'Initial open-source release').\nDESIGN: §3.2-3.6, §4.1, App. B, C, E; code rec_mem.py. control.construction = fixed-rule because whether and when to consolidate is a similarity/count rule (the content is then written by a prompted LLM); control.management = prompted-llm for the should_merge decision. fidelity = mixed: unconsolidated turns are verbatim, episodes are rewritten, facts extracted. Paper vs code: the code deletes consolidated turns from the subconscious store, although the Limitations section says every unit stays retrievable (see mechanism.paper_vs_code).",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2605.16045 v1 (PDF read 2026-09-30)",
+      "code": "https://github.com/CaiusDai/RecMem/tree/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/",
+      "code_note": "The repository has a single commit (2026-05-15, the arXiv date), released as the paper's code. The README gives the exact LoCoMo and LongMemEval-S commands; their flags are used here where the Python defaults differ (e.g. min_consolidation_cnt default 6, merge threshold default 0.75)."
+    },
+    "sections": {
+      "Memory architecture": "§3",
+      "Results": "§4.2",
+      "Ablation": "§4.3",
+      "Discussion": "§3.6, §5, §6 Limitations",
+      "Details": "§4.1, App. B-F"
+    },
+    "abstract": {
+      "text": "RecMem argues that memory systems waste tokens by running an LLM over every incoming turn. It keeps each exchange as an embedded raw record in a cheap 'subconscious' store and calls the LLM only when a topic recurs: once enough similar turns accumulate, they are turned into episode narratives, and a refinement step extracts the specific facts the narrative dropped. At question time it reads a fixed number of raw turns, episodes and facts by embedding similarity. On LoCoMo and LongMemEval-S the authors report higher accuracy than Mem0, A-Mem and MemoryOS with far fewer memory-building tokens.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2605.16045"
+    },
+    "headline": [
+      "No LLM runs on a turn until its topic has come up about five times (θcount 5, θsim 0.7 on LoCoMo); until then the turn is only embedded.",
+      "The answer model reads 10 raw turns next to 5 episodes and 10 facts; removing the raw-turn store costs the most (81.10 to 51.88 on LoCoMo).",
+      "In the released code, turns that get consolidated are deleted from the raw store, so only never-consolidated turns remain verbatim."
+    ],
+    "units": [
+      {
+        "name": "Subconscious unit",
+        "role": "one exchange kept as raw text until its topic recurs",
+        "made_by": "rule (embedding only, no LLM)",
+        "fields": [
+          {
+            "name": "text",
+            "what": "\"[Message Timestamp]: {session date} [Message]: [A]: ... [B]: ...\"",
+            "kept_as": "verbatim",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "code rec_mem.py L345-L346",
+            "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L345-L346"
+          },
+          {
+            "name": "embedding",
+            "what": "text-embedding-3-small vector of the text, used for gating and question retrieval",
+            "kept_as": "derived",
+            "used_for": [
+              "index"
+            ],
+            "src": "code rec_mem.py L346, L379-L383",
+            "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L346"
+          }
+        ]
+      },
+      {
+        "name": "Episode",
+        "role": "narrative of how one topic evolves across turns, with anchored dates",
+        "made_by": "backbone LLM (generation or merge prompt)",
+        "fields": [
+          {
+            "name": "episode",
+            "what": "3-6 sentence paragraph; relative times rewritten against the message timestamp",
+            "kept_as": "rewritten",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper §3.3, Figs. 6-8; code prompt.py L237",
+            "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/prompt.py#L237"
+          },
+          {
+            "name": "source turns",
+            "what": "the formatted cluster text and raw ids, stored as payload when the episode is created; dropped when the episode is later rewritten by a merge",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "code episodic_memory.py L125-L127, L244-L253",
+            "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/episodic_memory.py#L125-L127"
+          }
+        ]
+      },
+      {
+        "name": "Semantic fact",
+        "role": "one short user-centric fact, event, preference or update",
+        "made_by": "backbone LLM (semantic refinement)",
+        "fields": [
+          {
+            "name": "fact",
+            "what": "one sentence with a date anchor where possible; under 10 per call",
+            "kept_as": "extracted",
+            "used_for": [
+              "index",
+              "answer"
+            ],
+            "src": "paper §3.4, Figs. 9-11; code prompt.py L284",
+            "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/prompt.py#L284"
+          },
+          {
+            "name": "source",
+            "what": "copy of the episode (or turn + episode) it came from, stored as payload",
+            "kept_as": "derived",
+            "used_for": [],
+            "src": "code rec_mem.py L317-L319, L370-L374",
+            "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L317-L319"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Embed",
+        "how": "each exchange is formatted with its timestamp and embedded; no LLM",
+        "src": "paper §3.2; code rec_mem.py L345-L346",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L345-L346"
+      },
+      {
+        "step": "Try to merge",
+        "how": "compare with the single nearest episode; above the threshold an LLM decides whether the turn continues that topic and, if so, rewrites the episode (old one replaced), then refines facts from this turn alone; the turn is not stored as raw",
+        "params": {
+          "threshold": "0.7 LoCoMo / 0.6 LongMemEval-S (README runs)",
+          "neighbours": "top 1 episode"
+        },
+        "src": "paper §3.3 Eq. 6; code rec_mem.py L349-L375, episodic_memory.py L180-L263",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L349-L375"
+      },
+      {
+        "step": "Gate on recurrence",
+        "how": "search the subconscious store; count hits with cosine above θsim, plus the new turn; consolidate when the count reaches θcount",
+        "params": {
+          "θsim": "0.7 / 0.6",
+          "θcount": "5 / 4",
+          "searched": "top 2×θcount (10 on LoCoMo)"
+        },
+        "src": "paper §3.2 Eq. 5, §4.1; code rec_mem.py L117-L119, L379-L395",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L379-L395"
+      },
+      {
+        "step": "Write episodes",
+        "how": "cluster turns sorted by time, new turn last; LLM writes 1-3 episodes, each summarising at least two timestamps",
+        "src": "paper §3.3 Eq. 7, Figs. 6-8; code rec_mem.py L280-L297, prompt.py L210",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L280-L297"
+      },
+      {
+        "step": "Refine facts",
+        "how": "for each new episode, fetch the 10 closest existing facts; LLM reads episode, raw cluster and old facts and returns new facts the episode compressed away",
+        "params": {
+          "old facts": "top 10, threshold 0",
+          "new facts": "< 10"
+        },
+        "out": "each fact stored as its own entry",
+        "src": "paper §3.4 Eqs. 8-9; code rec_mem.py L303-L320, L426-L446",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L303-L320"
+      },
+      {
+        "step": "Delete consolidated turns",
+        "how": "the clustered turns are removed from the subconscious store; the triggering turn is never added",
+        "note": "not described in the paper, whose Limitations say every unit stays retrievable",
+        "src": "code rec_mem.py L331-L335",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L331-L335"
+      },
+      {
+        "step": "Otherwise keep raw",
+        "how": "a turn that neither merges nor triggers consolidation is added to the subconscious store",
+        "src": "code rec_mem.py L404-L413",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L404-L413"
+      }
+    ],
+    "read": [
+      {
+        "step": "Embed question",
+        "round": 1,
+        "input": "question",
+        "how": "text-embedding-3-small",
+        "src": "paper §3.5; code rec_mem.py L171-L172",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L171-L172"
+      },
+      {
+        "step": "Search three stores",
+        "round": 1,
+        "input": "question embedding",
+        "scores": "raw turn text, episode text, fact text (each by its own embedding)",
+        "how": "cosine top-k per store, exact search",
+        "params": {
+          "k_sub": "10",
+          "k_epi": "5",
+          "k_sem": "10 (= 2·k_epi)"
+        },
+        "src": "paper §3.5, §3.6; code rec_mem.py L173-L193",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L173-L193"
+      },
+      {
+        "step": "Answer",
+        "round": 1,
+        "how": "one LLM call over the three lists, temperature 0",
+        "src": "code rec_mem.py L210-L246",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L210-L246"
+      }
+    ],
+    "answer_context": {
+      "sees": "5 episodes, 10 raw turns and 10 facts",
+      "format": "instructions, then \"Episodic Memories: - ...\", \"Raw Memories: - ...\", \"Semantic Memories: - ...\", \"Question: ...\", \"Answer:\"",
+      "excludes": [
+        "turns that were consolidated or merged (deleted from the raw store)",
+        "source turns stored with episodes",
+        "fact provenance"
+      ],
+      "includes": [
+        "LLM-written episodes",
+        "verbatim unconsolidated turns with their timestamp",
+        "LLM-extracted facts"
+      ],
+      "note": "LoCoMo prompt adds 'less than 5-6 words'; the LongMemEval-S prompt drops that line (App. E.4).",
+      "src": "code prompt.py L4-L52, rec_mem.py L66-L69",
+      "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/prompt.py#L4-L52"
+    },
+    "compression": [
+      {
+        "what": "tokens per question vs one LoCoMo conversation",
+        "kept": 2.75,
+        "of": 16,
+        "unit": "k tokens",
+        "basis": "Table 1 Query Token (K), GPT-4.1-mini (input plus output, per question) over ~16K-token conversations (§4.1, App. D.1)",
+        "src": "paper Table 1, §4.1",
+        "url": "https://arxiv.org/pdf/2605.16045"
+      },
+      {
+        "what": "tokens per question vs one LongMemEval-S history",
+        "kept": 5.89,
+        "of": 115,
+        "unit": "k tokens",
+        "basis": "Table 2 Query Token (K), GPT-4.1-mini, over ~115K-token histories (§4.1)",
+        "src": "paper Table 2, §4.1",
+        "url": "https://arxiv.org/pdf/2605.16045"
+      },
+      {
+        "what": "share of turns that end up consolidated",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Not reported. The code logs a 'message save ratio' but the paper gives no figure.",
+        "src": "code token_monitor.py",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/token_monitor.py#L106-L119"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Full system, LoCoMo (GPT-4.1-mini)",
+        "value": "81.10",
+        "src": "paper Fig. 2"
+      },
+      {
+        "label": "No episodic memory",
+        "value": "79.94",
+        "src": "paper Fig. 2, §4.3"
+      },
+      {
+        "label": "Direct extraction (facts from raw turns, no episode reference)",
+        "value": "74.22",
+        "src": "paper Fig. 2, §4.3"
+      },
+      {
+        "label": "No semantic memory",
+        "value": "70.58",
+        "src": "paper Fig. 2, §4.3"
+      },
+      {
+        "label": "No subconscious memory",
+        "value": "51.88",
+        "src": "paper Fig. 2, §4.3"
+      },
+      {
+        "label": "θcount 6 instead of 5 (LoCoMo)",
+        "value": "78.9 vs 81.1",
+        "src": "paper App. C.1"
+      },
+      {
+        "label": "Construction tokens per conversation, LoCoMo (GPT-4.1-mini)",
+        "value": "193.2K vs Mem0 1520.8K, A-Mem 1459.9K, MemoryOS 400.7K",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "Construction tokens, LongMemEval-S (GPT-4.1-mini)",
+        "value": "365.49K vs Mem0 1626.54K, A-Mem 1264.25K",
+        "src": "paper Table 2"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Do consolidated turns stay in the raw store?",
+        "paper": "Limitations: every unit is kept verbatim and stays retrievable whether or not it was consolidated",
+        "code": "clustered turns are deleted after consolidation; the triggering turn and merged turns never enter the raw store",
+        "src": "rec_mem.py L331-L335, L355-L375",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L331-L335"
+      },
+      {
+        "topic": "Recurrence count",
+        "paper": "|R_i| ≥ θcount, where R_i are past turns only (Eq. 5)",
+        "code": "past hits + 1 for the new turn ≥ θcount, so 4 similar past turns suffice at θcount 5 (App. B's example matches the code)",
+        "src": "rec_mem.py L393-L395",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L393-L395"
+      },
+      {
+        "topic": "How many neighbours are checked",
+        "paper": "top-k, k not given",
+        "code": "2 × θcount (10 on LoCoMo, 8 on LongMemEval-S)",
+        "src": "rec_mem.py L117-L119",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L117-L119"
+      },
+      {
+        "topic": "Merge rule",
+        "paper": "in-place LLM merge whenever similarity to the nearest episode ≥ θsim (Eq. 6)",
+        "code": "separate merge threshold (README sets it equal to θsim); the LLM may answer should_merge = no, and the turn then goes to the recurrence gate",
+        "src": "episodic_memory.py L180-L263",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/episodic_memory.py#L180-L263"
+      }
+    ],
+    "open_questions": [
+      "Because consolidated turns are deleted, the 'no subconscious' ablation (51.88) removes only never-consolidated turns; the paper does not report how many turns that is, so it is unclear how much evidence exists only in raw form.",
+      "On LoCoMo each baseline keeps its own answer prompt (App. E.3) while RecMem's prompt explains its three memory types, so accuracy gaps mix memory design and prompting.",
+      "The ablation keeps each module's budget fixed rather than total context fixed, so removing a store also shrinks the context."
+    ],
+    "glance": [
+      {
+        "q": "What is one memory item?",
+        "a": "Three kinds: a raw exchange with its timestamp, an LLM-written episode narrative, and a one-sentence fact.",
+        "src": "paper §3.2-3.4",
+        "url": "https://arxiv.org/pdf/2605.16045"
+      },
+      {
+        "q": "When is the LLM called while building memory?",
+        "a": "Only when a turn is close to an existing episode (merge) or when about five similar turns have accumulated (consolidation). Other turns are just embedded.",
+        "src": "code rec_mem.py L337-L413",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L337-L413"
+      },
+      {
+        "q": "Is the dialogue summarised?",
+        "a": "Recurring topics are rewritten into 3-6 sentence episodes and extracted facts; the raw turns of those topics are then deleted in the code.",
+        "src": "code prompt.py L237, rec_mem.py L331-L335",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L331-L335"
+      },
+      {
+        "q": "Is there reranking?",
+        "a": "No. Each store returns its top-k by cosine similarity to the question.",
+        "src": "code rec_mem.py L157-L193",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L157-L193"
+      },
+      {
+        "q": "What does the answer model read?",
+        "a": "5 episodes, 10 raw turns and 10 facts in one prompt.",
+        "src": "paper §3.6; README run commands",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/Readme.md#L176-L207"
+      }
+    ],
+    "flow": [
+      {
+        "n": 1,
+        "round": 1,
+        "title": "Embed the question",
+        "actor": "retriever",
+        "method": "bi-encoder",
+        "model": "text-embedding-3-small",
+        "in": "question",
+        "out": "query vector",
+        "sees": "Only the question text.",
+        "params": {},
+        "src": "rec_mem.py L171-L172",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L171-L172",
+        "short": "Embed question",
+        "count": "question → vector"
+      },
+      {
+        "n": 2,
+        "round": 1,
+        "title": "Take 10 raw turns",
+        "actor": "retriever",
+        "method": "cosine top-k",
+        "model": "text-embedding-3-small",
+        "in": "query vector",
+        "out": "10 raw turns",
+        "sees": "Embeddings of the unconsolidated turns (timestamp + both messages).",
+        "params": {
+          "k_sub": "10"
+        },
+        "src": "rec_mem.py L173-L177",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L173-L177",
+        "short": "Raw turns",
+        "count": "→ 10"
+      },
+      {
+        "n": 3,
+        "round": 1,
+        "title": "Take 5 episodes",
+        "actor": "retriever",
+        "method": "cosine top-k",
+        "model": "text-embedding-3-small",
+        "in": "query vector",
+        "out": "5 episodes",
+        "sees": "Embeddings of the episode narratives.",
+        "params": {
+          "k_epi": "5"
+        },
+        "src": "rec_mem.py L178-L182",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L178-L182",
+        "short": "Episodes",
+        "count": "→ 5"
+      },
+      {
+        "n": 4,
+        "round": 1,
+        "title": "Take 10 facts",
+        "actor": "retriever",
+        "method": "cosine top-k, threshold 0",
+        "model": "text-embedding-3-small",
+        "in": "query vector",
+        "out": "10 facts",
+        "sees": "Embeddings of the fact sentences.",
+        "params": {
+          "k_sem": "10"
+        },
+        "src": "rec_mem.py L183-L188",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L183-L188",
+        "short": "Facts",
+        "count": "→ 10"
+      },
+      {
+        "n": 5,
+        "round": 0,
+        "title": "Answer",
+        "actor": "llm",
+        "method": "LLM generation, temperature 0",
+        "model": "GPT-4o-mini or GPT-4.1-mini",
+        "in": "5 + 10 + 10 items",
+        "out": "answer",
+        "sees": "Episodes, raw turns and facts as bulleted lists, each in similarity order, after instructions on how the three types overlap.",
+        "params": {},
+        "src": "rec_mem.py L210-L246; prompt.py L4-L52",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L210-L246",
+        "short": "Answer",
+        "count": "25 items → answer"
+      }
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 262",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"26\" width=\"72\" height=\"42\" rx=\"8\"/><text class=\"fig-t\" x=\"40.0\" y=\"44.0\" text-anchor=\"middle\">New turn</text><text class=\"fig-s\" x=\"40.0\" y=\"57.0\" text-anchor=\"middle\">embedded</text><path class=\"gi-a\" d=\"M76 47 L85 47\"/><polygon class=\"gi-ah\" points=\"92,47 85,43 85,51\"/><polygon class=\"gi-f\" points=\"136,21 180,47 136,73 92,47\"/><text class=\"fig-t\" x=\"136\" y=\"46\" text-anchor=\"middle\">Episode</text><text class=\"fig-s\" x=\"136\" y=\"58\" text-anchor=\"middle\">sim ≥ 0.7?</text><path class=\"gi-a\" d=\"M180 47 L191 47\"/><polygon class=\"gi-ah\" points=\"198,47 191,43 191,51\"/><text class=\"fig-yes\" x=\"186\" y=\"38\" text-anchor=\"middle\">Yes</text><rect class=\"gi-llm\" x=\"198\" y=\"25\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"246.0\" y=\"44.0\" text-anchor=\"middle\">LLM merge</text><text class=\"fig-s\" x=\"246.0\" y=\"57.0\" text-anchor=\"middle\">same topic? rewrite</text><text class=\"fig-s\" x=\"198\" y=\"82\" text-anchor=\"start\">+ refine facts</text><path class=\"gi-a\" d=\"M294 47 L323 47\"/><polygon class=\"gi-ah\" points=\"330,47 323,43 323,51\"/><rect class=\"gi-f\" x=\"330\" y=\"14\" width=\"226\" height=\"60\" rx=\"8\"/><text class=\"fig-t\" x=\"342\" y=\"31\" text-anchor=\"start\">Episodic</text><text class=\"fig-s\" x=\"546\" y=\"31\" text-anchor=\"end\">narratives</text><rect class=\"gi-ev\" x=\"342\" y=\"40\" width=\"64\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"349\" y1=\"48.0\" x2=\"392\" y2=\"48.0\"/><rect class=\"gi-ev\" x=\"414\" y=\"40\" width=\"64\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"421\" y1=\"48.0\" x2=\"464\" y2=\"48.0\"/><rect class=\"gi-ev\" x=\"486\" y=\"40\" width=\"60\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"493\" y1=\"48.0\" x2=\"532\" y2=\"48.0\"/><path class=\"gi-a\" d=\"M136 73 L136 94\"/><polygon class=\"gi-ah\" points=\"136,101 140,94 132,94\"/><text class=\"fig-no\" x=\"142\" y=\"90\" text-anchor=\"start\">No</text><polygon class=\"gi-f\" points=\"136,101 184,127 136,153 88,127\"/><text class=\"fig-t\" x=\"136\" y=\"126\" text-anchor=\"middle\">≥ 5 similar?</text><text class=\"fig-s\" x=\"136\" y=\"138\" text-anchor=\"middle\">of top 10</text><path class=\"gi-a\" d=\"M184 127 L191 127\"/><polygon class=\"gi-ah\" points=\"198,127 191,123 191,131\"/><text class=\"fig-yes\" x=\"186\" y=\"117\" text-anchor=\"middle\">Yes</text><rect class=\"gi-llm\" x=\"198\" y=\"105\" width=\"96\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"246.0\" y=\"124.0\" text-anchor=\"middle\">LLM episodes</text><text class=\"fig-s\" x=\"246.0\" y=\"137.0\" text-anchor=\"middle\">1-3, time-sorted</text><path class=\"gi-a\" d=\"M262 105 L262 92 L360 92 L360 81\"/><polygon class=\"gi-ah\" points=\"360,74 356,81 364,81\"/><path class=\"gi-a\" d=\"M294 127 L305 127\"/><polygon class=\"gi-ah\" points=\"312,127 305,123 305,131\"/><rect class=\"gi-llm\" x=\"312\" y=\"105\" width=\"108\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"366.0\" y=\"124.0\" text-anchor=\"middle\">Refine facts</text><text class=\"fig-s\" x=\"366.0\" y=\"137.0\" text-anchor=\"middle\">LLM, &lt; 10 new</text><path class=\"gi-a\" d=\"M420 127 L433 127\"/><polygon class=\"gi-ah\" points=\"440,127 433,123 433,131\"/><rect class=\"gi-f\" x=\"440\" y=\"100\" width=\"116\" height=\"54\" rx=\"8\"/><text class=\"fig-t\" x=\"452\" y=\"117\" text-anchor=\"start\">Semantic</text><rect class=\"gi-r\" x=\"452\" y=\"128\" width=\"14\" height=\"14\" rx=\"3\"/><rect class=\"gi-r\" x=\"472\" y=\"128\" width=\"14\" height=\"14\" rx=\"3\"/><rect class=\"gi-r\" x=\"492\" y=\"128\" width=\"14\" height=\"14\" rx=\"3\"/><rect class=\"gi-r\" x=\"512\" y=\"128\" width=\"14\" height=\"14\" rx=\"3\"/><rect class=\"gi-r\" x=\"532\" y=\"128\" width=\"14\" height=\"14\" rx=\"3\"/><text class=\"fig-s\" x=\"366\" y=\"164\" text-anchor=\"middle\">reads 10 closest old facts</text><path class=\"gi-a\" d=\"M136 153 L136 181\"/><polygon class=\"gi-ah\" points=\"136,188 140,181 132,181\"/><text class=\"fig-no\" x=\"142\" y=\"174\" text-anchor=\"start\">No</text><rect class=\"gi-f\" x=\"92\" y=\"188\" width=\"88\" height=\"42\" rx=\"8\"/><text class=\"fig-t\" x=\"136.0\" y=\"206.0\" text-anchor=\"middle\">Keep turn</text><text class=\"fig-s\" x=\"136.0\" y=\"219.0\" text-anchor=\"middle\">verbatim, no LLM</text><path class=\"gi-a\" d=\"M180 209 L433 209\"/><polygon class=\"gi-ah\" points=\"440,209 433,205 433,213\"/><text class=\"fig-s\" x=\"310\" y=\"202\" text-anchor=\"middle\">embedding + text only</text><rect class=\"gi-f\" x=\"440\" y=\"186\" width=\"116\" height=\"46\" rx=\"8\"/><text class=\"fig-t\" x=\"452\" y=\"202\" text-anchor=\"start\">Subconscious</text><rect class=\"gi-ev\" x=\"452\" y=\"210\" width=\"42\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"459\" y1=\"217.0\" x2=\"480\" y2=\"217.0\"/><rect class=\"gi-ev\" x=\"500\" y=\"210\" width=\"44\" height=\"14\" rx=\"5\"/><line class=\"gi-t\" x1=\"507\" y1=\"217.0\" x2=\"530\" y2=\"217.0\"/><path class=\"gi-a d\" d=\"M230 149 L230 176 L498 176 L498 179\"/><polygon class=\"gi-ah\" points=\"498,186 502,179 494,179\"/><text class=\"fig-s\" x=\"236\" y=\"172\" text-anchor=\"start\">cluster turns deleted</text><text class=\"fig-s\" x=\"280\" y=\"252\" text-anchor=\"middle\">thresholds: LoCoMo 0.7 / 5; LongMemEval-S 0.6 / 4</text>",
+        "text": [
+          "Each turn is embedded and first offered to its nearest episode; if it joins, an LLM rewrites the episode and refines facts.",
+          "Otherwise the turn stays raw until enough similar turns exist, when an LLM writes episodes and new facts and the clustered turns are deleted."
+        ],
+        "src": "paper §3.2-3.4; code rec_mem.py L337-L413",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L337-L413"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 232",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"92\" width=\"70\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"39.0\" y=\"118.0\" text-anchor=\"middle\">Question</text><path class=\"gi-a\" d=\"M74 114 L85 114\"/><polygon class=\"gi-ah\" points=\"92,114 85,110 85,118\"/><rect class=\"gi-v fig-soft\" x=\"92\" y=\"92\" width=\"76\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"130.0\" y=\"111.0\" text-anchor=\"middle\">Embed</text><text class=\"fig-s\" x=\"130.0\" y=\"124.0\" text-anchor=\"middle\">3-small</text><rect class=\"gi-v fig-soft\" x=\"206\" y=\"20\" width=\"116\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"264.0\" y=\"39.0\" text-anchor=\"middle\">Raw turns</text><text class=\"fig-s\" x=\"264.0\" y=\"52.0\" text-anchor=\"middle\">top 10, cosine</text><rect class=\"gi-v fig-soft\" x=\"206\" y=\"92\" width=\"116\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"264.0\" y=\"111.0\" text-anchor=\"middle\">Episodes</text><text class=\"fig-s\" x=\"264.0\" y=\"124.0\" text-anchor=\"middle\">top 5, cosine</text><rect class=\"gi-v fig-soft\" x=\"206\" y=\"164\" width=\"116\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"264.0\" y=\"183.0\" text-anchor=\"middle\">Facts</text><text class=\"fig-s\" x=\"264.0\" y=\"196.0\" text-anchor=\"middle\">top 10, cosine</text><path class=\"gi-a\" d=\"M168 114 L186 114 L186 42 L199 42\"/><polygon class=\"gi-ah\" points=\"206,42 199,38 199,46\"/><path class=\"gi-a\" d=\"M168 114 L199 114\"/><polygon class=\"gi-ah\" points=\"206,114 199,110 199,118\"/><path class=\"gi-a\" d=\"M186 114 L186 186 L199 186\"/><polygon class=\"gi-ah\" points=\"206,186 199,182 199,190\"/><rect class=\"gi-ev\" x=\"356\" y=\"30\" width=\"104\" height=\"168\" rx=\"8\"/><text class=\"fig-t\" x=\"408\" y=\"50\" text-anchor=\"middle\">Answer prompt</text><rect class=\"gi-hi\" x=\"366\" y=\"62\" width=\"84\" height=\"34\" rx=\"6\"/><text class=\"fig-t\" x=\"408\" y=\"76\" text-anchor=\"middle\">5 episodes</text><text class=\"fig-s\" x=\"408\" y=\"89\" text-anchor=\"middle\">LLM-written</text><rect class=\"gi-f\" x=\"366\" y=\"102\" width=\"84\" height=\"34\" rx=\"6\"/><text class=\"fig-t\" x=\"408\" y=\"116\" text-anchor=\"middle\">10 raw turns</text><text class=\"fig-s\" x=\"408\" y=\"129\" text-anchor=\"middle\">verbatim</text><rect class=\"gi-f\" x=\"366\" y=\"142\" width=\"84\" height=\"34\" rx=\"6\"/><text class=\"fig-t\" x=\"408\" y=\"156\" text-anchor=\"middle\">10 facts</text><text class=\"fig-s\" x=\"408\" y=\"169\" text-anchor=\"middle\">LLM-extracted</text><text class=\"fig-s\" x=\"408\" y=\"190\" text-anchor=\"middle\">in this order</text><path class=\"gi-a\" d=\"M322 42 L340 42 L340 79 L349 79\"/><polygon class=\"gi-ah\" points=\"356,79 349,75 349,83\"/><path class=\"gi-a\" d=\"M322 114 L349 114\"/><polygon class=\"gi-ah\" points=\"356,114 349,110 349,118\"/><path class=\"gi-a\" d=\"M322 186 L340 186 L340 159 L349 159\"/><polygon class=\"gi-ah\" points=\"356,159 349,155 349,163\"/><path class=\"gi-a\" d=\"M460 114 L467 114\"/><polygon class=\"gi-ah\" points=\"474,114 467,110 467,118\"/><rect class=\"gi-hi\" x=\"474\" y=\"92\" width=\"82\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"515.0\" y=\"111.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"515.0\" y=\"124.0\" text-anchor=\"middle\">one LLM call</text><text class=\"fig-s\" x=\"515\" y=\"150\" text-anchor=\"middle\">LoCoMo prompt:</text><text class=\"fig-s\" x=\"515\" y=\"163\" text-anchor=\"middle\">≤ 5-6 words</text><text class=\"fig-s\" x=\"280\" y=\"222\" text-anchor=\"middle\">no reranker and no LLM step before the answer</text>",
+        "text": [
+          "The question embedding pulls a fixed number of items from each store by cosine similarity.",
+          "One LLM call answers from 5 episodes, 10 raw turns and 10 facts."
+        ],
+        "src": "paper §3.5; code rec_mem.py L157-L246",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L157-L246"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Consolidate when",
+        "value": "≥ 5 similar turns (sim > 0.7) on LoCoMo · ≥ 4 (sim > 0.6) on LongMemEval-S",
+        "src": "paper §4.1",
+        "section": "construction"
+      },
+      {
+        "label": "Neighbours checked for recurrence",
+        "value": "top 2×θcount (code)",
+        "src": "code rec_mem.py L117-L119",
+        "section": "construction"
+      },
+      {
+        "label": "Episodes per consolidation",
+        "value": "1-3, of 3-6 sentences",
+        "src": "paper Figs. 7-8",
+        "section": "construction"
+      },
+      {
+        "label": "New facts per refinement",
+        "value": "< 10",
+        "src": "paper Fig. 9",
+        "section": "construction"
+      },
+      {
+        "label": "Items read per question",
+        "value": "10 raw turns + 5 episodes + 10 facts",
+        "src": "paper §3.6",
+        "section": "method"
+      },
+      {
+        "label": "Construction tokens per conversation",
+        "value": "193.2K on LoCoMo (Mem0 1520.8K) · 365.49K on LongMemEval-S",
+        "src": "paper Tables 1-2 (GPT-4.1-mini)",
+        "section": "results"
+      },
+      {
+        "label": "Tokens per question",
+        "value": "2.75K LoCoMo · 5.89K LongMemEval-S",
+        "src": "paper Tables 1-2 (GPT-4.1-mini)",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "LoCoMo"
+      ],
+      "rows": [
+        [
+          "Full system",
+          "81.10"
+        ],
+        [
+          "without episodic memory",
+          "79.94"
+        ],
+        [
+          "direct fact extraction (no episode reference)",
+          "74.22"
+        ],
+        [
+          "without semantic memory",
+          "70.58"
+        ],
+        [
+          "without subconscious memory",
+          "51.88"
+        ]
+      ],
+      "src": "paper Fig. 2, §4.3 (GPT-4.1-mini, per-module budgets kept)"
+    },
+    "components": [
+      {
+        "role": "Embeds turns, episodes, facts and questions",
+        "model": "text-embedding-3-small",
+        "kind": "retriever",
+        "src": "paper §4.1"
+      },
+      {
+        "role": "Recurrence gate",
+        "model": "cosine threshold + count",
+        "kind": "rule",
+        "src": "paper §3.2; code rec_mem.py L379-L395",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L379-L395"
+      },
+      {
+        "role": "Writes and merges episodes, refines facts",
+        "model": "backbone LLM (GPT-4o-mini or GPT-4.1-mini)",
+        "kind": "llm",
+        "src": "paper §4.1"
+      },
+      {
+        "role": "Per-store top-k",
+        "model": "cosine similarity",
+        "kind": "retriever",
+        "src": "code rec_mem.py L157-L193",
+        "url": "https://github.com/CaiusDai/RecMem/blob/a84252f6e5587fd4a8caac03ec9f6c732b7a7f35/recmem/rec_mem.py#L157-L193"
+      },
+      {
+        "role": "Answer",
+        "model": "GPT-4o-mini or GPT-4.1-mini",
+        "kind": "llm",
+        "src": "paper Tables 1-2"
+      }
+    ],
+    "discussion": {
+      "takeaway": "An LLM does not need to process every turn: consolidating only recurring topics, while keeping the rest as embedded raw text, keeps accuracy at or above the tested memory systems at a fraction of their memory-building tokens.",
+      "claims": [
+        {
+          "claim": "Eager per-turn consolidation is the main cost driver of current memory systems.",
+          "evidence": "Construction tokens per LoCoMo conversation: Mem0 1520.8K, A-Mem 1459.9K vs RecMem 193.2K (-87.3%, -86.8%), GPT-4.1-mini. Table 1, §4.2"
+        },
+        {
+          "claim": "Cheaper construction does not cost accuracy.",
+          "evidence": "Best overall among memory systems: LoCoMo 81.10 vs A-Mem 68.83; LongMemEval-S 76.80, best of all methods including full context (66.20). Tables 1-2"
+        },
+        {
+          "claim": "Recurrence-based clustering helps temporal reasoning.",
+          "evidence": "LongMemEval-S temporal 68.42 vs 62.41 for Mem0 (GPT-4.1-mini). Table 2, §4.2"
+        },
+        {
+          "claim": "All three stores contribute; the raw store most.",
+          "evidence": "81.10 full; 79.94 without episodes; 70.58 without facts; 51.88 without raw turns. Fig. 2, §4.3"
+        },
+        {
+          "claim": "Episodes make fact extraction better.",
+          "evidence": "Direct extraction without episode reference 74.22 vs 79.94 for the refinement variant, both without episodic retrieval. Fig. 2, §4.3"
+        }
+      ],
+      "limits": [
+        "θsim and θcount are set by hand per dataset and may need recalibration for other interaction densities.",
+        "Recurrence is a proxy for importance; one-off but critical details get no episode or fact and rely on the raw store.",
+        "Evaluated only offline on public benchmarks."
+      ],
+      "limits_src": "paper §6 Limitations, §7",
+      "reading": [
+        "In the released code, turns that were consolidated or merged are removed from the raw store, so the Limitations claim that every turn stays retrievable does not hold for the code; for recurring topics the answer model sees only LLM text.",
+        "Full context still beats RecMem on LoCoMo (84.18 vs 81.10 with GPT-4.1-mini; 76.43 vs 72.47 with GPT-4o-mini); the lead over all methods is on LongMemEval-S only.",
+        "Thresholds differ per dataset (0.7/5 vs 0.6/4); the sensitivity sweeps that show a peak at the LoCoMo defaults are run on the LoCoMo test questions themselves (App. C).",
+        "On LoCoMo each baseline answers with its own prompt, while on LongMemEval-S all use RecMem's prompt body (App. E.3); RecMem's A-Mem LoCoMo score is 68.83 in Table 1 but 69.7 in Table 3, and full context 84.18 vs 84.8.",
+        "Construction savings come partly from the merge path: every turn close to an existing episode still triggers an LLM merge and a fact refinement, so the cost depends on how often topics repeat."
+      ]
+    }
+  }
+}

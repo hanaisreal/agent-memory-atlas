@@ -2097,5 +2097,307 @@
   "pitfalls": [
    "Binary labels: accuracy near 70% is reachable without evidence (LLM-only rows in SimGRAG score about 68)."
   ]
+ },
+ {
+  "id": "truthfulqa",
+  "name": "TruthfulQA",
+  "title": "TruthfulQA: Measuring How Models Mimic Human Falsehoods",
+  "arxiv": null,
+  "url": "https://aclanthology.org/2022.acl-long.229/",
+  "code": null,
+  "what": "817 questions written so that common misconceptions lead to false answers; used as free-form generation scored against reference answers.",
+  "versions": {
+   "original": "817 questions (generation setting)."
+  },
+  "pitfalls": [
+   "Generation vs multiple-choice settings and the metric (F1, ROUGE-L, judge models) differ between papers."
+  ]
+ },
+ {
+  "id": "tau-bench",
+  "name": "τ-bench",
+  "title": "τ-bench: A Benchmark for Tool-Agent-User Interaction in Real-World Domains (Yao et al., ICLR 2025)",
+  "arxiv": null,
+  "url": null,
+  "code": null,
+  "what": "Customer-service tasks in which an agent talks with an LLM-simulated user, calls domain APIs over several turns and must follow a policy document; success is a final reward of 1 (as described in Early Experience App. B.2, C.4).",
+  "versions": {
+   "retail": "Retail domain; Early Experience uses 495 training and 115 evaluation tasks (App. C.4)."
+  },
+  "pitfalls": [
+   "The user is simulated by an LLM, so scores depend on the user model.",
+   "Papers report different domains (retail, airline); Early Experience reports retail only."
+  ]
+ },
+ {
+  "id": "searchqa",
+  "name": "SearchQA (Search-R1 suite)",
+  "title": "Multi-hop QA with a search tool, in the Search-R1 setup (Jin et al., 2025, arXiv:2503.09516)",
+  "arxiv": "2503.09516",
+  "url": "https://arxiv.org/abs/2503.09516",
+  "code": null,
+  "what": "The agent issues search queries inside <search> tags, reads retrieved passages and answers multi-hop questions; Early Experience groups Musique, HotpotQA, 2WikiMultiHopQA and Bamboogle under this name and scores F1 (App. C.5, Table 7).",
+  "versions": {
+   "search-r1": "Search-R1 retrieval setup; Early Experience trains on MuSiQue and treats the other datasets as out-of-domain."
+  },
+  "pitfalls": [
+   "'SearchQA' here is not the 2017 SearchQA dataset.",
+   "Early Experience's Table 1 'SearchQA' column equals its Musique column only, while Figure 3 uses the four-dataset average.",
+   "How the OOD number in Table 2 is formed is not stated."
+  ]
+ },
+ {
+  "id": "minatar",
+  "name": "MinAtar",
+  "title": "MinAtar: An Atari-inspired testbed for thorough and reproducible reinforcement learning experiments",
+  "arxiv": "1903.03176",
+  "url": "https://arxiv.org/abs/1903.03176",
+  "code": null,
+  "what": "Small 10x10 versions of Atari games; FAME builds continual-RL sequences of 7 tasks drawn from Breakout, Space Invaders and Freeway, 500k steps per task, with games allowed to repeat (App. F.1).",
+  "versions": {
+   "cl-7task": "FAME's 10 fixed random sequences of 7 tasks (App. F.1), following Anand & Precup (2023)."
+  },
+  "pitfalls": [
+   "Average performance is a raw game return per game, so games are not on one scale.",
+   "Tasks repeat inside a sequence, which favours methods that can recognise an old task.",
+   "Forgetting is normalised by the standard deviation across the compared methods, so it changes if the method set changes."
+  ]
+ },
+ {
+  "id": "atari-modes",
+  "name": "Atari playing-mode sequences",
+  "title": "Continual RL over the playing modes of ALE/SpaceInvaders-v5 and ALE/Freeway-v5 (setting of Malagon et al., ICML 2024)",
+  "arxiv": "2506.14811",
+  "url": "https://arxiv.org/abs/2506.14811",
+  "code": "https://github.com/mikelma/componet",
+  "what": "Each task is one playing mode of the same Atari game (10 SpaceInvaders modes, 7 Freeway modes) seen in sequence, 1M steps per task (FAME App. F.1).",
+  "versions": {
+   "spaceinvaders-modes": "10 modes of ALE/SpaceInvaders-v5.",
+   "freeway-modes": "7 modes of ALE/Freeway-v5."
+  },
+  "pitfalls": [
+   "Modes share the game's dynamics and goal, so forward transfer is easy compared with switching games.",
+   "The scale of 'average performance' is not stated in FAME."
+  ]
+ },
+ {
+  "id": "metaworld-cl",
+  "name": "Meta-World continual sequences",
+  "title": "Meta-World: A benchmark and evaluation for multi-task and meta reinforcement learning (Yu et al., CoRL 2020), used as task sequences",
+  "arxiv": null,
+  "url": null,
+  "code": null,
+  "what": "Robot-arm manipulation tasks (e.g. button-press, window-open, peg-unplug) trained one after another, 1M steps each, scored by success rate; includes the Continual World CW10 sequence (Wolczyk et al., 2021).",
+  "versions": {
+   "3-random-sequences": "Three random 10-task sequences from Chung et al. (2024), listed in FAME App. G.1.",
+   "cw10": "The Continual World CW10 sequence."
+  },
+  "pitfalls": [
+   "Results depend on which task sequence is used; FAME's three sequences are its own random picks.",
+   "Methods that store past parameters (PackNet, ProgressiveNet, CompoNet) have zero forgetting by construction and need task identity."
+  ]
+ },
+ {
+  "id": "associative-kv-retrieval",
+  "name": "Associative KV-retrieval (GradMem)",
+  "title": "GradMem: Learning to Write Context into Memory with Test-Time Gradient Descent (synthetic task)",
+  "arxiv": "2603.13875",
+  "url": "https://arxiv.org/abs/2603.13875",
+  "code": "https://github.com/yurakuratov/gradmem",
+  "what": "Synthetic key-value lists (!k:v!...) followed by a query ?!k:; the model must output the value from memory alone. Keys and values are 2 symbols from a 62-character vocabulary; 4 to 96 pairs.",
+  "versions": {
+   "2-char keys/values, 62-symbol vocab": "GradMem §3.1; datasets N{4..96}-K2V2-V62_1M in the repo's download script"
+  },
+  "pitfalls": [
+   "Models are trained from scratch per number of pairs (with a curriculum), so scores measure what a memory can learn to store, not a pretrained model's ability.",
+   "Capacity depends on the memory size and number of update steps; compare only equal memory-state sizes."
+  ]
+ },
+ {
+  "id": "babi",
+  "name": "bAbI",
+  "title": "Towards AI-Complete Question Answering: A Set of Prerequisite Toy Tasks",
+  "arxiv": "1502.05698",
+  "url": "https://arxiv.org/abs/1502.05698",
+  "code": null,
+  "what": "20 synthetic story-QA tasks; QA1-QA3 need one to three supporting facts, QA4-QA5 two- and three-argument relations.",
+  "versions": {
+   "original (QA1-QA5)": "GradMem: tasks QA1-QA5, story as context, question as query; the released scripts load them as BABILong 'qa*_0k' (no added distractor text)"
+  },
+  "pitfalls": [
+   "Short contexts (~20-300 tokens); near 100% for most models on QA1, QA4 and QA5.",
+   "Same stories as BABILong at 0k length; BABILong at longer lengths is a different task."
+  ]
+ },
+ {
+  "id": "squad",
+  "name": "SQuAD",
+  "title": "SQuAD: 100,000+ Questions for Machine Comprehension of Text",
+  "arxiv": "1606.05250",
+  "url": "https://arxiv.org/abs/1606.05250",
+  "code": null,
+  "what": "Extractive QA over Wikipedia paragraphs; the answer is a span of the paragraph.",
+  "versions": {
+   "short (answer sentence only)": "GradMem: context cut to the sentence(s) containing the answer span (~40 tokens)"
+  },
+  "pitfalls": [
+   "The short variant removes almost all distractor text; not comparable with full-paragraph SQuAD scores."
+  ]
+ },
+ {
+  "id": "pwc",
+  "name": "PwC (Prompt-with-Context)",
+  "title": "In-context Autoencoder for Context Compression in a Large Language Model (App. C)",
+  "arxiv": "2307.06945",
+  "url": "https://huggingface.co/datasets/sggetao/PwC",
+  "code": "https://github.com/getao/icae",
+  "what": "GPT-4-written (context, prompt, answer) triples over 20k Pile texts: 10 text-specific and 5 general prompts per text; 240k train and 18k test examples, contexts mostly over 500 tokens.",
+  "versions": {
+   "original": "240k train / 18k test as released with ICAE."
+  },
+  "pitfalls": [
+   "Answers and the usual pairwise judge are both GPT-4, which favours longer responses.",
+   "Scores are win/lose/tie against a named opponent, so numbers only compare within one pairing."
+  ]
+ },
+ {
+  "id": "screenspot",
+  "name": "ScreenSpot",
+  "title": "SeeClick: Harnessing GUI Grounding for Advanced Visual GUI Agents",
+  "arxiv": null,
+  "url": "https://aclanthology.org/2024.acl-long.505/",
+  "code": null,
+  "what": "GUI grounding: over 1,200 instructions on iOS, Android, macOS, Windows and web screenshots; the model must point inside the target element's box; split into text and icon/widget elements.",
+  "versions": {
+   "original": "mobile, desktop and web, text and icon subsets"
+  },
+  "pitfalls": [
+   "Single-screenshot grounding: it measures perception, not memory."
+  ]
+ },
+ {
+  "id": "androidcontrol",
+  "name": "AndroidControl",
+  "title": "On the Effects of Data Scale on Computer Control Agents",
+  "arxiv": "2406.03679",
+  "url": "https://arxiv.org/abs/2406.03679",
+  "code": null,
+  "what": "Over 15,000 human demonstrations across 833 Android apps; offline step-level evaluation with high-level goals (High) or step instructions (Low); action type accuracy, grounding accuracy and success rate.",
+  "versions": {
+   "low": "low-level step instructions given",
+   "high": "only the high-level goal given"
+  },
+  "pitfalls": [
+   "Offline evaluation over recorded episodes; check whether a paper's success rate is per step or per episode.",
+   "Low and High are different difficulty levels; always record which."
+  ]
+ },
+ {
+  "id": "guiodyssey",
+  "name": "GUIOdyssey",
+  "title": "GUIOdyssey: A Comprehensive Dataset for Cross-App GUI Navigation on Mobile Devices",
+  "arxiv": "2406.08451",
+  "url": "https://arxiv.org/abs/2406.08451",
+  "code": null,
+  "what": "7,735 cross-app navigation episodes over 201 apps and 6 devices, with random, task, device and app test splits; offline step-level type accuracy, grounding accuracy and step success rate.",
+  "versions": {
+   "original": "released splits"
+  },
+  "pitfalls": [
+   "Papers often evaluate a random subset (e.g. 500 episodes); record which split and subset.",
+   "Offline, step-level metrics."
+  ]
+ },
+ {
+  "id": "androidworld",
+  "name": "AndroidWorld",
+  "title": "AndroidWorld: A Dynamic Benchmarking Environment for Autonomous Agents",
+  "arxiv": "2405.14573",
+  "url": "https://arxiv.org/abs/2405.14573",
+  "code": null,
+  "what": "Online benchmark of 116 parameterised tasks across 20 apps on a live Android emulator, scored by task success.",
+  "versions": {
+   "original": "116 tasks"
+  },
+  "pitfalls": [
+   "Online evaluation on a live emulator; papers usually report a single success rate without variance."
+  ]
+ },
+ {
+  "id": "video-mme",
+  "name": "Video-MME",
+  "title": "Video-MME: The First-Ever Comprehensive Evaluation Benchmark of Multi-modal LLMs in Video Analysis",
+  "arxiv": "2405.21075",
+  "url": "https://arxiv.org/abs/2405.21075",
+  "code": null,
+  "what": "Multiple-choice QA over real-world videos split into short, medium and long subsets (11 s to 1 h, per Video-RAG §4.1); scored with and without subtitles.",
+  "versions": {
+   "original": "Full benchmark, reported per length subset and overall, with or without subtitles."
+  },
+  "pitfalls": [
+   "Scores with subtitles and without subtitles are different settings and must not be compared across.",
+   "Frame count changes scores a lot; papers use each model's own frame setting (8-768 frames)."
+  ]
+ },
+ {
+  "id": "mlvu",
+  "name": "MLVU",
+  "title": "MLVU: A Comprehensive Benchmark for Multi-Task Long Video Understanding",
+  "arxiv": "2406.04264",
+  "url": "https://arxiv.org/abs/2406.04264",
+  "code": null,
+  "what": "Long-video benchmark with 9 tasks on videos of 3 min to 2 h (about 12 min on average), per Video-RAG §4.1.",
+  "versions": {
+   "dev": "Dev split, multiple-choice (M-avg) tasks, as used by Video-RAG Table 2."
+  },
+  "pitfalls": [
+   "Multiple-choice (M-avg) and generation (G-avg) scores are separate; check which one a paper reports."
+  ]
+ },
+ {
+  "id": "longvideobench",
+  "name": "LongVideoBench",
+  "title": "LongVideoBench: A Benchmark for Long-context Interleaved Video-Language Understanding",
+  "arxiv": "2407.15754",
+  "url": "https://arxiv.org/abs/2407.15754",
+  "code": null,
+  "what": "6,678 human-annotated multiple-choice questions in 17 categories over long videos, per Video-RAG §4.1.",
+  "versions": {
+   "val": "Validation set, as used by Video-RAG Table 3."
+  },
+  "pitfalls": [
+   "The benchmark defines an interleaved video-subtitle input; Video-RAG drops it, so its runs are not in the standard input format (§4.3)."
+  ]
+ },
+ {
+  "id": "sharegpt",
+  "name": "ShareGPT (serving trace)",
+  "title": "ShareGPT: user-shared ChatGPT conversations",
+  "arxiv": null,
+  "url": "https://sharegpt.com/",
+  "code": null,
+  "what": "Used by vLLM as a serving workload: the input and output lengths of ShareGPT conversations define synthetic requests, with Poisson arrival times at a chosen request rate. Mean input 161.31 and output 337.99 tokens (vLLM Fig. 11).",
+  "versions": {
+   "length trace": "only token lengths are used; requests arrive by a Poisson process at the stated rate"
+  },
+  "pitfalls": [
+   "Scores depend on the request rate and the trace length (1 hour, or 15 minutes for OPT-175B in vLLM).",
+   "Not a QA benchmark: metrics are latency, throughput, batch size or memory."
+  ]
+ },
+ {
+  "id": "alpaca",
+  "name": "Alpaca (serving trace)",
+  "title": "Stanford Alpaca: An Instruction-following LLaMA model",
+  "arxiv": null,
+  "url": "https://github.com/tatsu-lab/stanford_alpaca",
+  "code": "https://github.com/tatsu-lab/stanford_alpaca",
+  "what": "Used by vLLM as a serving workload: Alpaca instruction/response lengths define synthetic requests with Poisson arrivals. Mean input 19.31 and output 58.45 tokens (vLLM Fig. 11), much shorter than ShareGPT.",
+  "versions": {
+   "length trace": "only token lengths are used; requests arrive by a Poisson process at the stated rate"
+  },
+  "pitfalls": [
+   "Short sequences make large configurations compute-bound, which shrinks memory-management gains (vLLM Fig. 12f)."
+  ]
  }
 ]

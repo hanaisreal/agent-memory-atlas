@@ -1,0 +1,565 @@
+{
+  "id": "fame",
+  "name": "FAME",
+  "paper": {
+    "title": "Principled Fast and Meta Knowledge Learners for Continual Reinforcement Learning",
+    "arxiv": "2603.00903",
+    "url": "https://arxiv.org/abs/2603.00903",
+    "venue": "ICLR 2026",
+    "venue_short": "ICLR",
+    "track": "main",
+    "year": 2026,
+    "code": "https://github.com/datake/FAME"
+  },
+  "design": {
+    "construction": {
+      "unit": "a (state, action) pair from the last N steps of training on a task (MinAtar N = 12,000, 2.4% of the task's steps)",
+      "kept_as": "raw states with the actions the fast learner took (states only for FAME-WD); no rewards",
+      "processing": "a fast learner (DQN, PPO or SAC) trains on the current task; its final N steps are copied into the meta buffer; after the task a meta learner is refit to all stored pairs by maximum likelihood (FAME-KL) or a Wasserstein loss (FAME-WD)",
+      "trigger": "session-end",
+      "writer": "rule: store the last N steps; supervised refit of the meta network"
+    },
+    "organization": {
+      "structure": "two learners: a fast learner for the current task (own replay buffer F, cleared per task) and a meta learner that holds all past tasks, fed by a fixed-size meta buffer M",
+      "stores": "meta buffer M (100k pairs MinAtar, 200k Atari); fast buffer F; fast and meta network weights",
+      "index": null
+    },
+    "management": {
+      "operations": "after each task: refit the meta learner on old pairs plus the new task's pairs (new pairs sampled every k-th batch so each task weighs the same), then append the new pairs to M",
+      "conflicts": "the refit minimises the policy divergence to every past task at once (forgetting as KL or W2 between policies)",
+      "forgetting": "M is a FIFO deque; with 7 tasks × 12,000 pairs it never fills on MinAtar",
+      "timing": "offline"
+    },
+    "retrieval": {
+      "query": "the first steps of a new task",
+      "candidates": "three initialisations: previous fast learner, meta learner, random network",
+      "selection": "run fast and meta greedily for n steps each and keep the higher mean return (or a one-sided t-test); a random network is compared by its Q-value at the start state in the code",
+      "budget": "n = 600 steps per candidate on MinAtar, 1,200 on Atari, 10 episodes on Meta-World"
+    },
+    "use": {
+      "context": "no text context: the chosen learner initialises or regularises the new fast learner",
+      "reasoning": "meta chosen: BC regulariser KL(meta ‖ fast) for the first L = 50k steps (λ = 1); fast chosen: keep fine-tuning; random: reset"
+    },
+    "control": {
+      "construction": "fixed-rule",
+      "management": "fixed-rule",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "tiers",
+    "index": "none",
+    "management": "consolidate",
+    "candidates": "read everything",
+    "decides": "top-k rule",
+    "note": "Fast learner (current task) and meta learner (all tasks) are two tiers; a small buffer of past (state, action) pairs is consolidated into the meta network after each task. At a new task all candidate learners are evaluated and the best by mean return (top-1) is used."
+  },
+  "tags": {
+    "fidelity": "verbatim+derived",
+    "structure": [
+      "tiered",
+      "parametric"
+    ],
+    "write_time": [
+      "filter",
+      "consolidate",
+      "learned"
+    ],
+    "selection": [
+      "model-reads"
+    ],
+    "memory_type": [
+      "procedural"
+    ],
+    "learning": "mixed",
+    "domain": [
+      "embodied",
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "Tasks arrive one at a time with known boundaries and a fixed step budget (500k steps per MinAtar task, 1M on Atari and Meta-World).",
+    "construction": "During the last N steps of a task the fast learner's (state, action) pairs are copied to the meta buffer (N = 12,000 on MinAtar, 20,000 on Atari).",
+    "organization": "Two learners of the same architecture: a fast learner trained by RL on the current task, and a meta learner meant to hold every past task, fed by one fixed-size meta buffer.",
+    "update": "After each task the meta learner is refit by supervised learning on all stored pairs (MLE on softmax policies for FAME-KL, a Gaussian W2 loss against the previous meta and current fast policies for FAME-WD).",
+    "retrieval": "When a new task starts, the previous fast learner and the meta learner are each run for n steps and compared with a random network; the best becomes the warm start.",
+    "answer": "If the meta learner wins, the fast learner is trained with a KL behaviour-cloning term toward the meta policy for the first L steps; the final evaluation uses the meta learner.",
+    "learning": "Fast learner: DQN, PPO or SAC. Meta learner: supervised (NLL or W2) on the meta buffer, 200 epochs on MinAtar and Atari, 5,000 × k mini-batches on Meta-World."
+  },
+  "summary": "A hippocampus/neocortex-style pair for continual RL: a fast learner trains on each task, a meta learner is refit on a small buffer of every task's state-action pairs to minimise a policy-based forgetting measure, and each new task starts from whichever of fast, meta or random scores best in a short evaluation.",
+  "verified": false,
+  "notes": "VENUE: ICLR 2026 main (PDF header 'Published as a conference paper at ICLR 2026'; OpenReview loNTDX3wTn lists 'ICLR 2026 Poster'). CODE: datake/FAME at d16f0061 (2026-02-28, one day before arXiv v1); MinAtar/FAME.py, Atari/run_ppo_FAME.py, Metaworld/test_main.py + agent/sac.py read. Figures follow the MinAtar code (the value-based algorithm of Alg. 1). MEMORY FRAMING: not an LLM memory; included as a parametric, two-tier procedural memory for RL agents. RESULTS: MinAtar and Atari scores are stored raw (return / unstated scale); Meta-World success, FT and forgetting are ×100.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2603.00903v1 (PDF read 2026-09-30)",
+      "code": "https://github.com/datake/FAME/tree/d16f006102d2783b483aac6a350835eb4bd051b9/",
+      "code_note": "Official repo linked in the abstract; commit d16f0061 (2026-02-28) is the latest and predates arXiv v1 by one day. It holds separate scripts for MinAtar (DQN), Atari (PPO) and Meta-World (SAC). As released, MinAtar/FAME.py reads args.p_explore, which its parser never defines, so the script needs a fix before it runs."
+    },
+    "headline": [
+      "What is kept per task is only the (state, action) pairs of its last N steps, 2.4% of training on MinAtar; rewards are not stored.",
+      "The meta learner is a behaviour-cloned policy of all past fast learners, refit after every task; it is also the network that is scored at the end.",
+      "At a new task, stored knowledge is used only if the meta learner wins a short evaluation against the previous fast learner and a random network."
+    ],
+    "units": [
+      {
+        "name": "Meta-buffer pair",
+        "role": "one step of a past task",
+        "made_by": "copying the fast learner's last N steps (code FAME.py L231-L234, L406-L408)",
+        "fields": [
+          {
+            "name": "state",
+            "what": "10×10×C MinAtar observation (Atari frames, Meta-World states)",
+            "kept_as": "verbatim",
+            "used_for": [
+              "index"
+            ],
+            "src": "code replay.py L40-L51",
+            "url": "https://github.com/datake/FAME/blob/d16f006102d2783b483aac6a350835eb4bd051b9/MinAtar/replay.py#L40-L51"
+          },
+          {
+            "name": "action",
+            "what": "the action the fast learner took, including ε-greedy random ones (not used by FAME-WD)",
+            "kept_as": "verbatim",
+            "used_for": [
+              "index"
+            ],
+            "src": "code FAME.py L400-L408",
+            "url": "https://github.com/datake/FAME/blob/d16f006102d2783b483aac6a350835eb4bd051b9/MinAtar/FAME.py#L400-L408"
+          },
+          {
+            "name": "reward, next state",
+            "what": "kept only in the fast buffer F, which is cleared at the end of each task",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "code FAME.py L451",
+            "url": "https://github.com/datake/FAME/blob/d16f006102d2783b483aac6a350835eb4bd051b9/MinAtar/FAME.py#L451"
+          }
+        ]
+      },
+      {
+        "name": "Meta learner",
+        "role": "one network meant to act well on every past task",
+        "made_by": "supervised refit on the meta buffer after each task",
+        "fields": [
+          {
+            "name": "weights",
+            "what": "same CNN as the DQN; its logits are read as a softmax policy (τ = 1)",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper Prop. 1; code FAME.py L96-L136",
+            "url": "https://github.com/datake/FAME/blob/d16f006102d2783b483aac6a350835eb4bd051b9/MinAtar/FAME.py#L96-L136"
+          }
+        ]
+      },
+      {
+        "name": "Fast learner",
+        "role": "the RL learner for the current task",
+        "made_by": "DQN / PPO / SAC on the current task",
+        "fields": [
+          {
+            "name": "weights",
+            "what": "kept across tasks unless the random network wins the warm-up test",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "code FAME.py L368-L385",
+            "url": "https://github.com/datake/FAME/blob/d16f006102d2783b483aac6a350835eb4bd051b9/MinAtar/FAME.py#L368-L385"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Train fast learner",
+        "how": "DQN with MSE TD loss on buffer F (lr 1e-5), target net synced every 1,000 steps",
+        "src": "code FAME.py L73-L93, L410-L420",
+        "url": "https://github.com/datake/FAME/blob/d16f006102d2783b483aac6a350835eb4bd051b9/MinAtar/FAME.py#L73-L93"
+      },
+      {
+        "step": "Copy last N steps",
+        "how": "the final N steps of each task go to a fast-to-meta buffer",
+        "params": {
+          "N": "12,000 MinAtar, 20,000 Atari"
+        },
+        "out": "2.4% (MinAtar) and 2% (Atari) of a task's steps",
+        "src": "paper App. F.1; code FAME.py L231-L234",
+        "url": "https://github.com/datake/FAME/blob/d16f006102d2783b483aac6a350835eb4bd051b9/MinAtar/FAME.py#L231-L234"
+      },
+      {
+        "step": "Refit meta learner",
+        "how": "NLL of stored actions under softmax(meta logits); every batch draws old pairs, and every k-th batch adds new-task pairs",
+        "params": {
+          "epochs": "200",
+          "lr": "1e-3, ×0.95 every 2 epochs",
+          "batch": "64"
+        },
+        "src": "paper Eq. 5; code FAME.py L96-L136, L431-L444",
+        "url": "https://github.com/datake/FAME/blob/d16f006102d2783b483aac6a350835eb4bd051b9/MinAtar/FAME.py#L96-L136"
+      },
+      {
+        "step": "Append",
+        "how": "new pairs are added to the meta buffer (deque, max 100k) and the fast buffer is cleared",
+        "src": "code FAME.py L446-L451",
+        "url": "https://github.com/datake/FAME/blob/d16f006102d2783b483aac6a350835eb4bd051b9/MinAtar/FAME.py#L446-L451"
+      }
+    ],
+    "read": [
+      {
+        "step": "Evaluate candidates",
+        "round": 1,
+        "input": "new task",
+        "scores": "mean episode return of greedy rollouts",
+        "how": "previous fast learner and meta learner each act for n steps; their transitions also go into F",
+        "params": {
+          "n": "600 (MinAtar run script), 1,200 (Atari)"
+        },
+        "src": "code FAME.py L284-L346",
+        "url": "https://github.com/datake/FAME/blob/d16f006102d2783b483aac6a350835eb4bd051b9/MinAtar/FAME.py#L284-L346"
+      },
+      {
+        "step": "Random baseline",
+        "round": 1,
+        "how": "code uses the random network's max Q-value at the first state as its 'return'",
+        "src": "code FAME.py L352-L354",
+        "url": "https://github.com/datake/FAME/blob/d16f006102d2783b483aac6a350835eb4bd051b9/MinAtar/FAME.py#L352-L354"
+      },
+      {
+        "step": "Choose",
+        "round": 1,
+        "how": "empirical ranking (default) or one-sided Welch t-test p < 0.05; meta needs to beat fast and random",
+        "src": "paper Eq. 6; code FAME.py L357-L385",
+        "url": "https://github.com/datake/FAME/blob/d16f006102d2783b483aac6a350835eb4bd051b9/MinAtar/FAME.py#L357-L385"
+      },
+      {
+        "step": "Warm up",
+        "round": 1,
+        "how": "if meta wins: add λ·KL(meta ‖ fast) to the TD loss for the first L steps; if random wins: reinitialise the fast learner",
+        "params": {
+          "L": "50,000",
+          "λ": "1.0"
+        },
+        "src": "paper §3.1.2; code FAME.py L82-L88, L413-L420",
+        "url": "https://github.com/datake/FAME/blob/d16f006102d2783b483aac6a350835eb4bd051b9/MinAtar/FAME.py#L82-L88"
+      }
+    ],
+    "answer_context": {
+      "sees": "no retrieved context; the fast learner's weights (possibly regularised toward the meta policy) act in the new task",
+      "format": "not applicable (RL policy)",
+      "excludes": [
+        "meta-buffer data at acting time"
+      ],
+      "src": "code FAME.py L394-L420",
+      "url": "https://github.com/datake/FAME/blob/d16f006102d2783b483aac6a350835eb4bd051b9/MinAtar/FAME.py#L394-L420",
+      "includes": [
+        "current observation"
+      ]
+    },
+    "compression": [
+      {
+        "what": "pairs kept per MinAtar task vs steps trained",
+        "kept": 12,
+        "of": 500,
+        "unit": "k steps",
+        "basis": "App. F.1: N = 12,000 of 500k steps (2.4%)",
+        "src": "paper App. F.1",
+        "url": "https://arxiv.org/pdf/2603.00903"
+      },
+      {
+        "what": "pairs kept per Atari task vs steps trained",
+        "kept": 20,
+        "of": 1000,
+        "unit": "k steps",
+        "basis": "App. F.1: N = 20,000 of 1M steps (2%)",
+        "src": "paper App. F.1",
+        "url": "https://arxiv.org/pdf/2603.00903"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Warm-up choice on a previously seen game (MinAtar)",
+        "value": "meta 95.1%, random 4.9%, fast 0.0%",
+        "src": "paper Fig. 2 right"
+      },
+      {
+        "label": "Warm-up choice on a new game (MinAtar)",
+        "value": "random 70.2%, fast 19.3%, meta 10.5%",
+        "src": "paper Fig. 2 right"
+      },
+      {
+        "label": "Meta refit time, MinAtar",
+        "value": "about a couple of minutes for 200 epochs",
+        "src": "paper App. E"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "Random candidate",
+        "paper": "policy evaluation of a random learner's return",
+        "code": "max Q-value of an untrained network at the first state",
+        "src": "MinAtar/FAME.py L352-L354",
+        "url": "https://github.com/datake/FAME/blob/d16f006102d2783b483aac6a350835eb4bd051b9/MinAtar/FAME.py#L352-L354"
+      },
+      {
+        "topic": "When meta wins",
+        "paper": "warm-up among meta, fast and reset, then BC toward meta",
+        "code": "the fast learner keeps the previous task's weights and adds the BC term; it is not re-initialised",
+        "src": "MinAtar/FAME.py L368-L372",
+        "url": "https://github.com/datake/FAME/blob/d16f006102d2783b483aac6a350835eb4bd051b9/MinAtar/FAME.py#L368-L372"
+      },
+      {
+        "topic": "Meta-World warm-up candidates",
+        "paper": "random, preceding fast and meta policies, 10 episodes each",
+        "code": "only a freshly initialised agent vs the meta agent; the meta actor is copied in, the critic stays fresh",
+        "src": "Metaworld/test_main.py L291-L313",
+        "url": "https://github.com/datake/FAME/blob/d16f006102d2783b483aac6a350835eb4bd051b9/Metaworld/test_main.py#L291-L313"
+      },
+      {
+        "topic": "Meta-World meta buffer",
+        "paper": "0.1M capacity; last 1% of transitions (50 episodes) per task",
+        "code": "capacity 1M + 10k; README runs store_traj_num 10 (paper's 5,000 × k updates match 50)",
+        "src": "Metaworld/test_main.py L189-L193, L221",
+        "url": "https://github.com/datake/FAME/blob/d16f006102d2783b483aac6a350835eb4bd051b9/Metaworld/test_main.py#L189-L193"
+      },
+      {
+        "topic": "MinAtar evaluation step n",
+        "paper": "n = 600",
+        "code": "parser default 1,200; run.sh and README command pass 600",
+        "src": "MinAtar/FAME.py L36; run.sh",
+        "url": "https://github.com/datake/FAME/blob/d16f006102d2783b483aac6a350835eb4bd051b9/MinAtar/FAME.py#L36"
+      },
+      {
+        "topic": "Runnable as released",
+        "paper": "-",
+        "code": "MinAtar/FAME.py tests args.p_explore on every step, but no such argument exists",
+        "src": "MinAtar/FAME.py L395",
+        "url": "https://github.com/datake/FAME/blob/d16f006102d2783b483aac6a350835eb4bd051b9/MinAtar/FAME.py#L395"
+      }
+    ],
+    "open_questions": [
+      "The meta learner clones actions from ε-greedy rollouts of the fast learner, so random exploration actions are part of what it imitates; the paper does not discuss this.",
+      "Tasks repeat inside every MinAtar sequence, so part of the gain may come from recognising an old game via the warm-up test rather than from consolidation."
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 240",
+        "body": "<rect class=\"gi-f\" x=\"6\" y=\"30\" width=\"80\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"46\" y=\"49\" text-anchor=\"middle\">Task k</text><text class=\"fig-s\" x=\"46\" y=\"63\" text-anchor=\"middle\">500k steps</text><path class=\"gi-a\" d=\"M86 52 L105 52\"/><polygon class=\"gi-ah\" points=\"112,52 105,48 105,56\"/><rect class=\"gi-v fig-soft\" x=\"112\" y=\"26\" width=\"104\" height=\"52\" rx=\"8\"/><text class=\"fig-t\" x=\"164\" y=\"44\" text-anchor=\"middle\">Fast learner</text><text class=\"fig-s\" x=\"164\" y=\"58\" text-anchor=\"middle\">DQN on buffer F</text><text class=\"fig-s\" x=\"164\" y=\"70\" text-anchor=\"middle\">(F cleared per task)</text><path class=\"gi-a d\" d=\"M164 78 L164 105\"/><polygon class=\"gi-ah\" points=\"164,112 160,105 168,105\"/><text class=\"fig-s\" x=\"172\" y=\"98\" text-anchor=\"start\">last N steps only</text><rect class=\"gi-r\" x=\"118\" y=\"114\" width=\"20\" height=\"16\" rx=\"3\"/><rect class=\"gi-r\" x=\"142\" y=\"114\" width=\"20\" height=\"16\" rx=\"3\"/><rect class=\"gi-r\" x=\"166\" y=\"114\" width=\"20\" height=\"16\" rx=\"3\"/><rect class=\"gi-r\" x=\"190\" y=\"114\" width=\"20\" height=\"16\" rx=\"3\"/><text class=\"fig-s\" x=\"164\" y=\"146\" text-anchor=\"middle\">(state, action) pairs</text><text class=\"fig-s\" x=\"164\" y=\"159\" text-anchor=\"middle\">N = 12,000 = 2.4%</text><path class=\"gi-a\" d=\"M216 122 L243 122\"/><polygon class=\"gi-ah\" points=\"250,122 243,118 243,126\"/><text class=\"fig-t\" x=\"320\" y=\"24\" text-anchor=\"middle\">Meta buffer M</text><rect class=\"gi-f\" x=\"250\" y=\"32\" width=\"140\" height=\"150\" rx=\"8\"/><rect class=\"gi-r\" x=\"262\" y=\"42\" width=\"116\" height=\"18\" rx=\"3\"/><text class=\"fig-s\" x=\"320\" y=\"55\" text-anchor=\"middle\">task 1</text><rect class=\"gi-r\" x=\"262\" y=\"66\" width=\"116\" height=\"18\" rx=\"3\"/><text class=\"fig-s\" x=\"320\" y=\"79\" text-anchor=\"middle\">task 2</text><rect class=\"gi-r\" x=\"262\" y=\"90\" width=\"116\" height=\"18\" rx=\"3\"/><text class=\"fig-s\" x=\"320\" y=\"103\" text-anchor=\"middle\">⋯</text><rect class=\"gi-r\" x=\"262\" y=\"114\" width=\"116\" height=\"18\" rx=\"3\"/><text class=\"fig-s\" x=\"320\" y=\"127\" text-anchor=\"middle\">task k-1</text><rect class=\"gi-hi\" x=\"262\" y=\"140\" width=\"116\" height=\"18\" rx=\"3\"/><text class=\"fig-s\" x=\"320\" y=\"153\" text-anchor=\"middle\">task k (new)</text><text class=\"fig-s\" x=\"320\" y=\"196\" text-anchor=\"middle\">≤ 100k pairs, oldest dropped</text><path class=\"gi-a\" d=\"M390 100 L419 100\"/><polygon class=\"gi-ah\" points=\"426,100 419,96 419,104\"/><text class=\"fig-s\" x=\"408\" y=\"90\" text-anchor=\"middle\">after</text><text class=\"fig-s\" x=\"408\" y=\"116\" text-anchor=\"middle\">task</text><rect class=\"gi-f\" x=\"426\" y=\"52\" width=\"128\" height=\"96\" rx=\"8\"/><text class=\"fig-t\" x=\"490\" y=\"70\" text-anchor=\"middle\">Meta learner</text><rect class=\"gi-w\" x=\"444\" y=\"80\" width=\"15\" height=\"14\" rx=\"2\"/><rect class=\"gi-w\" x=\"463\" y=\"80\" width=\"15\" height=\"14\" rx=\"2\"/><rect class=\"gi-w\" x=\"482\" y=\"80\" width=\"15\" height=\"14\" rx=\"2\"/><rect class=\"gi-w\" x=\"501\" y=\"80\" width=\"15\" height=\"14\" rx=\"2\"/><rect class=\"gi-w\" x=\"520\" y=\"80\" width=\"15\" height=\"14\" rx=\"2\"/><text class=\"fig-s\" x=\"490\" y=\"112\" text-anchor=\"middle\">max-likelihood fit of</text><text class=\"fig-s\" x=\"490\" y=\"125\" text-anchor=\"middle\">softmax(Q) to stored</text><text class=\"fig-s\" x=\"490\" y=\"138\" text-anchor=\"middle\">actions, 200 epochs</text><text class=\"fig-s\" x=\"490\" y=\"168\" text-anchor=\"middle\">new pairs used every</text><text class=\"fig-s\" x=\"490\" y=\"181\" text-anchor=\"middle\">k-th batch: tasks equal</text><text class=\"fig-s\" x=\"280\" y=\"232\" text-anchor=\"middle\">no rewards or next states are kept for the meta learner; only states and the actions taken</text>",
+        "text": [
+          "A fast learner trains on each task; only the states and actions of its last 12,000 steps (2.4% on MinAtar) are copied into the meta buffer.",
+          "After the task the meta learner is refit to every stored pair by maximum likelihood, with each task weighted equally."
+        ],
+        "src": "paper §3.1, Alg. 1, App. F.1; code MinAtar/FAME.py L96-L136, L231-L234, L431-L451",
+        "url": "https://github.com/datake/FAME/blob/d16f006102d2783b483aac6a350835eb4bd051b9/MinAtar/FAME.py#L96-L136"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 256",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"96\" width=\"70\" height=\"44\" rx=\"8\"/><text class=\"fig-t\" x=\"39\" y=\"115\" text-anchor=\"middle\">New task</text><text class=\"fig-s\" x=\"39\" y=\"129\" text-anchor=\"middle\">k arrives</text><rect class=\"gi-ev\" x=\"100\" y=\"30\" width=\"112\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"156\" y=\"47\" text-anchor=\"middle\">Previous fast</text><text class=\"fig-s\" x=\"156\" y=\"61\" text-anchor=\"middle\">600 steps, greedy</text><rect class=\"gi-ev\" x=\"100\" y=\"98\" width=\"112\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"156\" y=\"115\" text-anchor=\"middle\">Meta learner</text><text class=\"fig-s\" x=\"156\" y=\"129\" text-anchor=\"middle\">600 steps, greedy</text><rect class=\"gi-ev\" x=\"100\" y=\"166\" width=\"112\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"156\" y=\"183\" text-anchor=\"middle\">Random init</text><text class=\"fig-s\" x=\"156\" y=\"197\" text-anchor=\"middle\">Q at start state</text><path class=\"gi-a\" d=\"M74 112 L95.3 60.5\"/><polygon class=\"gi-ah\" points=\"98,54 99.0,62.0 91.6,58.9\"/><path class=\"gi-a\" d=\"M74 118 L91 118\"/><polygon class=\"gi-ah\" points=\"98,118 91,114 91,122\"/><path class=\"gi-a\" d=\"M74 124 L95.3 175.5\"/><polygon class=\"gi-ah\" points=\"98,182 91.6,177.1 99.0,174.0\"/><text class=\"fig-s\" x=\"156\" y=\"22\" text-anchor=\"middle\">evaluate each</text><polygon class=\"gi-llm\" points=\"276,80 320,118 276,156 232,118\"/><text class=\"fig-t\" x=\"276\" y=\"116\" text-anchor=\"middle\">Best</text><text class=\"fig-s\" x=\"276\" y=\"129\" text-anchor=\"middle\">return?</text><path class=\"gi-a\" d=\"M212 50 L241.7 88.5\"/><polygon class=\"gi-ah\" points=\"246,94 238.6,90.9 244.9,86.0\"/><path class=\"gi-a\" d=\"M212 118 L225 118\"/><polygon class=\"gi-ah\" points=\"232,118 225,114 225,122\"/><path class=\"gi-a\" d=\"M212 186 L241.7 147.5\"/><polygon class=\"gi-ah\" points=\"246,142 244.9,150.0 238.6,145.1\"/><rect class=\"gi-hi\" x=\"344\" y=\"26\" width=\"120\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"404\" y=\"43\" text-anchor=\"middle\">Meta wins</text><text class=\"fig-s\" x=\"404\" y=\"57\" text-anchor=\"middle\">BC to meta, 50k steps</text><rect class=\"gi-f\" x=\"344\" y=\"98\" width=\"120\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"404\" y=\"115\" text-anchor=\"middle\">Fast wins</text><text class=\"fig-s\" x=\"404\" y=\"129\" text-anchor=\"middle\">keep fine-tuning</text><rect class=\"gi-f\" x=\"344\" y=\"170\" width=\"120\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"404\" y=\"187\" text-anchor=\"middle\">Random wins</text><text class=\"fig-s\" x=\"404\" y=\"201\" text-anchor=\"middle\">reset the network</text><path class=\"gi-a\" d=\"M306 106 L338.1 57.8\"/><polygon class=\"gi-ah\" points=\"342,52 341.4,60.0 334.8,55.6\"/><path class=\"gi-a\" d=\"M320 118 L335 118\"/><polygon class=\"gi-ah\" points=\"342,118 335,114 335,122\"/><path class=\"gi-a\" d=\"M306 130 L338.1 178.2\"/><polygon class=\"gi-ah\" points=\"342,184 334.8,180.4 341.4,176.0\"/><text class=\"fig-s\" x=\"404\" y=\"18\" text-anchor=\"middle\">KL(meta ‖ fast), λ = 1</text><rect class=\"gi-v fig-soft\" x=\"484\" y=\"92\" width=\"72\" height=\"52\" rx=\"8\"/><text class=\"fig-t\" x=\"520\" y=\"112\" text-anchor=\"middle\">Train</text><text class=\"fig-s\" x=\"520\" y=\"126\" text-anchor=\"middle\">fast</text><text class=\"fig-s\" x=\"520\" y=\"138\" text-anchor=\"middle\">learner</text><path class=\"gi-a\" d=\"M464 46 L495.6 84.6\"/><polygon class=\"gi-ah\" points=\"500,90 492.5,87.1 498.7,82.0\"/><path class=\"gi-a\" d=\"M464 118 L477 118\"/><polygon class=\"gi-ah\" points=\"484,118 477,114 477,122\"/><path class=\"gi-a\" d=\"M464 190 L495.6 151.4\"/><polygon class=\"gi-ah\" points=\"500,146 498.7,154.0 492.5,148.9\"/><text class=\"fig-s\" x=\"280\" y=\"232\" text-anchor=\"middle\">evaluation steps come out of the task's budget and are stored in F</text><text class=\"fig-s\" x=\"280\" y=\"246\" text-anchor=\"middle\">(old task: meta chosen 95.1%; new task: random 70.2%)</text>",
+        "text": [
+          "When a task starts, the previous fast learner and the meta learner each play 600 steps and the code scores a random network by its Q-value; the best one is the warm start.",
+          "If the meta learner wins, the kept fast learner is pulled toward it by a KL term for 50k steps; the evaluation steps count against the task budget."
+        ],
+        "src": "paper §3.1.2, Eq. 6, Fig. 2; code MinAtar/FAME.py L269-L420",
+        "url": "https://github.com/datake/FAME/blob/d16f006102d2783b483aac6a350835eb4bd051b9/MinAtar/FAME.py#L269-L420"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Pairs kept per task",
+        "value": "12,000 = 2.4% (MinAtar) · 20,000 = 2% (Atari)",
+        "src": "paper App. F.1",
+        "section": "construction"
+      },
+      {
+        "label": "Meta buffer size",
+        "value": "100k (MinAtar) · 200k (Atari)",
+        "src": "paper App. F.1",
+        "section": "construction"
+      },
+      {
+        "label": "Meta refit",
+        "value": "200 epochs, lr 1e-3 (MinAtar)",
+        "src": "paper App. F.1",
+        "section": "construction"
+      },
+      {
+        "label": "Warm-up evaluation",
+        "value": "n = 600 steps (MinAtar) · 1,200 (Atari) · 10 episodes (Meta-World)",
+        "src": "paper App. F.1, §4.2",
+        "section": "method"
+      },
+      {
+        "label": "Behaviour-cloning warm-up",
+        "value": "L = 50k steps, λ = 1",
+        "src": "paper App. F.1",
+        "section": "method"
+      },
+      {
+        "label": "Meta chosen on a seen game",
+        "value": "95.1%",
+        "src": "paper Fig. 2",
+        "section": "method"
+      },
+      {
+        "label": "Extra memory",
+        "value": "one network copy + one buffer the size of the standard replay buffer",
+        "src": "paper App. E",
+        "section": "results"
+      }
+    ],
+    "components": [
+      {
+        "role": "Fast learner",
+        "model": "DQN (MinAtar), PPO (Atari), SAC (Meta-World)",
+        "kind": "rule",
+        "src": "paper §4"
+      },
+      {
+        "role": "Meta learner refit",
+        "model": "same network, supervised NLL (FAME-KL) or Gaussian W2 (FAME-WD)",
+        "kind": "rule",
+        "src": "paper Eq. 5, 7, 8; code sac.py L209-L272",
+        "url": "https://github.com/datake/FAME/blob/d16f006102d2783b483aac6a350835eb4bd051b9/Metaworld/agent/sac.py#L209-L272"
+      },
+      {
+        "role": "Warm-start choice",
+        "model": "empirical ranking or one-sided t-test",
+        "kind": "rule",
+        "src": "paper Eq. 6; code FAME.py L357-L385",
+        "url": "https://github.com/datake/FAME/blob/d16f006102d2783b483aac6a350835eb4bd051b9/MinAtar/FAME.py#L357-L385"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "Breakout",
+        "Space Invaders",
+        "Freeway",
+        "FT",
+        "Forgetting"
+      ],
+      "rows": [
+        [
+          "FAME (N = 12,000, λ = 1, L = 50k, n = 600)",
+          "14.54",
+          "18.72",
+          "1.69",
+          "0.16",
+          "0.72"
+        ],
+        [
+          "N = 8,000",
+          "12.49",
+          "17.99",
+          "1.67",
+          "0.15",
+          "0.86"
+        ],
+        [
+          "N = 4,000",
+          "11.95",
+          "14.69",
+          "1.54",
+          "0.14",
+          "0.93"
+        ],
+        [
+          "λ = 0.1",
+          "12.79",
+          "19.52",
+          "1.71",
+          "0.13",
+          "0.77"
+        ],
+        [
+          "λ = 5.0",
+          "13.90",
+          "19.38",
+          "1.62",
+          "0.14",
+          "0.64"
+        ],
+        [
+          "L = 500k",
+          "11.83",
+          "20.00",
+          "1.87",
+          "0.17",
+          "0.78"
+        ],
+        [
+          "n = 300",
+          "13.02",
+          "19.19",
+          "1.42",
+          "0.12",
+          "0.69"
+        ],
+        [
+          "Best baseline per column (Table 1)",
+          "10.71",
+          "4.95",
+          "1.16",
+          "0.16",
+          "1.25"
+        ]
+      ],
+      "src": "paper Tables 4-7 (MinAtar), Table 1"
+    },
+    "discussion": {
+      "takeaway": "Split continual RL into a fast learner for the current task and a meta learner that is refit, after each task, to imitate all past tasks from a small buffer; start each task from whichever learner does best in a short test. On MinAtar, Atari modes and Meta-World this gives the highest average performance with little forgetting.",
+      "claims": [
+        {
+          "claim": "Minimising a policy-based forgetting measure gives a simple incremental rule: maximum likelihood on a mixture of past tasks' state-action distributions.",
+          "evidence": "Prop. 1 and Eq. 5 (value-based), Eq. 7 (KL), Prop. 2 / Eq. 8 (Wasserstein) (§3)."
+        },
+        {
+          "claim": "FAME beats all baselines on MinAtar.",
+          "evidence": "Table 1: average return 14.54 / 18.72 / 1.69 vs best baseline 10.71 / 4.95 / 1.16; forgetting 0.72 vs ≥ 1.25; FT 0.16 ties LargeBuffer."
+        },
+        {
+          "claim": "The warm-up test picks the right prior knowledge.",
+          "evidence": "Fig. 2 right: meta chosen 95.1% on a seen game; random chosen 70.2% on a new one."
+        },
+        {
+          "claim": "It works with continuous control.",
+          "evidence": "Table 3: Meta-World average success 0.767 (WD) and 0.733 (KL) vs 0.491 PackNet, forgetting 0.023 / 0.073."
+        },
+        {
+          "claim": "It scales in memory.",
+          "evidence": "Meta buffer ~1-2% of each task's data, same size as a standard replay buffer; meta refit takes minutes (App. E)."
+        }
+      ],
+      "limits": [
+        "One meta learner holds all knowledge; a learned latent representation might distil and reason better.",
+        "Other transfer techniques (e.g. context embeddings) are not explored.",
+        "Task boundaries must be known and all tasks must share state and action spaces."
+      ],
+      "limits_src": "paper §5, Limitations and Future Work",
+      "reading": [
+        "On Atari SpaceInvader modes, Finetune's forward transfer (0.65) is higher than FAME's (0.63), although the text says FAME beats all baselines on both metrics.",
+        "Baselines other than Finetune are reset at every task and have no access to past data except LargeBuffer, while FAME keeps a meta buffer and a second network; the paper argues the buffer matches the standard replay size, but Table 6 shows scores drop as N shrinks (Space Invaders 18.72 → 14.69 at N = 4,000).",
+        "MinAtar forgetting is normalised by each game's standard deviation across the compared methods, so the number depends on which baselines are in the table.",
+        "In the MinAtar code the random candidate is scored by an untrained network's Q-value, not by a return, so the three-way test compares returns with a Q estimate.",
+        "In the Meta-World code the warm start chooses only between a fresh agent and the meta actor; the previous fast policy is never a candidate, unlike the paper's description.",
+        "FAME-KL and FAME-WD are close on Meta-World (0.733 vs 0.767) and swap order on CW10 (0.370 vs 0.340), so neither divergence is clearly better."
+      ]
+    },
+    "abstract": {
+      "text": "The paper frames continual reinforcement learning after the brain's hippocampus-neocortex split. It defines a distance between MDPs and a measure of catastrophic forgetting, and builds FAME from two learners: a fast learner that learns the current task and a meta learner that, after each task, is refit on stored state-action pairs to minimise forgetting across all tasks seen so far. A new task starts from the previous fast learner, the meta learner or a random network, whichever wins a short evaluation, with a behaviour-cloning term when the meta learner is chosen. Experiments on MinAtar, Atari playing modes and Meta-World report better average performance and less forgetting than continual-RL baselines.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2603.00903"
+    },
+    "sections": {
+      "Memory architecture": "§2-3",
+      "Results": "§4.1-4.2",
+      "Ablation": "App. F.2",
+      "Discussion": "§5, Limitations",
+      "Details": "App. D-G"
+    }
+  }
+}

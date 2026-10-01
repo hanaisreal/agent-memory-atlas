@@ -1,0 +1,600 @@
+{
+  "id": "care",
+  "name": "CARE",
+  "paper": {
+    "title": "Conflict-Aware Soft Prompting for Retrieval-Augmented Generation",
+    "arxiv": "2508.15253",
+    "url": "https://arxiv.org/abs/2508.15253",
+    "venue": "EMNLP 2025",
+    "venue_short": "EMNLP",
+    "track": "main",
+    "year": 2025,
+    "code": "https://github.com/eunseongc/CARE"
+  },
+  "design": {
+    "construction": {
+      "unit": "16 soft context embeddings for one retrieved passage, encoded together with the question",
+      "kept_as": "compressed: question + passage (≤180 tokens) → 16 vectors",
+      "processing": "context assessor (base LLM + LoRA) reads 'Question + Document' with 16 memory tokens; their last hidden states, passed through an MLP projector in the code, replace the passage in the prompt",
+      "trigger": "other",
+      "writer": "context assessor: the base LLM with LoRA, trained by reconstruction pretraining then conflict-aware fine-tuning"
+    },
+    "organization": {
+      "structure": "static passage corpus (Wikipedia); no memory kept between questions",
+      "stores": "Wikipedia passages (Dec 2021 dump per the README)",
+      "index": "ColBERTv2"
+    },
+    "management": {
+      "operations": "none",
+      "conflicts": "context-memory conflict handled inside the embeddings: trained to carry low reliability for passages that would mislead, so the LLM relies on its parametric knowledge",
+      "forgetting": null,
+      "timing": "none"
+    },
+    "retrieval": {
+      "query": "question",
+      "candidates": "ColBERTv2 over Wikipedia",
+      "selection": "top-1 passage (top-3 in one extra test)",
+      "budget": "1 passage → 16 embeddings"
+    },
+    "use": {
+      "context": "instruction + 'Background:' 16 projected embeddings + question, then 'The answer is:'",
+      "reasoning": "single greedy generation by the frozen base LLM, at most 30 new tokens"
+    },
+    "control": {
+      "construction": "learned-sft",
+      "management": "none",
+      "retrieval": "fixed-rule"
+    }
+  },
+  "classify": {
+    "structure": "flat",
+    "index": "vector",
+    "management": "append-only",
+    "candidates": "dense",
+    "decides": "top-k rule",
+    "note": "Retrieval is plain ColBERTv2 top-1; the contribution is how that one passage is encoded (16 soft embeddings trained to signal reliability), not which passage is chosen."
+  },
+  "tags": {
+    "fidelity": "compressed",
+    "structure": [
+      "flat"
+    ],
+    "write_time": [
+      "learned"
+    ],
+    "selection": [
+      "dense"
+    ],
+    "memory_type": [
+      "semantic"
+    ],
+    "learning": "sft",
+    "domain": [
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "",
+    "construction": "For each question the top-1 passage is written as 'Question: q / Document: passage', cut to 180 tokens, and encoded by the context assessor (base LLM + LoRA) with 16 memory tokens; the last-layer states at those tokens (through an MLP projector in the code) are the soft context embeddings.",
+    "organization": "",
+    "update": "",
+    "retrieval": "ColBERTv2 retrieves the top-1 Wikipedia passage for the question.",
+    "answer": "The frozen base LLM gets the instruction, the 16 embeddings in place of the background passage and the question, and generates up to 30 tokens greedily.",
+    "learning": "The assessor is pretrained to reconstruct 2M Wikipedia passages from its embeddings, then fine-tuned on NQ: questions the LLM answers closed-book get a hard-negative passage and a no-context teacher, the rest get a passage containing the answer and a teacher reading it; loss is LM plus λ-weighted KL to the teacher. The base LLM is never updated."
+  },
+  "summary": "Encodes each retrieved passage with the question into 16 soft embeddings via a LoRA copy of the LLM, trained with helpful and hard-negative passages so the embeddings tell the frozen LLM how much to trust the passage.",
+  "verified": false,
+  "notes": "Venue: EMNLP 2025 main conference, ACL Anthology 2025.emnlp-main.1371 (pages 26981-26995); arXiv comment 'Accepted to EMNLP 2025'. Code github.com/eunseongc/CARE at ccb5fe49 (2025-10-23); evaluation data checked on Hugging Face eunseong/data_care (eval/nq/retrieval/colbertv2/test_question_aware.jsonl stores each passage as 'Question: ... Document: ...'). Text read from arXiv v2 PDF with pdftotext. The paper's context assessor is built on ICAE-style memory tokens (the code package is named ICAE) and xRAG's pretraining prompts.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2508.15253v2 (PDF read 2026-09-30)",
+      "code": "https://github.com/eunseongc/CARE/tree/ccb5fe4925b6919ff3c58ce8307949d3a79cb82b/",
+      "code_note": "Latest commit (2025-10-23), after the camera-ready. It has pretraining, fine-tuning and evaluation scripts for Mistral, LLaMA and Qwen, and the data preparation notebook; released checkpoints are on Hugging Face. No retrieval code: ColBERTv2 results are shipped as data files."
+    },
+    "headline": [
+      "The memory is not a store: each retrieved passage is re-encoded with its question into 16 soft embeddings that take the passage's place in the prompt.",
+      "Conflict handling is learned, not decided: there is no gate; the embeddings are trained to be weak when the passage would mislead, and the frozen LLM then leans on what it knows.",
+      "All main tests use the single top-1 ColBERTv2 passage and short greedy answers (at most 30 tokens)."
+    ],
+    "units": [
+      {
+        "name": "Soft context",
+        "role": "the compressed, reliability-aware stand-in for one retrieved passage",
+        "made_by": "context assessor (base LLM + LoRA, 16 memory tokens)",
+        "fields": [
+          {
+            "name": "memory embeddings",
+            "what": "16 last-layer hidden states at the memory tokens, passed through a 2-layer GELU MLP projector in the code",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §3.1-3.2, eq. 2 and 5; code modeling_icae.py L125-L171",
+            "url": "https://github.com/eunseongc/CARE/blob/ccb5fe4925b6919ff3c58ce8307949d3a79cb82b/src/model/ICAE/modeling_icae.py#L125-L171"
+          }
+        ]
+      },
+      {
+        "name": "Passage",
+        "role": "a Wikipedia passage in the retrieval corpus",
+        "made_by": "corpus (Wikipedia, Dec 2021 dump per the README)",
+        "fields": [
+          {
+            "name": "passage text",
+            "what": "indexed by ColBERTv2; at answer time only the assessor reads it, prefixed by the question",
+            "kept_as": "verbatim",
+            "used_for": [
+              "index"
+            ],
+            "src": "paper §4; eval data test_question_aware.jsonl",
+            "url": "https://github.com/eunseongc/CARE/blob/ccb5fe4925b6919ff3c58ce8307949d3a79cb82b/src/eval/run_eval.py#L408-L416"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Format",
+        "how": "question and top-1 passage are joined as 'Question: q / Document: passage' and tokenized to at most 180 tokens",
+        "params": {
+          "max tokens": "180"
+        },
+        "src": "code data_preprocess.ipynb cell 0; run_eval.py L262-L266",
+        "url": "https://github.com/eunseongc/CARE/blob/ccb5fe4925b6919ff3c58ce8307949d3a79cb82b/src/eval/run_eval.py#L255-L266"
+      },
+      {
+        "step": "Encode",
+        "how": "16 learnable memory tokens are inserted before the last input token and the LLM runs once with LoRA on; the last-layer states at the memory tokens are kept",
+        "params": {
+          "K": "16",
+          "LoRA": "r 512 / 64 / 8 (Mistral / LLaMA / Qwen)"
+        },
+        "out": "16 vectors",
+        "src": "paper §3.1, Table 10; code modeling_icae.py L125-L153, train.py L144-L152",
+        "url": "https://github.com/eunseongc/CARE/blob/ccb5fe4925b6919ff3c58ce8307949d3a79cb82b/src/model/ICAE/modeling_icae.py#L125-L153"
+      },
+      {
+        "step": "Project",
+        "how": "a 2-layer MLP with GELU maps the 16 states into the LLM's input-embedding space (not described in the paper)",
+        "src": "code modeling_icae.py L40-L54, L156-L171",
+        "url": "https://github.com/eunseongc/CARE/blob/ccb5fe4925b6919ff3c58ce8307949d3a79cb82b/src/model/ICAE/modeling_icae.py#L40-L54"
+      },
+      {
+        "step": "Pretrain",
+        "how": "the assessor learns to let the frozen LLM reconstruct the passage from the embeddings",
+        "params": {
+          "data": "2M random Wikipedia passages",
+          "epochs": "1"
+        },
+        "src": "paper §3.1, §4, App. A.1; code pretrain.sh",
+        "url": "https://github.com/eunseongc/CARE/blob/ccb5fe4925b6919ff3c58ce8307949d3a79cb82b/pretrain.sh"
+      },
+      {
+        "step": "Pick the training passage",
+        "how": "if the base LLM answers the NQ question correctly closed-book, use the highest-ranked retrieved passage without the answer (hard negative); otherwise the first retrieved passage containing the answer",
+        "src": "paper §3.2; code data_preprocess.ipynb cell 2, language_modeling/utils.py L612-L618",
+        "url": "https://github.com/eunseongc/CARE/blob/ccb5fe4925b6919ff3c58ce8307949d3a79cb82b/src/language_modeling/utils.py#L612-L618"
+      },
+      {
+        "step": "Distil",
+        "how": "LM loss on the gold answer plus λ·KL to a teacher: the frozen LLM with no context (closed-book correct) or with the raw positive passage (otherwise)",
+        "params": {
+          "λ": "2 Mistral, 4 LLaMA, 2 Qwen",
+          "epochs": "2 (4 for Qwen)"
+        },
+        "src": "paper eq. 6-10, Table 10; code utils.py L28-L50, L481-L495; train.py L488-L549",
+        "url": "https://github.com/eunseongc/CARE/blob/ccb5fe4925b6919ff3c58ce8307949d3a79cb82b/src/language_modeling/train.py#L488-L549"
+      }
+    ],
+    "read": [
+      {
+        "step": "Retrieve",
+        "round": 1,
+        "input": "question",
+        "scores": "Wikipedia passages",
+        "how": "ColBERTv2, top-1 passage (precomputed and shipped as data)",
+        "params": {
+          "k": "1"
+        },
+        "out": "Recall@1 0.475 on NQ test",
+        "src": "paper §4, Table 9; code run_eval.py L408-L416",
+        "url": "https://github.com/eunseongc/CARE/blob/ccb5fe4925b6919ff3c58ce8307949d3a79cb82b/src/eval/run_eval.py#L408-L416"
+      },
+      {
+        "step": "Answer",
+        "round": 1,
+        "input": "instruction + 16 embeddings + question",
+        "how": "the base LLM with the adapter disabled generates greedily",
+        "params": {
+          "max new tokens": "30"
+        },
+        "src": "paper App. A.1; code run_eval.py L232-L252, L340-L358; modeling_icae.py L285-L290",
+        "url": "https://github.com/eunseongc/CARE/blob/ccb5fe4925b6919ff3c58ce8307949d3a79cb82b/src/eval/run_eval.py#L340-L358"
+      }
+    ],
+    "answer_context": {
+      "sees": "16 soft embeddings for the passage, plus the question in text",
+      "format": "chat-formatted \"Refer to the background document and answer the questions:\\n\\nBackground: [16 embeddings]\\n\\nQuestion: {q}?\" + \" The answer is:\"",
+      "excludes": [
+        "the passage text",
+        "any other retrieved passage"
+      ],
+      "includes": [
+        "16 projected assessor embeddings",
+        "the question",
+        "a task instruction"
+      ],
+      "src": "code run_eval.py L232-L252, L340-L391",
+      "url": "https://github.com/eunseongc/CARE/blob/ccb5fe4925b6919ff3c58ce8307949d3a79cb82b/src/eval/run_eval.py#L340-L391"
+    },
+    "compression": [
+      {
+        "what": "assessor input vs soft context",
+        "kept": 16,
+        "of": 180,
+        "unit": "embeddings vs tokens (upper bound)",
+        "basis": "16 memory tokens (§4) for an input cut at 180 tokens (question + passage; A.1 and run_eval.py L262-L266). Actual passage lengths are not reported.",
+        "src": "paper §4, App. A.1",
+        "url": "https://arxiv.org/pdf/2508.15253"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Average over 6 columns, Mistral-7B: CARE vs RAG",
+        "value": "0.458 vs 0.436",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "Same, LLaMA-3-8B",
+        "value": "0.467 vs 0.440",
+        "src": "paper Table 2"
+      },
+      {
+        "label": "Same, Qwen3-8B",
+        "value": "0.454 vs 0.425",
+        "src": "paper Table 7"
+      },
+      {
+        "label": "NQ Span EM with top-3 passages, CARE vs RAG (Mistral)",
+        "value": "0.504 vs 0.481",
+        "src": "paper Table 8"
+      },
+      {
+        "label": "Latency per query (Mistral, NQ)",
+        "value": "CARE 1.19 s (0.06 s encoding) vs RAG 1.07 s",
+        "src": "paper Table 4"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "What replaces the passage",
+        "paper": "the assessor's memory embeddings E_mem are used directly as soft prompts (eq. 2, 5)",
+        "code": "E_mem goes through a trainable 2-layer GELU MLP projector before replacing the placeholder tokens",
+        "src": "modeling_icae.py L40-L54, L156-L171",
+        "url": "https://github.com/eunseongc/CARE/blob/ccb5fe4925b6919ff3c58ce8307949d3a79cb82b/src/model/ICAE/modeling_icae.py#L156-L171"
+      },
+      {
+        "topic": "KL direction",
+        "paper": "KL(P_student ‖ P_teacher) (eq. 9)",
+        "code": "KLDivLoss(log P_student, P_teacher), i.e. KL(P_teacher ‖ P_student)",
+        "src": "language_modeling/utils.py L28-L50",
+        "url": "https://github.com/eunseongc/CARE/blob/ccb5fe4925b6919ff3c58ce8307949d3a79cb82b/src/language_modeling/utils.py#L28-L50"
+      },
+      {
+        "topic": "Mistral fine-tuning learning rate",
+        "paper": "2e-5 (Table 10)",
+        "code": "1e-4 in finetune.sh",
+        "src": "finetune.sh L19",
+        "url": "https://github.com/eunseongc/CARE/blob/ccb5fe4925b6919ff3c58ce8307949d3a79cb82b/finetune.sh#L19"
+      },
+      {
+        "topic": "Pretraining batch size",
+        "paper": "batch size 64 (App. A.1)",
+        "code": "total batch 384 in pretrain.sh (fine-tuning uses 64)",
+        "src": "pretrain.sh",
+        "url": "https://github.com/eunseongc/CARE/blob/ccb5fe4925b6919ff3c58ce8307949d3a79cb82b/pretrain.sh"
+      }
+    ],
+    "open_questions": [
+      "No run isolates the conflict-aware training from compressing the passage into 16 embeddings: there is no plain soft-prompt baseline (for example the pretrained assessor alone) evaluated against RAG on the test sets.",
+      "Fine-tuning uses only NQ, so the three open-domain QA sets are close to the training task; on the out-of-domain TruthfulQA and FactKG, CARE is within 0.002 of RAG with Mistral."
+    ],
+    "glance": [
+      {
+        "q": "What is stored?",
+        "a": "Nothing persistent. A static Wikipedia corpus is searched with ColBERTv2; the passage found is turned into 16 soft embeddings for this question only.",
+        "src": "paper §3-4",
+        "url": "https://arxiv.org/pdf/2508.15253"
+      },
+      {
+        "q": "Does the question shape the encoding?",
+        "a": "Yes. The assessor reads 'Question: … Document: …', so the same passage is encoded differently for different questions.",
+        "src": "paper eq. 4; eval data",
+        "url": "https://github.com/eunseongc/CARE/blob/ccb5fe4925b6919ff3c58ce8307949d3a79cb82b/data_preprocess.ipynb"
+      },
+      {
+        "q": "Who decides to ignore a bad passage?",
+        "a": "No explicit decision. The embeddings are trained to carry less influence for misleading passages; the frozen LLM does the rest.",
+        "src": "paper §3.2",
+        "url": "https://arxiv.org/pdf/2508.15253"
+      },
+      {
+        "q": "What does the answer model read?",
+        "a": "An instruction, 16 embeddings where the passage would be, and the question. Never the passage text.",
+        "src": "code run_eval.py L340-L358",
+        "url": "https://github.com/eunseongc/CARE/blob/ccb5fe4925b6919ff3c58ce8307949d3a79cb82b/src/eval/run_eval.py#L340-L358"
+      }
+    ],
+    "flow": [
+      {
+        "n": 1,
+        "round": 1,
+        "title": "Retrieve one passage",
+        "actor": "retriever",
+        "method": "late-interaction retriever",
+        "model": "ColBERTv2",
+        "in": "question",
+        "out": "top-1 Wikipedia passage",
+        "sees": "Question vs indexed passages; results are precomputed in the released data.",
+        "params": {
+          "k": "1"
+        },
+        "src": "paper §4; run_eval.py L408-L416",
+        "url": "https://github.com/eunseongc/CARE/blob/ccb5fe4925b6919ff3c58ce8307949d3a79cb82b/src/eval/run_eval.py#L408-L416",
+        "short": "Retrieve",
+        "count": "corpus → 1"
+      },
+      {
+        "n": 2,
+        "round": 1,
+        "title": "Encode question + passage",
+        "actor": "llm",
+        "method": "LLM + LoRA forward pass with 16 memory tokens, then MLP projector",
+        "model": "context assessor (Mistral-7B-Instruct, LLaMA-3-8B-Instruct or Qwen3-8B + LoRA)",
+        "in": "'Question: q / Document: passage', ≤180 tokens",
+        "out": "16 embeddings",
+        "sees": "The question and the passage together, so reliability can depend on the question.",
+        "params": {
+          "K": "16"
+        },
+        "src": "modeling_icae.py L125-L171",
+        "url": "https://github.com/eunseongc/CARE/blob/ccb5fe4925b6919ff3c58ce8307949d3a79cb82b/src/model/ICAE/modeling_icae.py#L125-L171",
+        "short": "Encode",
+        "count": "≤180 tokens → 16"
+      },
+      {
+        "n": 3,
+        "round": 0,
+        "title": "Answer",
+        "actor": "llm",
+        "method": "LLM generation, adapter off, greedy",
+        "model": "the same base LLM, frozen",
+        "in": "instruction + 16 embeddings + question",
+        "out": "answer (≤30 tokens)",
+        "sees": "The 16 embeddings in place of the background passage, and the question as text.",
+        "params": {
+          "max new tokens": "30"
+        },
+        "src": "run_eval.py L340-L358; modeling_icae.py L285-L290",
+        "url": "https://github.com/eunseongc/CARE/blob/ccb5fe4925b6919ff3c58ce8307949d3a79cb82b/src/model/ICAE/modeling_icae.py#L285-L290",
+        "short": "Answer",
+        "count": "16 + question → answer"
+      }
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 264",
+        "body": "<rect class=\"gi-ev\" x=\"4\" y=\"34\" width=\"96\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"52.0\" y=\"56.0\" text-anchor=\"middle\">Question</text><text class=\"fig-s\" x=\"52.0\" y=\"69.0\" text-anchor=\"middle\">+ passage</text><text class=\"fig-s\" x=\"52\" y=\"96\" text-anchor=\"middle\">≤ 180 tokens</text><text class=\"fig-s\" x=\"52\" y=\"110\" text-anchor=\"middle\">+ 16 memory tokens</text><rect class=\"gi-w\" x=\"6\" y=\"116\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"18\" y=\"116\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"30\" y=\"116\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"42\" y=\"116\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"54\" y=\"116\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"66\" y=\"116\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"78\" y=\"116\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"90\" y=\"116\" width=\"10\" height=\"10\" rx=\"2\"/><path class=\"gi-a\" d=\"M100 52 L117 52\"/><polygon class=\"gi-ah\" points=\"124,52 117,48 117,56\"/><path class=\"gi-a\" d=\"M102 121 L112 121 L112 72\"/><path class=\"gi-a\" d=\"M112 72 L117 72\"/><polygon class=\"gi-ah\" points=\"124,72 117,68 117,76\"/><rect class=\"gi-llm\" x=\"124\" y=\"30\" width=\"100\" height=\"56\" rx=\"8\"/><text class=\"fig-t\" x=\"174.0\" y=\"51.0\" text-anchor=\"middle\">Assessor</text><text class=\"fig-s\" x=\"174.0\" y=\"64.0\" text-anchor=\"middle\">base LLM</text><text class=\"fig-s\" x=\"174.0\" y=\"76.0\" text-anchor=\"middle\">+ LoRA</text><path class=\"gi-a\" d=\"M224 58 L239 58\"/><polygon class=\"gi-ah\" points=\"246,58 239,54 239,62\"/><rect class=\"gi-f\" x=\"246\" y=\"34\" width=\"76\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"284.0\" y=\"56.0\" text-anchor=\"middle\">16 states</text><text class=\"fig-s\" x=\"284.0\" y=\"69.0\" text-anchor=\"middle\">last layer</text><path class=\"gi-a\" d=\"M322 58 L337 58\"/><polygon class=\"gi-ah\" points=\"344,58 337,54 337,62\"/><rect class=\"gi-f\" x=\"344\" y=\"34\" width=\"80\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"384.0\" y=\"56.0\" text-anchor=\"middle\">Projector</text><text class=\"fig-s\" x=\"384.0\" y=\"69.0\" text-anchor=\"middle\">2-layer MLP</text><text class=\"fig-s\" x=\"384\" y=\"96\" text-anchor=\"middle\">code only</text><path class=\"gi-a\" d=\"M424 58 L439 58\"/><polygon class=\"gi-ah\" points=\"446,58 439,54 439,62\"/><rect class=\"gi-v fig-soft\" x=\"446\" y=\"34\" width=\"110\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"501.0\" y=\"56.0\" text-anchor=\"middle\">16 embeddings</text><text class=\"fig-s\" x=\"501.0\" y=\"69.0\" text-anchor=\"middle\">stand in for passage</text><text class=\"fig-s\" x=\"501\" y=\"100\" text-anchor=\"middle\">pretrained first to</text><text class=\"fig-s\" x=\"501\" y=\"112\" text-anchor=\"middle\">rebuild 2M Wikipedia</text><text class=\"fig-s\" x=\"501\" y=\"124\" text-anchor=\"middle\">passages</text><line class=\"gi-e d\" x1=\"4\" y1=\"136\" x2=\"556\" y2=\"136\"/><text class=\"fig-t\" x=\"4\" y=\"152\" text-anchor=\"start\">Fine-tuning on NQ train</text><polygon class=\"gi-llm\" points=\"74,168 136,196 74,224 12,196\"/><text class=\"fig-t\" x=\"74\" y=\"194\" text-anchor=\"middle\">Closed-book</text><text class=\"fig-s\" x=\"74\" y=\"207\" text-anchor=\"middle\">correct?</text><path class=\"gi-a\" d=\"M136 196 L154 196 L154 178\"/><path class=\"gi-a\" d=\"M154 178 L163 178\"/><polygon class=\"gi-ah\" points=\"170,178 163,174 163,182\"/><path class=\"gi-a\" d=\"M154 196 L154 222\"/><path class=\"gi-a\" d=\"M154 222 L163 222\"/><polygon class=\"gi-ah\" points=\"170,222 163,218 163,226\"/><text class=\"fig-yes\" x=\"140\" y=\"172\" text-anchor=\"start\">Yes</text><text class=\"fig-no\" x=\"140\" y=\"240\" text-anchor=\"start\">No</text><rect class=\"gi-ev\" x=\"170\" y=\"162\" width=\"170\" height=\"32\" rx=\"8\"/><text class=\"fig-t\" x=\"255.0\" y=\"182.0\" text-anchor=\"middle\">hard negative passage</text><path class=\"gi-a\" d=\"M340 178 L349 178\"/><polygon class=\"gi-ah\" points=\"356,178 349,174 349,182\"/><rect class=\"gi-f\" x=\"356\" y=\"162\" width=\"200\" height=\"32\" rx=\"8\"/><text class=\"fig-t\" x=\"456.0\" y=\"182.0\" text-anchor=\"middle\">teacher: LLM, no passage</text><rect class=\"gi-ev\" x=\"170\" y=\"206\" width=\"170\" height=\"32\" rx=\"8\"/><text class=\"fig-t\" x=\"255.0\" y=\"226.0\" text-anchor=\"middle\">passage with the answer</text><path class=\"gi-a\" d=\"M340 222 L349 222\"/><polygon class=\"gi-ah\" points=\"356,222 349,218 349,226\"/><rect class=\"gi-f\" x=\"356\" y=\"206\" width=\"200\" height=\"32\" rx=\"8\"/><text class=\"fig-t\" x=\"456.0\" y=\"226.0\" text-anchor=\"middle\">teacher: LLM + raw passage</text><text class=\"fig-s\" x=\"280\" y=\"258\" text-anchor=\"middle\">Student: frozen LLM reading the 16 embeddings. Loss: LM + λ·KL to the teacher (λ 2 or 4)</text>",
+        "text": [
+          "For each question the retrieved passage, prefixed by the question, is run through a LoRA copy of the LLM with 16 memory tokens; their hidden states become 16 soft embeddings.",
+          "Fine-tuning pairs a hard negative with questions the LLM already answers and a helpful passage with the rest, and distils toward the LLM without or with the raw passage."
+        ],
+        "src": "paper §3, Fig. 3, §4; code modeling_icae.py L125-L171, utils.py L481-L495, L612-L618",
+        "url": "https://github.com/eunseongc/CARE/blob/ccb5fe4925b6919ff3c58ce8307949d3a79cb82b/src/model/ICAE/modeling_icae.py#L125-L171"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 244",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"34\" width=\"76\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"42.0\" y=\"62.0\" text-anchor=\"middle\">Question</text><rect class=\"gi-v fig-soft\" x=\"94\" y=\"34\" width=\"76\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"132.0\" y=\"56.0\" text-anchor=\"middle\">ColBERTv2</text><text class=\"fig-s\" x=\"132.0\" y=\"69.0\" text-anchor=\"middle\">Wikipedia</text><rect class=\"gi-ev\" x=\"184\" y=\"34\" width=\"76\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"222.0\" y=\"56.0\" text-anchor=\"middle\">Top-1</text><text class=\"fig-s\" x=\"222.0\" y=\"69.0\" text-anchor=\"middle\">passage</text><rect class=\"gi-llm\" x=\"274\" y=\"34\" width=\"76\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"312.0\" y=\"56.0\" text-anchor=\"middle\">Assessor</text><text class=\"fig-s\" x=\"312.0\" y=\"69.0\" text-anchor=\"middle\">Q + passage</text><rect class=\"gi-llm\" x=\"364\" y=\"34\" width=\"76\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"402.0\" y=\"56.0\" text-anchor=\"middle\">Base LLM</text><text class=\"fig-s\" x=\"402.0\" y=\"69.0\" text-anchor=\"middle\">frozen</text><path class=\"gi-a\" d=\"M80 58 L87 58\"/><polygon class=\"gi-ah\" points=\"94,58 87,54 87,62\"/><path class=\"gi-a\" d=\"M170 58 L177 58\"/><polygon class=\"gi-ah\" points=\"184,58 177,54 177,62\"/><path class=\"gi-a\" d=\"M260 58 L267 58\"/><polygon class=\"gi-ah\" points=\"274,58 267,54 267,62\"/><path class=\"gi-a\" d=\"M350 58 L357 58\"/><polygon class=\"gi-ah\" points=\"364,58 357,54 357,62\"/><path class=\"gi-a\" d=\"M440 58 L447 58\"/><polygon class=\"gi-ah\" points=\"454,58 447,54 447,62\"/><rect class=\"gi-hi\" x=\"454\" y=\"34\" width=\"102\" height=\"48\" rx=\"8\"/><text class=\"fig-t\" x=\"505.0\" y=\"56.0\" text-anchor=\"middle\">Answer</text><text class=\"fig-s\" x=\"505.0\" y=\"69.0\" text-anchor=\"middle\">≤ 30 new tokens</text><text class=\"fig-s\" x=\"312\" y=\"96\" text-anchor=\"middle\">→ 16 embeddings</text><path class=\"gi-a\" d=\"M42 82 L42 120 L402 120\"/><path class=\"gi-a\" d=\"M402 120 L402 89\"/><polygon class=\"gi-ah\" points=\"402,82 406,89 398,89\"/><text class=\"fig-s\" x=\"222\" y=\"136\" text-anchor=\"middle\">the question also goes into the LLM prompt, after the 16 embeddings</text><rect class=\"gi-ev\" x=\"40\" y=\"158\" width=\"225\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"152.5\" y=\"176.0\" text-anchor=\"middle\">Passage helps</text><text class=\"fig-s\" x=\"152.5\" y=\"189.0\" text-anchor=\"middle\">embeddings steer to it</text><rect class=\"gi-ev d\" x=\"295\" y=\"158\" width=\"225\" height=\"40\" rx=\"8\"/><text class=\"fig-t\" x=\"407.5\" y=\"176.0\" text-anchor=\"middle\">Passage misleads</text><text class=\"fig-s\" x=\"407.5\" y=\"189.0\" text-anchor=\"middle\">LLM leans on its own knowledge</text><text class=\"fig-yes\" x=\"152\" y=\"214\" text-anchor=\"middle\">trained on questions the LLM got wrong</text><text class=\"fig-no\" x=\"408\" y=\"214\" text-anchor=\"middle\">trained on questions it got right</text><text class=\"fig-s\" x=\"280\" y=\"234\" text-anchor=\"middle\">No gate or second pass: one assessor forward pass per passage (0.06 s)</text>",
+        "text": [
+          "ColBERTv2 fetches the top-1 Wikipedia passage; the assessor turns question and passage into 16 embeddings that replace the passage in the frozen LLM's prompt.",
+          "Nothing decides whether to use the passage: the embeddings are trained to be weak when the passage misleads, so the LLM falls back on what it knows."
+        ],
+        "src": "paper §4, Table 4; code run_eval.py L232-L266, L340-L416",
+        "url": "https://github.com/eunseongc/CARE/blob/ccb5fe4925b6919ff3c58ce8307949d3a79cb82b/src/eval/run_eval.py#L340-L416"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Embeddings per passage",
+        "value": "16",
+        "src": "paper §4",
+        "section": "construction"
+      },
+      {
+        "label": "Assessor input",
+        "value": "question + passage, ≤ 180 tokens",
+        "src": "code run_eval.py L262-L266 (eval truncation); paper App. A.1 gives 180 for pretraining, 1,024 for fine-tuning",
+        "section": "construction"
+      },
+      {
+        "label": "Pretraining",
+        "value": "2M Wikipedia passages, 1 epoch, about 25 h on 2 A100 (LLaMA)",
+        "src": "paper §4, App. A.1",
+        "section": "construction"
+      },
+      {
+        "label": "Fine-tuning",
+        "value": "NQ train (79,133 questions), 2 epochs, about 3 h",
+        "src": "paper Table 9, App. A.1",
+        "section": "construction"
+      },
+      {
+        "label": "Passages retrieved",
+        "value": "top-1, ColBERTv2",
+        "src": "paper §4",
+        "section": "method"
+      },
+      {
+        "label": "KL weight λ",
+        "value": "2 Mistral · 4 LLaMA · 2 Qwen",
+        "src": "paper Table 10",
+        "section": "method"
+      },
+      {
+        "label": "Latency per query",
+        "value": "1.19 s vs 1.07 s for RAG (Mistral, NQ)",
+        "src": "paper Table 4",
+        "section": "results"
+      },
+      {
+        "label": "Encoding cost",
+        "value": "0.06 s per query",
+        "src": "paper Table 4",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "NQ dev (all)",
+        "Resilience",
+        "Boost"
+      ],
+      "rows": [
+        [
+          "Full CARE",
+          "0.438",
+          "0.766",
+          "0.291"
+        ],
+        [
+          "positive passages only",
+          "0.414",
+          "0.696",
+          "0.287"
+        ],
+        [
+          "hard negatives only",
+          "0.290",
+          "0.776",
+          "0.071"
+        ],
+        [
+          "random split instead of closed-book correctness",
+          "0.431",
+          "0.792",
+          "0.269"
+        ],
+        [
+          "random instead of hard negatives",
+          "0.414",
+          "0.727",
+          "0.273"
+        ],
+        [
+          "without reconstruction pretraining",
+          "0.347",
+          "0.804",
+          "0.140"
+        ],
+        [
+          "without LM loss",
+          "0.405",
+          "0.726",
+          "0.260"
+        ],
+        [
+          "without KD loss",
+          "0.403",
+          "0.695",
+          "0.272"
+        ]
+      ],
+      "src": "paper Table 3 (Span EM on the NQ validation subset; Resilience = questions answered correctly closed-book, 6,058; Boost = the rest, 2,734)"
+    },
+    "components": [
+      {
+        "role": "Retrieve",
+        "model": "ColBERTv2, top-1 from Wikipedia",
+        "kind": "retriever",
+        "src": "paper §4"
+      },
+      {
+        "role": "Context assessor (writes the embeddings)",
+        "model": "base LLM + LoRA + 16 memory tokens (+ MLP projector in code)",
+        "kind": "llm",
+        "src": "paper §3; code modeling_icae.py L40-L171",
+        "url": "https://github.com/eunseongc/CARE/blob/ccb5fe4925b6919ff3c58ce8307949d3a79cb82b/src/model/ICAE/modeling_icae.py#L40-L171"
+      },
+      {
+        "role": "Answer",
+        "model": "base LLM, frozen: Mistral-7B-Instruct-v0.2, LLaMA-3-8B-Instruct, Qwen3-8B",
+        "kind": "llm",
+        "src": "paper §4, App. B"
+      },
+      {
+        "role": "Training labels (closed-book correctness) and teacher",
+        "model": "the same frozen base LLM",
+        "kind": "llm",
+        "src": "paper §3.2"
+      }
+    ],
+    "discussion": {
+      "takeaway": "Instead of deciding whether to trust a retrieved passage, CARE compresses it into a few soft embeddings trained to carry that trust, so a frozen LLM can ignore misleading context yet still use helpful context. It beats RAG and other conflict methods on average without fine-tuning the LLM.",
+      "claims": [
+        {
+          "claim": "Best average among methods that leave the LLM unchanged.",
+          "evidence": "Average 0.458 vs 0.436 RAG and 0.435 Priori Judgment (Mistral); 0.467 vs 0.440 and 0.453 (LLaMA). Table 2, §5.1."
+        },
+        {
+          "claim": "Fine-tuning the LLM itself hurts other tasks.",
+          "evidence": "Direct FT and RetRobust drop on TruthfulQA (Mistral F1 0.102 / 0.152 vs CARE 0.279) and Direct FT on FactKG with LLaMA (0.305). Table 2."
+        },
+        {
+          "claim": "Soft reliance beats a hard retrieve-or-not decision.",
+          "evidence": "With Mistral, +5.29% over the best adaptive-retrieval baseline (Priori Judgment 0.435 vs 0.458); Adaptive-RAG averages 0.427. §5.1, Table 2."
+        },
+        {
+          "claim": "Both kinds of supervision are needed, and pretraining is essential.",
+          "evidence": "Positives only: Resilience 0.696; negatives only: Boost 0.071; no pretraining: 0.347 vs 0.438 overall. Table 3."
+        },
+        {
+          "claim": "Cheap at inference.",
+          "evidence": "1.19 s per query vs 1.07 s RAG and 2.10 s Priori Judgment. Table 4."
+        },
+        {
+          "claim": "Carries over to another LLM and to three passages.",
+          "evidence": "Qwen3-8B 0.454 vs 0.425 RAG (Table 7); top-3 NQ 0.504 vs 0.481 (Table 8)."
+        }
+      ],
+      "limits": [
+        "Only the top-1 passage and single-step answering are studied; conflicts among passages and within reasoning are left out (top-3 is a preliminary test).",
+        "A fixed budget of 16 embeddings suits short Wikipedia passages but may be too small for longer contexts.",
+        "Closed-book correctness is a noisy proxy for whether the LLM knows the answer."
+      ],
+      "limits_src": "paper §7 Limitations",
+      "reading": [
+        "There is no persistent memory: the corpus is fixed and the soft context is rebuilt per question, so CARE is a way of reading retrieved evidence rather than of storing it.",
+        "The assessor sees the question with the passage (eq. 4; the released test file prefixes every passage with its question), so the same passage gets different embeddings for different questions.",
+        "Training uses NQ only. Gains are largest on the open-domain QA sets; with Mistral, CARE is 0.638 vs 0.639 for RAG on FactKG and 0.279 vs 0.277 F1 on TruthfulQA.",
+        "With LLaMA on WebQA the closed-book model (0.465) beats every retrieval method, CARE included (0.445).",
+        "All runs use a single seed (App. A.1), and several baselines were adapted (Adaptive-RAG relabelled to a binary retrieve decision, Priori Judgment used in its RAG setting; App. A.3)."
+      ]
+    },
+    "abstract": {
+      "text": "When a retrieved passage contradicts what an LLM already knows correctly, standard RAG tends to follow the passage and get the answer wrong. CARE adds a context assessor, a LoRA-tuned copy of the base LLM that turns the question and passage into a few soft memory embeddings placed in the prompt instead of the passage. The assessor is first pretrained to reconstruct passages, then fine-tuned with helpful passages for questions the LLM cannot answer alone and hard negatives for questions it can, so the embeddings learn to signal how far to trust the passage. The base LLM is never fine-tuned, and CARE improves average results by about 5% over RAG across QA and fact-checking benchmarks.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2508.15253"
+    },
+    "sections": {
+      "Memory architecture": "§3",
+      "Results": "§5.1-5.2, App. B-C",
+      "Ablation": "§5.3 (Table 3)",
+      "Discussion": "§5.4-5.5, §7 Limitations",
+      "Details": "§4, App. A"
+    }
+  }
+}

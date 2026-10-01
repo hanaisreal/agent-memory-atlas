@@ -1,0 +1,549 @@
+{
+  "id": "icae",
+  "name": "In-Context Autoencoder (ICAE)",
+  "paper": {
+    "title": "In-context Autoencoder for Context Compression in a Large Language Model",
+    "arxiv": "2307.06945",
+    "url": "https://arxiv.org/abs/2307.06945",
+    "venue": "ICLR 2024",
+    "venue_short": "ICLR",
+    "track": "main",
+    "year": 2024,
+    "code": "https://github.com/getao/icae"
+  },
+  "design": {
+    "construction": {
+      "unit": "span of k memory slots (continuous vectors) encoding one context",
+      "kept_as": "compressed: k = 128 hidden-state vectors per ≤512-token context",
+      "processing": "LoRA-adapted copy of the LLM reads the context plus k learnable memory tokens; the final hidden states at the memory positions are the slots",
+      "trigger": "other",
+      "writer": "ICAE encoder: target LLM + LoRA (query, value) + memory-token embeddings, trained by autoencoding, text continuation and instruction fine-tuning"
+    },
+    "organization": {
+      "structure": "one fixed-length span per context; long inputs are split into chunks whose spans are concatenated",
+      "stores": "none beyond the slots, which can be cached for reuse",
+      "index": null
+    },
+    "management": {
+      "operations": "none; slots are produced once per context",
+      "conflicts": null,
+      "forgetting": null,
+      "timing": "none"
+    },
+    "retrieval": {
+      "query": "none; the prompt is appended after the slots",
+      "candidates": "all slots",
+      "selection": "none",
+      "budget": "k = 128 slots for up to 512 tokens (4x); k = 32, 64, 256 also tested"
+    },
+    "use": {
+      "context": "memory slots followed by the prompt; the original tokens are not given",
+      "reasoning": "single generation by the frozen target LLM"
+    },
+    "control": {
+      "construction": "learned-sft",
+      "management": "none",
+      "retrieval": "none"
+    }
+  },
+  "classify": {
+    "structure": "flat",
+    "index": "none",
+    "management": "append-only",
+    "candidates": "read everything",
+    "decides": "reads everything",
+    "note": "A context compressor rather than a searchable store: the decoder always reads every slot, and multi-span inputs only concatenate spans."
+  },
+  "tags": {
+    "fidelity": "compressed",
+    "structure": [
+      "flat"
+    ],
+    "write_time": [
+      "learned"
+    ],
+    "selection": [
+      "full-context"
+    ],
+    "memory_type": [
+      "working"
+    ],
+    "learning": "sft",
+    "domain": [
+      "long-document",
+      "general"
+    ]
+  },
+  "stages": {
+    "ingestion": "A context of up to 512 tokens (training maximum) is taken as is; longer inputs are cut into chunks that are compressed one by one (§3.3.3).",
+    "construction": "k learnable memory tokens are appended to the context and run through the LLM with a LoRA adapter on the query and value projections; the last-layer hidden states at those k positions are the memory slots (k = 128 by default).",
+    "organization": "One span of slots per context; for long inputs the chunk spans are concatenated in order.",
+    "update": "",
+    "retrieval": "No retrieval: the decoder receives every slot.",
+    "answer": "The untouched target LLM reads the slots followed by the prompt (wrapped in a fine-tuning marker token in the code) and generates the response.",
+    "learning": "The encoder (LoRA + memory-token embeddings, about 1% extra parameters) is pretrained on the Pile with autoencoding and text continuation, then fine-tuned on 240k PwC (context, prompt, response) triples; the decoder LLM stays frozen."
+  },
+  "summary": "Compresses a context into 128 memory slots with a LoRA-tuned copy of the LLM, pretrained by autoencoding and continuation so the unchanged LLM can read the slots in place of the original 512 tokens (4x).",
+  "verified": false,
+  "notes": "Venue: the arXiv v4 PDF header reads 'Published as a conference paper at ICLR 2024' and the arXiv comment says 'Final camera ready for ICLR'24'; the repo README links OpenReview uREj4ZuGJE. The OpenReview page itself could not be opened (bot challenge), so poster vs spotlight is not recorded. Code: github.com/getao/icae at 469a4688 (2024-05-11). icae_v1 holds the Llama model and fine-tuned inference used in the paper; icae_v2 (Mistral-7B, multi-span, released March-April 2024) is later than the paper's experiments. Text read from the arXiv v4 PDF with pdftotext.",
+  "mechanism": {
+    "sources": {
+      "paper": "arXiv 2307.06945v4 (PDF read 2026-09-30)",
+      "code": "https://github.com/getao/icae/tree/469a46886a92dd5e76b2d12a8bac0fb7ed7d4cdd/",
+      "code_note": "Latest commit (2024-05-11). code/icae_v1 is the Llama-2-7b-chat release that the README says is used in the paper: model (llama_icae_modeling.py) and fine-tuned inference (ft_inference.py) only, no Llama pretraining script. code/icae_v2 adds Mistral-7B models, multi-span compression up to 5,120 tokens and pretraining/fine-tuning scripts; it post-dates the paper's runs, so it is cited only for the training recipe. The v1 inference example has a typo (memopry_mask, L79) that stops it from running as written."
+    },
+    "headline": [
+      "The memory is 128 continuous vectors per 512-token context, written by a LoRA-tuned copy of the LLM; the LLM that reads them is left unchanged.",
+      "Nothing is searched: the decoder reads every slot, so ICAE is a context compressor, not a retrieval memory.",
+      "The main quality numbers are GPT-4 pairwise judgements on the authors' own PwC set, not accuracy on an external benchmark."
+    ],
+    "units": [
+      {
+        "name": "Memory span",
+        "role": "the compressed stand-in for one context of up to 512 tokens",
+        "made_by": "ICAE encoder (target LLM + LoRA on q and v, plus memory-token embeddings)",
+        "fields": [
+          {
+            "name": "memory slots",
+            "what": "k = 128 last-layer hidden states taken at the memory-token positions; each has the LLM's hidden size",
+            "kept_as": "derived",
+            "used_for": [
+              "answer"
+            ],
+            "src": "paper §2.1, §3.1; code llama_icae_modeling.py L148-L152",
+            "url": "https://github.com/getao/icae/blob/469a46886a92dd5e76b2d12a8bac0fb7ed7d4cdd/code/icae_v1/llama_icae_modeling.py#L148-L152"
+          },
+          {
+            "name": "original context",
+            "what": "the input tokens; read only by the encoder and not passed to the decoder",
+            "kept_as": "verbatim",
+            "used_for": [],
+            "src": "paper §2.1; code ft_inference.py L95-L104",
+            "url": "https://github.com/getao/icae/blob/469a46886a92dd5e76b2d12a8bac0fb7ed7d4cdd/code/icae_v1/ft_inference.py#L95-L104"
+          }
+        ]
+      }
+    ],
+    "write": [
+      {
+        "step": "Append memory tokens",
+        "how": "k learnable memory-token ids are added after the (truncated) context",
+        "params": {
+          "k": "128",
+          "max context": "512 tokens"
+        },
+        "src": "paper §2.1, §3.1; code ft_inference.py L65-L69",
+        "url": "https://github.com/getao/icae/blob/469a46886a92dd5e76b2d12a8bac0fb7ed7d4cdd/code/icae_v1/ft_inference.py#L65-L69"
+      },
+      {
+        "step": "Encode",
+        "how": "one forward pass of the LLM with LoRA switched on (query and value projections); memory tokens use their own embedding table",
+        "params": {
+          "LoRA rank": "128 (paper), 64 default in v1 code"
+        },
+        "src": "paper §3.1; code llama_icae_modeling.py L142-L148, base/modeling_llama_icae.py L306-L308",
+        "url": "https://github.com/getao/icae/blob/469a46886a92dd5e76b2d12a8bac0fb7ed7d4cdd/code/icae_v1/llama_icae_modeling.py#L142-L148"
+      },
+      {
+        "step": "Take the slots",
+        "how": "the final hidden states at the k memory positions become the memory span",
+        "out": "128 vectors in place of up to 512 tokens",
+        "src": "code llama_icae_modeling.py L149-L152",
+        "url": "https://github.com/getao/icae/blob/469a46886a92dd5e76b2d12a8bac0fb7ed7d4cdd/code/icae_v1/llama_icae_modeling.py#L149-L152"
+      },
+      {
+        "step": "Chunk long input",
+        "how": "a long context is cut into chunks, each compressed separately, and the spans are concatenated; this needs a few multi-span samples in training",
+        "params": {
+          "chunks": "ceil(L / (128 x 4)) in v2 code"
+        },
+        "src": "paper §3.3.3, Fig. 6; code icae_v2/modeling_icae_multi_span.py L157-L160, L228-L261",
+        "url": "https://github.com/getao/icae/blob/469a46886a92dd5e76b2d12a8bac0fb7ed7d4cdd/code/icae_v2/modeling_icae_multi_span.py#L228-L261"
+      }
+    ],
+    "read": [
+      {
+        "step": "Build decoder input",
+        "round": 1,
+        "input": "memory slots + prompt",
+        "how": "slots are placed first, then the prompt wrapped between two [FT] marker tokens",
+        "src": "code ft_inference.py L89-L104",
+        "url": "https://github.com/getao/icae/blob/469a46886a92dd5e76b2d12a8bac0fb7ed7d4cdd/code/icae_v1/ft_inference.py#L89-L104"
+      },
+      {
+        "step": "Generate",
+        "round": 1,
+        "input": "decoder input",
+        "how": "the target LLM with LoRA disabled decodes greedily until end of sequence",
+        "params": {
+          "max new tokens": "512"
+        },
+        "src": "code ft_inference.py L112-L130; llama_icae_modeling.py L157",
+        "url": "https://github.com/getao/icae/blob/469a46886a92dd5e76b2d12a8bac0fb7ed7d4cdd/code/icae_v1/ft_inference.py#L112-L130"
+      }
+    ],
+    "answer_context": {
+      "sees": "128 memory slots and the prompt",
+      "format": "[128 slots] [FT] prompt [FT] (v1); <s>[INST] [slots] [FT] prompt [/INST] in the Mistral v2 release",
+      "excludes": [
+        "original context tokens"
+      ],
+      "includes": [
+        "memory slots produced by the encoder",
+        "the prompt as ordinary tokens"
+      ],
+      "src": "code icae_v1/ft_inference.py L89-L104; icae_v2/fine_tuned_inference.py L58-L69",
+      "url": "https://github.com/getao/icae/blob/469a46886a92dd5e76b2d12a8bac0fb7ed7d4cdd/code/icae_v1/ft_inference.py#L89-L104"
+    },
+    "compression": [
+      {
+        "what": "memory slots vs one context (default)",
+        "kept": 128,
+        "of": 512,
+        "unit": "slots vs tokens",
+        "basis": "k = 128 slots for a maximum of 512 context tokens (§3.1); PwC test contexts are mostly over 500 tokens (Fig. 10)",
+        "src": "paper §3.1, Fig. 10",
+        "url": "https://arxiv.org/pdf/2307.06945"
+      },
+      {
+        "what": "multi-span memory vs a long context",
+        "kept": 1024,
+        "of": 4096,
+        "unit": "slots vs tokens",
+        "basis": "Fig. 6 caption: 1024 slots obtained by compressing 4096 tokens",
+        "src": "paper Fig. 6",
+        "url": "https://arxiv.org/pdf/2307.06945"
+      },
+      {
+        "what": "trainable parameters added",
+        "kept": null,
+        "of": null,
+        "unit": null,
+        "basis": "Stated only as about 1% of the target LLM (§3.1); no exact count is given.",
+        "src": "paper §3.1",
+        "url": "https://arxiv.org/pdf/2307.06945"
+      }
+    ],
+    "numbers": [
+      {
+        "label": "Autoencoding BLEU, 512 → 128 (Llama-7b / Llama-2-7b / Llama-2-13b)",
+        "value": "99.1 / 99.5 / 99.8",
+        "src": "paper Table 6"
+      },
+      {
+        "label": "Continuation perplexity, original vs 128 slots (512 → 128, Llama-7b)",
+        "value": "9.01 vs 9.50 (+0.49)",
+        "src": "paper Table 1"
+      },
+      {
+        "label": "Llama-2-7b-chat + ICAE (k=128) vs same LLM with original context",
+        "value": "win 19.6, lose 45.4, tie 35.0",
+        "src": "paper Table 4"
+      },
+      {
+        "label": "Latency, 8×2048 input, Llama-7b",
+        "value": "24.0 s → 7.3 s (3.3×)",
+        "src": "paper Table 7"
+      },
+      {
+        "label": "Pretrained vs non-pretrained ICAE (k=128)",
+        "value": "win 60.4, lose 9.5",
+        "src": "paper Table 5"
+      }
+    ],
+    "paper_vs_code": [
+      {
+        "topic": "LoRA rank",
+        "paper": "r = 128 by default (§3.1)",
+        "code": "v1 ModelArguments default lora_r = 64 (no run script given); v2 scripts use r = 512 for Mistral",
+        "src": "llama_icae_modeling.py L37-L40; icae_v2/fine_tuned_inference_script.sh",
+        "url": "https://github.com/getao/icae/blob/469a46886a92dd5e76b2d12a8bac0fb7ed7d4cdd/code/icae_v1/llama_icae_modeling.py#L37-L40"
+      },
+      {
+        "topic": "Mixing the two pretraining objectives",
+        "paper": "weighted loss λ·AE + (1-λ)·LM, best λ 0.4-0.6 (footnote 3)",
+        "code": "v2 picks autoencoding or continuation per sample with probability lm_ratio; the first 8 continuation tokens get no loss",
+        "src": "icae_v2/training_utils.py L60-L123",
+        "url": "https://github.com/getao/icae/blob/469a46886a92dd5e76b2d12a8bac0fb7ed7d4cdd/code/icae_v2/training_utils.py#L60-L123"
+      },
+      {
+        "topic": "Released training code",
+        "paper": "Llama models pretrained on the Pile, fine-tuned on PwC",
+        "code": "v1 (Llama) has no pretraining script; training scripts exist only for the later Mistral v2",
+        "src": "code/icae_v1, code/icae_v2/pretrain.py",
+        "url": "https://github.com/getao/icae/blob/469a46886a92dd5e76b2d12a8bac0fb7ed7d4cdd/code/icae_v2/pretrain.py"
+      }
+    ],
+    "open_questions": [
+      "PwC contexts are about 512 tokens and training stops at 512, so the long-context case rests on perplexity (Fig. 6) rather than a downstream task.",
+      "Against the same LLM reading the original context (Table 4), ICAE at k = 128 loses more often than it wins; the Alpaca and StableLM wins compare different models."
+    ],
+    "glance": [
+      {
+        "q": "What is one memory item?",
+        "a": "A span of 128 vectors: the encoder's final hidden states at 128 appended memory tokens, standing in for up to 512 context tokens.",
+        "src": "paper §2.1, §3.1",
+        "url": "https://arxiv.org/pdf/2307.06945"
+      },
+      {
+        "q": "Who writes it?",
+        "a": "The same LLM with a LoRA adapter on the query and value projections, trained to make the slots useful to the frozen LLM.",
+        "src": "paper §2.1, §3.1",
+        "url": "https://arxiv.org/pdf/2307.06945"
+      },
+      {
+        "q": "Is anything searched?",
+        "a": "No. Every slot goes to the decoder; long inputs become several spans laid side by side.",
+        "src": "paper §3.3.3",
+        "url": "https://arxiv.org/pdf/2307.06945"
+      },
+      {
+        "q": "What does the answer model read?",
+        "a": "The slots, then the prompt. The original text is not given to it.",
+        "src": "code ft_inference.py L89-L104",
+        "url": "https://github.com/getao/icae/blob/469a46886a92dd5e76b2d12a8bac0fb7ed7d4cdd/code/icae_v1/ft_inference.py#L89-L104"
+      }
+    ],
+    "flow": [
+      {
+        "n": 1,
+        "round": 1,
+        "title": "Compress the context",
+        "actor": "llm",
+        "method": "LLM + LoRA forward pass over context + 128 memory tokens",
+        "model": "target LLM (Llama-7b, Llama-2-7b-chat, Llama-2-13b-chat in the paper) + LoRA",
+        "in": "context, up to 512 tokens",
+        "out": "128 memory slots",
+        "sees": "The whole context and the memory tokens in one causal pass; the prompt is not seen, so the slots do not depend on the question.",
+        "params": {
+          "k": "128"
+        },
+        "src": "llama_icae_modeling.py L142-L152",
+        "url": "https://github.com/getao/icae/blob/469a46886a92dd5e76b2d12a8bac0fb7ed7d4cdd/code/icae_v1/llama_icae_modeling.py#L142-L152",
+        "short": "Compress",
+        "count": "512 tokens → 128 slots"
+      },
+      {
+        "n": 2,
+        "round": 0,
+        "title": "Answer",
+        "actor": "llm",
+        "method": "LLM generation, LoRA off",
+        "model": "the frozen target LLM",
+        "in": "128 slots + prompt",
+        "out": "response",
+        "sees": "The slots followed by the prompt between [FT] markers; no original text.",
+        "params": {
+          "decoding": "greedy, up to 512 tokens"
+        },
+        "src": "ft_inference.py L89-L130",
+        "url": "https://github.com/getao/icae/blob/469a46886a92dd5e76b2d12a8bac0fb7ed7d4cdd/code/icae_v1/ft_inference.py#L89-L130",
+        "short": "Answer",
+        "count": "128 slots → answer"
+      }
+    ],
+    "figures": [
+      {
+        "id": "build",
+        "title": "Memory construction",
+        "viewBox": "0 0 560 240",
+        "body": "<text class=\"fig-t\" x=\"56\" y=\"16\" text-anchor=\"middle\">Context</text><rect class=\"gi-ev\" x=\"10\" y=\"26\" width=\"92\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"18\" y1=\"34.0\" x2=\"88\" y2=\"34.0\"/><rect class=\"gi-ev\" x=\"10\" y=\"46\" width=\"92\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"18\" y1=\"54.0\" x2=\"88\" y2=\"54.0\"/><rect class=\"gi-ev\" x=\"10\" y=\"66\" width=\"92\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"18\" y1=\"74.0\" x2=\"88\" y2=\"74.0\"/><rect class=\"gi-ev\" x=\"10\" y=\"86\" width=\"92\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"18\" y1=\"94.0\" x2=\"88\" y2=\"94.0\"/><rect class=\"gi-ev\" x=\"10\" y=\"106\" width=\"92\" height=\"16\" rx=\"5\"/><line class=\"gi-t\" x1=\"18\" y1=\"114.0\" x2=\"88\" y2=\"114.0\"/><text class=\"fig-s\" x=\"56\" y=\"138\" text-anchor=\"middle\">≤ 512 tokens</text><text class=\"fig-s\" x=\"56\" y=\"160\" text-anchor=\"middle\">+ 128 memory tokens</text><rect class=\"gi-w\" x=\"10\" y=\"168\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"23\" y=\"168\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"36\" y=\"168\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"49\" y=\"168\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"62\" y=\"168\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"75\" y=\"168\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-w\" x=\"88\" y=\"168\" width=\"10\" height=\"10\" rx=\"2\"/><text class=\"fig-s\" x=\"56\" y=\"194\" text-anchor=\"middle\">learned embeddings</text><path class=\"gi-a\" d=\"M104 96 L133 96\"/><polygon class=\"gi-ah\" points=\"140,96 133,92 133,100\"/><path class=\"gi-a\" d=\"M101 173 L128 173 L128 114\"/><path class=\"gi-a\" d=\"M128 114 L133 114\"/><polygon class=\"gi-ah\" points=\"140,114 133,110 133,118\"/><rect class=\"gi-llm\" x=\"140\" y=\"68\" width=\"104\" height=\"56\" rx=\"8\"/><text class=\"fig-t\" x=\"192.0\" y=\"89.0\" text-anchor=\"middle\">Encoder</text><text class=\"fig-s\" x=\"192.0\" y=\"102.0\" text-anchor=\"middle\">same LLM + LoRA</text><text class=\"fig-s\" x=\"192.0\" y=\"114.0\" text-anchor=\"middle\">LoRA on q, v</text><path class=\"gi-a\" d=\"M244 96 L269 96\"/><polygon class=\"gi-ah\" points=\"276,96 269,92 269,100\"/><text class=\"fig-t\" x=\"287\" y=\"36\" text-anchor=\"middle\">128 slots</text><rect class=\"gi-v\" x=\"282\" y=\"46\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"282\" y=\"59\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"282\" y=\"72\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"282\" y=\"85\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"282\" y=\"98\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"282\" y=\"111\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"282\" y=\"124\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"282\" y=\"137\" width=\"10\" height=\"10\" rx=\"2\"/><text class=\"fig-s\" x=\"287\" y=\"168\" text-anchor=\"middle\">last hidden states</text><text class=\"fig-s\" x=\"287\" y=\"181\" text-anchor=\"middle\">at memory positions</text><text class=\"fig-t\" x=\"462\" y=\"16\" text-anchor=\"middle\">Trained so the frozen LLM can</text><rect class=\"gi-f\" x=\"372\" y=\"28\" width=\"180\" height=\"36\" rx=\"8\"/><text class=\"fig-t\" x=\"462.0\" y=\"44.0\" text-anchor=\"middle\">Restore the text</text><text class=\"fig-s\" x=\"462.0\" y=\"57.0\" text-anchor=\"middle\">autoencoding, [AE] token</text><path class=\"gi-a d\" d=\"M300 46 L365 46\"/><polygon class=\"gi-ah\" points=\"372,46 365,42 365,50\"/><rect class=\"gi-f\" x=\"372\" y=\"72\" width=\"180\" height=\"36\" rx=\"8\"/><text class=\"fig-t\" x=\"462.0\" y=\"88.0\" text-anchor=\"middle\">Continue the text</text><text class=\"fig-s\" x=\"462.0\" y=\"101.0\" text-anchor=\"middle\">language modeling</text><path class=\"gi-a d\" d=\"M300 90 L365 90\"/><polygon class=\"gi-ah\" points=\"372,90 365,86 365,94\"/><rect class=\"gi-f\" x=\"372\" y=\"116\" width=\"180\" height=\"36\" rx=\"8\"/><text class=\"fig-t\" x=\"462.0\" y=\"132.0\" text-anchor=\"middle\">Answer a prompt</text><text class=\"fig-s\" x=\"462.0\" y=\"145.0\" text-anchor=\"middle\">fine-tuning on PwC, 240k</text><path class=\"gi-a d\" d=\"M300 134 L365 134\"/><polygon class=\"gi-ah\" points=\"372,134 365,130 365,138\"/><text class=\"fig-s\" x=\"462\" y=\"166\" text-anchor=\"middle\">first two: pretraining on the Pile</text><text class=\"fig-s\" x=\"280\" y=\"216\" text-anchor=\"middle\">Longer input: 512-token chunks, 128 slots each, slots concatenated (§3.3.3)</text><text class=\"fig-s\" x=\"280\" y=\"231\" text-anchor=\"middle\">The original tokens are not passed on; only the slots are.</text>",
+        "text": [
+          "The context is fed to a LoRA-adapted copy of the LLM with 128 extra memory tokens appended; their final hidden states become the memory slots.",
+          "The encoder is pretrained so the frozen LLM can restore or continue the text from the slots, then fine-tuned so it can answer prompts about it."
+        ],
+        "src": "paper §2, §3.1, Fig. 3, 7-8; code icae_v1/llama_icae_modeling.py L142-L152",
+        "url": "https://github.com/getao/icae/blob/469a46886a92dd5e76b2d12a8bac0fb7ed7d4cdd/code/icae_v1/llama_icae_modeling.py#L142-L152"
+      },
+      {
+        "id": "read",
+        "title": "Memory retrieval",
+        "viewBox": "0 0 560 226",
+        "body": "<rect class=\"gi-f\" x=\"4\" y=\"28\" width=\"200\" height=\"74\" rx=\"8\"/><text class=\"fig-t\" x=\"104\" y=\"44\" text-anchor=\"middle\">Decoder input</text><rect class=\"gi-v\" x=\"14\" y=\"58\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"27\" y=\"58\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"40\" y=\"58\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"53\" y=\"58\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"66\" y=\"58\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"79\" y=\"58\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"92\" y=\"58\" width=\"10\" height=\"10\" rx=\"2\"/><rect class=\"gi-v\" x=\"105\" y=\"58\" width=\"10\" height=\"10\" rx=\"2\"/><text class=\"fig-s\" x=\"66\" y=\"86\" text-anchor=\"middle\">128 slots</text><rect class=\"gi-ev\" x=\"128\" y=\"54\" width=\"68\" height=\"20\" rx=\"5\"/><text class=\"fig-s\" x=\"162\" y=\"68\" text-anchor=\"middle\">prompt</text><text class=\"fig-s\" x=\"162\" y=\"88\" text-anchor=\"middle\">[FT] … [FT]</text><path class=\"gi-a\" d=\"M204 65 L229 65\"/><polygon class=\"gi-ah\" points=\"236,65 229,61 229,69\"/><rect class=\"gi-llm\" x=\"236\" y=\"36\" width=\"132\" height=\"58\" rx=\"8\"/><text class=\"fig-t\" x=\"302.0\" y=\"58.0\" text-anchor=\"middle\">Target LLM</text><text class=\"fig-s\" x=\"302.0\" y=\"71.0\" text-anchor=\"middle\">frozen, LoRA off</text><text class=\"fig-s\" x=\"302.0\" y=\"83.0\" text-anchor=\"middle\">Llama-2-7b-chat</text><path class=\"gi-a\" d=\"M368 65 L393 65\"/><polygon class=\"gi-ah\" points=\"400,65 393,61 393,69\"/><rect class=\"gi-hi\" x=\"400\" y=\"36\" width=\"150\" height=\"58\" rx=\"8\"/><text class=\"fig-t\" x=\"475.0\" y=\"63.0\" text-anchor=\"middle\">Response</text><text class=\"fig-s\" x=\"475.0\" y=\"76.0\" text-anchor=\"middle\">greedy decoding</text><text class=\"fig-s\" x=\"4\" y=\"148\" text-anchor=\"start\">original context</text><rect class=\"gi-ev d\" x=\"110\" y=\"138\" width=\"360\" height=\"12\" rx=\"3\"/><text class=\"fig-s\" x=\"476\" y=\"148\" text-anchor=\"start\">512 tokens</text><text class=\"fig-s\" x=\"4\" y=\"170\" text-anchor=\"start\">memory slots</text><rect class=\"gi-v\" x=\"110\" y=\"160\" width=\"90\" height=\"12\" rx=\"3\"/><text class=\"fig-s\" x=\"206\" y=\"170\" text-anchor=\"start\">128 slots (4×)</text><text class=\"fig-s\" x=\"280\" y=\"200\" text-anchor=\"middle\">No search or selection: every slot is read for every prompt.</text><text class=\"fig-s\" x=\"280\" y=\"215\" text-anchor=\"middle\">At equal length, slots made from 4× more text beat raw tokens in perplexity (Fig. 6)</text>",
+        "text": [
+          "There is no search: the 128 slots are placed in front of the prompt and the unchanged LLM generates the answer from them.",
+          "The slots stand in for about 512 context tokens, so the LLM reads a quarter of the input."
+        ],
+        "src": "paper §2.1, §3.3.3, Fig. 6; code icae_v1/ft_inference.py L89-L130",
+        "url": "https://github.com/getao/icae/blob/469a46886a92dd5e76b2d12a8bac0fb7ed7d4cdd/code/icae_v1/ft_inference.py#L89-L130"
+      }
+    ],
+    "key_numbers": [
+      {
+        "label": "Memory slots per context",
+        "value": "128 for ≤ 512 tokens (4×)",
+        "src": "paper §3.1",
+        "section": "construction"
+      },
+      {
+        "label": "Parameters added",
+        "value": "about 1% (LoRA on q, v + memory embeddings)",
+        "src": "paper §3.1",
+        "section": "construction"
+      },
+      {
+        "label": "Training",
+        "value": "pretrain 200k updates on the Pile, fine-tune 30k on PwC, batch 256",
+        "src": "paper Table 8",
+        "section": "construction"
+      },
+      {
+        "label": "PwC data",
+        "value": "240k train / 18k test (context, prompt, response)",
+        "src": "paper §3.1, App. C",
+        "section": "method"
+      },
+      {
+        "label": "Slots read per prompt",
+        "value": "all of them; no selection",
+        "src": "code ft_inference.py L104",
+        "section": "method"
+      },
+      {
+        "label": "Autoencoding BLEU",
+        "value": "99.1 (Llama-7b, 512 → 128)",
+        "src": "paper Table 6",
+        "section": "results"
+      },
+      {
+        "label": "Speed-up",
+        "value": "2.2× to 3.6× total latency (Llama-7b)",
+        "src": "paper Table 7",
+        "section": "results"
+      },
+      {
+        "label": "GPU memory",
+        "value": "about 20 GB saved: 2048 slots in place of 4096 tokens",
+        "src": "paper §3.3.3",
+        "section": "results"
+      }
+    ],
+    "ablation": {
+      "cols": [
+        "win %",
+        "lose %",
+        "tie %"
+      ],
+      "rows": [
+        [
+          "k=128 vs k=64 (both pretrained)",
+          "57.6",
+          "19.5",
+          "22.9"
+        ],
+        [
+          "k=64 vs k=32 (both pretrained)",
+          "44.7",
+          "21.8",
+          "33.5"
+        ],
+        [
+          "k=64 pretrained vs k=128 not pretrained",
+          "33.1",
+          "28.0",
+          "38.9"
+        ],
+        [
+          "k=128 pretrained vs not pretrained",
+          "60.4",
+          "9.5",
+          "30.1"
+        ],
+        [
+          "AE + LM vs AE only",
+          "36.4",
+          "28.5",
+          "35.1"
+        ],
+        [
+          "AE + LM vs LM only",
+          "35.1",
+          "24.9",
+          "40.0"
+        ],
+        [
+          "128 slots vs 128-token GPT-4 summary",
+          "34.1",
+          "17.6",
+          "48.3"
+        ]
+      ],
+      "src": "paper Table 5 (Llama-2-7b-chat, GPT-4 pairwise judge on PwC test)"
+    },
+    "components": [
+      {
+        "role": "Encoder (writes the slots)",
+        "model": "target LLM + LoRA (q, v), r = 128",
+        "kind": "llm",
+        "src": "paper §3.1"
+      },
+      {
+        "role": "Decoder (reads the slots)",
+        "model": "target LLM, frozen (Llama-7b, Llama-2-7b-chat, Llama-2-13b-chat)",
+        "kind": "llm",
+        "src": "paper §2.1, Table 4",
+        "url": "https://github.com/getao/icae/blob/469a46886a92dd5e76b2d12a8bac0fb7ed7d4cdd/code/icae_v1/llama_icae_modeling.py#L157"
+      },
+      {
+        "role": "PwC data and pairwise judge",
+        "model": "GPT-4",
+        "kind": "llm",
+        "src": "paper App. C-D"
+      }
+    ],
+    "discussion": {
+      "takeaway": "An LLM can be taught, with a small LoRA encoder, to squeeze a 512-token context into 128 vectors that the unchanged LLM reads almost as well as the text. Pretraining the encoder by autoencoding is what makes the slots faithful.",
+      "claims": [
+        {
+          "claim": "The slots keep almost all of the context at 4× compression.",
+          "evidence": "Autoencoding BLEU 99.1-99.8 and loss below 0.02 for 512 → 128 (Table 6); near-perfect restoration below 300 tokens (Fig. 4)."
+        },
+        {
+          "claim": "An LLM reading 128 slots can beat other 7B models reading the full context.",
+          "evidence": "Llama-7b + ICAE vs Alpaca: win 56.7 / lose 26.9; vs StableLM: 74.1 / 18.8 (Table 4)."
+        },
+        {
+          "claim": "Pretraining matters more than slot count.",
+          "evidence": "Pretrained k=64 roughly matches non-pretrained k=128 (33.1 vs 28.0 win/lose); pretrained vs not at k=128: 60.4 vs 9.5 (Table 5)."
+        },
+        {
+          "claim": "Slots are more informative than a natural-language summary of the same length.",
+          "evidence": "vs a 128-token GPT-4 summary: win 34.1, lose 17.6 (Table 5)."
+        },
+        {
+          "claim": "Stronger LLMs compress better.",
+          "evidence": "Continuation PPL gap +0.49 / +0.37 / +0.30 for Llama-7b / Llama-2-7b / Llama-2-13b (Table 6)."
+        },
+        {
+          "claim": "Compression speeds up inference.",
+          "evidence": "2.2× to 3.6× lower total latency; over 7× suggested if slots are cached (Table 7, §3.3.2)."
+        }
+      ],
+      "limits": [
+        "Experiments stop at 13B-parameter Llama models because of compute.",
+        "Compression is lossy: the compressed model still trails its counterpart with the original context, and going beyond 4× is hard.",
+        "The GPT-4 judge favours longer answers, which the authors say understates ICAE's short fine-tuned outputs."
+      ],
+      "limits_src": "paper §3.2.1, §3.2.2, §5, App. D footnote 7",
+      "reading": [
+        "ICAE is working memory for one context: nothing is stored across sessions, searched or updated, and the decoder always reads every slot.",
+        "The slots are computed without seeing the prompt, so one span can serve many questions; that is also why they must keep everything rather than what a question needs.",
+        "Against the same Llama-2-7b-chat reading the original context, ICAE at k = 128 wins 19.6% and loses 45.4% (Table 4); the large wins are against different models (Alpaca, StableLM).",
+        "PwC prompts, reference answers and the judge all come from GPT-4, and training and test contexts are about 512 tokens, so there is no external long-context benchmark in the paper.",
+        "The human-like memorisation argument rests on one restoration example (Table 2) and a three-row test on random text (Table 3)."
+      ]
+    },
+    "abstract": {
+      "text": "ICAE compresses a long context into a short sequence of memory slots that an LLM can read in place of the original text. The encoder is the same LLM with a small LoRA adapter and a set of memory tokens whose final hidden states become the slots; the LLM that reads them is left unchanged. The encoder is pretrained on large text corpora to reconstruct and continue the input from the slots, then fine-tuned on context-prompt-response data. With Llama models it reaches 4x compression with small quality loss, faster inference and lower GPU memory, and the authors relate the slots to human working memory.",
+      "note": "Summary in our words; the original abstract is on arXiv.",
+      "url": "https://arxiv.org/abs/2307.06945"
+    },
+    "sections": {
+      "Memory architecture": "§2",
+      "Results": "§3.2",
+      "Ablation": "§3.2.2 (Table 5)",
+      "Discussion": "§3.3, §5",
+      "Details": "§3.1, App. A-D"
+    }
+  }
+}
